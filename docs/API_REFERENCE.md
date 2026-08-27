@@ -26,13 +26,20 @@ The live, authoritative reference is generated from the same Zod schemas that va
 
 All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate email), `401 UNAUTHORIZED` (bad credentials / invalid or expired token), `400 VALIDATION_ERROR` (malformed request body). See `AUTHENTICATION.md` for the full design (token formats, rotation, password-reset fingerprinting).
 
+| `GET` | `/api/v1/users/me` | The authenticated user's profile plus linked wallet addresses (requires `Authorization: Bearer <access token>`) |
+| `GET` | `/api/v1/users/me/wallets` | List the authenticated user's linked wallet addresses |
+| `POST` | `/api/v1/users/me/wallets/challenge` | Issue a short-TTL (5m) challenge string for a Stellar address the client wants to link — `{ address }` → `{ challenge }` |
+| `POST` | `/api/v1/users/me/wallets/confirm` | Complete linking: `{ address, challenge, signature }`, where `signature` is the ed25519 signature (base64) of `challenge` produced by the wallet's own key. The first wallet a user links becomes their primary. |
+| `DELETE` | `/api/v1/users/me/wallets/:id` | Unlink a wallet (must belong to the requesting user — `403 FORBIDDEN` otherwise) |
+
+All `/api/v1/users/*` routes require authentication; unauthenticated requests get `401 UNAUTHORIZED`. See `AUTHENTICATION.md` § Wallet Linking for the full challenge/signature design and why it never touches a private key.
+
 Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
 
 ## Planned Endpoint Families
 
 | Module | Example routes |
 |---|---|
-| `users` | `GET /users/me`, `POST /users/me/wallets`, `POST /users/me/wallets/:address/verify` |
 | `deliveries` | `GET /deliveries`, `GET /deliveries/:id`, `POST /transactions/build/create-delivery`, `POST /transactions/build/assign-driver`, `POST /transactions/build/mark-in-transit`, `POST /transactions/build/confirm-delivery`, `POST /transactions/build/cancel-delivery` |
 | `escrow` | `GET /escrow/:deliveryId`, `POST /transactions/build/create-escrow`, `POST /transactions/build/release-escrow`, `POST /transactions/build/refund-escrow` |
 | `fleet` | `GET /fleets/:id`, `GET /fleets/:id/payout-address`, `POST /transactions/build/register-fleet`, `POST /transactions/build/add-driver-to-fleet`, `POST /transactions/build/accept-fleet-invite` |

@@ -9,6 +9,7 @@ import { handleError } from './shared/errors/index.js';
 import { securityPlugin, docsPlugin, healthRoutes } from './shared/http/index.js';
 import { getPrismaClient } from './shared/database/index.js';
 import { createAuthModule } from './modules/auth/index.js';
+import { createUsersModule } from './modules/users/index.js';
 
 /**
  * Composes the Fastify instance with no side effects (no `listen()` call) so
@@ -19,10 +20,10 @@ import { createAuthModule } from './modules/auth/index.js';
  * src/shared/logger/index.ts — silent by default in `test`), not by a
  * per-instance Fastify flag.
  *
- * Module route registration (auth, users, deliveries, ...) is added here
- * incrementally as each module ships in Phase 5 — this scaffold
- * intentionally registers nothing beyond the cross-cutting plugins and the
- * health check.
+ * Module route registration is added here incrementally as each module
+ * ships in Phase 5 — deliveries/escrow/fleet/disputes/reputation/etc. are
+ * not registered yet, and intentionally so, rather than pre-wired ahead of
+ * their implementation.
  */
 export async function buildApp() {
   const app = Fastify({
@@ -38,7 +39,9 @@ export async function buildApp() {
   await app.register(docsPlugin);
   await app.register(healthRoutes);
 
-  await app.register(createAuthModule(getPrismaClient()), { prefix: '/api/v1' });
+  const prisma = getPrismaClient();
+  await app.register(createAuthModule(prisma), { prefix: '/api/v1' });
+  await app.register(createUsersModule(prisma), { prefix: '/api/v1' });
 
   return app;
 }

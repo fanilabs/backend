@@ -23,7 +23,13 @@ Per `PHASE_1_DOMAIN_ANALYSIS.md` §1, the smart contracts have **no concept of e
 
 ## Wallet Linking
 
-A user links a Stellar address via a **challenge-response** flow (standard practice, not yet implemented — planned for the `users` module): the backend issues a random nonce, the client signs it with the wallet's key (off-chain signature, no transaction/fee involved), and the backend verifies the signature against the claimed address before marking `wallet_addresses.verifiedAt`. This proves address ownership without ever handling a private key.
+Implemented in the `users` module via a **challenge-response** flow — the same primitive SEP-10 web-auth is built on:
+
+1. `POST /api/v1/users/me/wallets/challenge` (`{ address }`, requires a valid access token): the backend issues a short-TTL (5m) signed JWT challenge (`purpose: 'wallet-link'`, claims `{ sub: userId, address }`) — the challenge *string itself* is what the client signs, so no separate database table of pending challenges is needed (the same "stateless signed token" approach as auth's verification/reset tokens).
+2. The client signs the raw challenge string with the wallet's private key (an off-chain ed25519 signature — no transaction, no fee, the wallet's key never leaves the client) and produces a base64 signature.
+3. `POST /api/v1/users/me/wallets/confirm` (`{ address, challenge, signature }`): the backend (a) verifies the challenge JWT is genuine, unexpired, and was issued for exactly this `userId` + `address` pair, then (b) verifies the ed25519 signature against the claimed address using `stellar-sdk`'s `Keypair.fromPublicKey(address).verify(...)` (`src/modules/users/infrastructure/stellar-signature-verifier.ts`). Only if both hold is `wallet_addresses.verifiedAt` set. A forged signature or a challenge issued for a different address/user fails with `401 UNAUTHORIZED`; an address already linked to a *different* account fails with `409 CONFLICT`.
+
+The first wallet a user links becomes their `isPrimary` address; subsequent ones do not. This proves address ownership without the backend ever handling — or even seeing — a private key.
 
 ## Transaction Signing — Never Backend-Custodied
 
@@ -38,8 +44,8 @@ Per `ARCHITECTURE.md` §2 and the lesson in `PHASE_2_REFERENCE_ANALYSIS.md` §5.
 
 ## Architecture
 
-The `auth` module follows the layering in `ARCHITECTURE.md` §1 exactly: `domain/ports.ts` defines `UserRepository`, `RefreshTokenRepository`, `PasswordHasher`, `TokenService`, `Mailer`, and `Clock` as interfaces; `application/` has one file per use case (`register-user.ts`, `login.ts`, `refresh-session.ts`, `logout.ts`, `verify-email.ts`, `request-password-reset.ts`, `reset-password.ts`), each a small factory function taking only the ports it needs; `infrastructure/` provides the real Prisma/bcrypt/jsonwebtoken-backed implementations; `interface/routes.ts` is a thin Fastify plugin mapping HTTP to use cases. `index.ts` is the module's composition root — the one place that wires infrastructure into application and hands `app.ts` a ready-to-register plugin.
+Both `auth` and `users` follow the layering in `ARCHITECTURE.md` §1 exactly: `domain/ports.ts` defines the interfaces (`auth`: `UserRepository`, `RefreshTokenRepository`, `PasswordHasher`, `TokenService`, `Mailer`; `users`: `UserReader`, `WalletAddressRepository`, `ChallengeService`, `SignatureVerifier`); `application/` has one small factory function per use case, taking only the ports it needs; `infrastructure/` provides the real Prisma/bcrypt/jsonwebtoken/stellar-sdk-backed implementations; `interface/routes.ts` is a thin Fastify plugin mapping HTTP to use cases; `index.ts` is each module's composition root — the one place per module allowed to wire infrastructure into application and hand `app.ts` a ready-to-register plugin. `users` deliberately keeps its own narrow `UserRecord` type rather than importing `auth`'s domain `User` — no module reaches into another's domain layer directly.
 
 ## Status
 
-Implemented (Phase 5, first module). 42 unit/infrastructure tests pass without any external dependency; a further set of Prisma-backed repository tests and full HTTP-level integration tests exist and run in CI (real Postgres service container) but are automatically skipped, not failed, in any environment without a reachable database (see `src/shared/testing/database.ts`).
+Both modules implemented (Phase 5). Unit/infrastructure tests run without any external dependency (including real Stellar ed25519 signature verification for wallet linking — no mocking of the cryptography); a further set of Prisma-backed repository tests and full HTTP-level integration tests exist and run in CI (real Postgres service container) but are automatically skipped, not failed, in any environment without a reachable database (see `src/shared/testing/database.ts`).
