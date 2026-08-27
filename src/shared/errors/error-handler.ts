@@ -64,6 +64,25 @@ export function handleError(
     return;
   }
 
+  // Fastify's schema validation (fastify-type-provider-zod's validatorCompiler)
+  // does not throw a bare ZodError for route body/query/params validation —
+  // it wraps failures into a FastifyError carrying a `.validation` array and
+  // `code: 'FST_ERR_VALIDATION'`. Normalized here to the same VALIDATION_ERROR
+  // shape as the ZodError branch above, so API consumers see one consistent
+  // code regardless of which path a validation failure took.
+  const validationError = error as FastifyError;
+  if (Array.isArray(validationError.validation)) {
+    const body: ErrorResponseBody = {
+      error: {
+        code: 'VALIDATION_ERROR',
+        message: 'Request validation failed',
+        details: validationError.validation,
+      },
+    };
+    void reply.status(400).send(body);
+    return;
+  }
+
   if (isPrismaKnownRequestError(error)) {
     if (error.code === 'P2002') {
       const body: ErrorResponseBody = {

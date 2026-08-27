@@ -12,10 +12,10 @@ import prettier from 'eslint-config-prettier';
  * may reach into another module's domain/infrastructure directly.
  */
 const moduleElementTypes = [
-  { type: 'domain', pattern: 'src/modules/*/domain/*' },
-  { type: 'application', pattern: 'src/modules/*/application/*' },
-  { type: 'infrastructure', pattern: 'src/modules/*/infrastructure/*' },
-  { type: 'interface', pattern: 'src/modules/*/interface/*' },
+  { type: 'domain', pattern: 'src/modules/*/domain/**' },
+  { type: 'application', pattern: 'src/modules/*/application/**' },
+  { type: 'infrastructure', pattern: 'src/modules/*/infrastructure/**' },
+  { type: 'interface', pattern: 'src/modules/*/interface/**' },
 ];
 
 export default tseslint.config(
@@ -31,10 +31,15 @@ export default tseslint.config(
       'boundaries/include': ['src/**/*.ts'],
       'boundaries/elements': [
         ...moduleElementTypes.map((el) => ({ ...el, capture: ['module'] })),
-        { type: 'shared', pattern: 'src/shared/*' },
-        { type: 'blockchain', pattern: 'src/blockchain/*' },
+        { type: 'shared', pattern: 'src/shared/**' },
+        { type: 'blockchain', pattern: 'src/blockchain/**' },
         { type: 'bootstrap', pattern: 'src/@(app|server).ts', mode: 'file' },
-        { type: 'workers', pattern: 'src/workers/*' },
+        { type: 'workers', pattern: 'src/workers/**' },
+        // The module composition root (src/modules/<name>/index.ts) is the
+        // one place per module allowed to see all four of its own layers —
+        // it wires infrastructure adapters into application use cases and
+        // hands the interface layer a ready-to-register Fastify plugin.
+        { type: 'module-root', pattern: 'src/modules/*/index.ts', mode: 'file' },
       ],
     },
     rules: {
@@ -43,7 +48,14 @@ export default tseslint.config(
         {
           default: 'disallow',
           rules: [
-            { from: 'domain', allow: ['domain'] },
+            // domain may depend on the shared *error hierarchy* only (pure
+            // TS, no framework/infra coupling) — see src/shared/errors —
+            // so domain errors can extend AppError and be caught uniformly
+            // by the Fastify error handler without domain knowing Fastify
+            // exists. Domain code must import shared/errors/app-error.js
+            // directly, not the shared/errors barrel, to avoid pulling in
+            // the Fastify-typed error-handler module even at the type level.
+            { from: 'domain', allow: ['domain', 'shared'] },
             { from: 'application', allow: ['domain', 'application', 'shared'] },
             {
               from: 'infrastructure',
@@ -51,15 +63,19 @@ export default tseslint.config(
             },
             { from: 'interface', allow: ['application', 'domain', 'shared'] },
             {
-              from: ['bootstrap', 'workers'],
+              from: 'module-root',
               allow: [
-                'shared',
-                'blockchain',
                 'domain',
                 'application',
                 'infrastructure',
                 'interface',
+                'shared',
+                'blockchain',
               ],
+            },
+            {
+              from: ['bootstrap', 'workers'],
+              allow: ['shared', 'blockchain', 'module-root'],
             },
             { from: 'shared', allow: ['shared'] },
             { from: 'blockchain', allow: ['blockchain', 'shared'] },

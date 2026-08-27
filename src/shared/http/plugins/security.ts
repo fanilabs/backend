@@ -37,5 +37,10 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
     max: config.RATE_LIMIT_MAX,
     timeWindow: config.RATE_LIMIT_WINDOW_MS,
     redis: getRedisClient(),
+    // A Redis outage must degrade rate limiting, not take the entire API
+    // down — every route's preHandler hook otherwise throws on every
+    // request the moment the store is unreachable (verified by hand: this
+    // was a real 500-on-everything bug during local smoke testing).
+    skipOnError: true,
   });
 });

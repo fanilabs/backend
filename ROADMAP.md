@@ -66,6 +66,17 @@ Each module, before moving to the next, must ship with:
 
 **DoD per module:** all of the above present, CI green, no other module broken, no duplicate/parallel implementation left behind (the Phase 2 §4 anti-pattern this project is explicitly designed to avoid).
 
+**Module status:**
+
+| Module | Status |
+|---|---|
+| `shared` / `blockchain` foundations | ✅ Done (Phase 4) |
+| `auth` | ✅ Done — register/login/refresh/logout/verify-email/password-reset, RBAC guard, 42 passing unit/infra tests + skip-gated Prisma/API integration tests |
+| `users` | Pending |
+| `indexer` | Pending |
+| `deliveries`, `escrow`, `fleet`, `disputes`, `reputation` | Pending |
+| `notifications`, `analytics`, `fraud-detection`, `admin` | Pending |
+
 ## 6. Milestones & Deliverables
 
 | Milestone | Deliverable | Depends on |
@@ -155,4 +166,4 @@ Each module, before moving to the next, must ship with:
 
 ---
 
-**Current status:** Phase 4 complete. Ready to begin Phase 5, module by module, starting with the `shared`/`blockchain` foundations (already substantially in place from Phase 4) and the `auth` module.
+**Current status:** Phase 5 in progress. `auth` module complete (first module). Next: `users`.

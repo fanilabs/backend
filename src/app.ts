@@ -7,6 +7,8 @@ import {
 import { logger } from './shared/logger/index.js';
 import { handleError } from './shared/errors/index.js';
 import { securityPlugin, docsPlugin, healthRoutes } from './shared/http/index.js';
+import { getPrismaClient } from './shared/database/index.js';
+import { createAuthModule } from './modules/auth/index.js';
 
 /**
  * Composes the Fastify instance with no side effects (no `listen()` call) so
@@ -35,6 +37,8 @@ export async function buildApp() {
   await app.register(securityPlugin);
   await app.register(docsPlugin);
   await app.register(healthRoutes);
+
+  await app.register(createAuthModule(getPrismaClient()), { prefix: '/api/v1' });
 
   return app;
 }

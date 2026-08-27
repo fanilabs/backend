@@ -17,11 +17,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "declaration": false,
-    "sourceMap": true,
-    "baseUrl": ".",
-    "paths": {
-      "@/*": ["src/*"]
-    }
+    "sourceMap": true
   },
   "include": ["src", "prisma", "tests", "vitest.config.ts"],
   "exclude": ["node_modules", "dist"]

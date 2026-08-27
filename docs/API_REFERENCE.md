@@ -16,6 +16,15 @@ The live, authoritative reference is generated from the same Zod schemas that va
 |---|---|---|
 | `GET` | `/health` | Liveness/readiness: database + Redis connectivity |
 | `GET` | `/api-docs` | Interactive OpenAPI/Swagger UI |
+| `POST` | `/api/v1/auth/register` | Create a local account (`email`, `password`) — sends a verification email (logged locally in dev, see `AUTHENTICATION.md`) |
+| `POST` | `/api/v1/auth/login` | Exchange credentials for an access + refresh token pair |
+| `POST` | `/api/v1/auth/refresh` | Rotate a refresh token for a new access + refresh pair; the presented token is revoked |
+| `POST` | `/api/v1/auth/logout` | Revoke a refresh token (idempotent — unknown/already-revoked tokens still return success) |
+| `POST` | `/api/v1/auth/verify-email` | Consume an email verification token (idempotent) |
+| `POST` | `/api/v1/auth/request-password-reset` | Always returns success — no user enumeration; sends a reset email only if the address is registered |
+| `POST` | `/api/v1/auth/reset-password` | Consume a password reset token, set a new password, revoke all existing sessions |
+
+All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate email), `401 UNAUTHORIZED` (bad credentials / invalid or expired token), `400 VALIDATION_ERROR` (malformed request body). See `AUTHENTICATION.md` for the full design (token formats, rotation, password-reset fingerprinting).
 
 Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
 
@@ -23,7 +32,6 @@ Everything else below is the **planned surface**, matching the module boundaries
 
 | Module | Example routes |
 |---|---|
-| `auth` | `POST /auth/register`, `POST /auth/login`, `POST /auth/refresh`, `POST /auth/verify-email`, `POST /auth/request-password-reset`, `POST /auth/reset-password` |
 | `users` | `GET /users/me`, `POST /users/me/wallets`, `POST /users/me/wallets/:address/verify` |
 | `deliveries` | `GET /deliveries`, `GET /deliveries/:id`, `POST /transactions/build/create-delivery`, `POST /transactions/build/assign-driver`, `POST /transactions/build/mark-in-transit`, `POST /transactions/build/confirm-delivery`, `POST /transactions/build/cancel-delivery` |
 | `escrow` | `GET /escrow/:deliveryId`, `POST /transactions/build/create-escrow`, `POST /transactions/build/release-escrow`, `POST /transactions/build/refund-escrow` |
