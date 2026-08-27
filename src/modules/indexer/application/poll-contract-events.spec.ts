@@ -89,6 +89,7 @@ describe('pollContractEvents', () => {
       txHash: 'tx',
       topic: ['escrow_funded'],
       payload: {},
+      closedAt: new Date(),
     });
     eventSource.queueResponse({ events: [duplicate], latestLedgerSeen: 1002 });
 

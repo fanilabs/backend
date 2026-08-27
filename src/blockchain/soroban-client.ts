@@ -1,4 +1,5 @@
 import { rpc } from '@stellar/stellar-sdk';
+import type { Account, Transaction, FeeBumpTransaction } from '@stellar/stellar-sdk';
 import { getConfig } from '../shared/config/index.js';
 import { logger } from '../shared/logger/index.js';
 import { BlockchainError } from '../shared/errors/index.js';
@@ -37,6 +38,35 @@ export class SorobanClient {
 
   async getEvents(request: rpc.Server.GetEventsRequest): Promise<rpc.Api.GetEventsResponse> {
     return this.call(() => this.server.getEvents(request), 'getEvents');
+  }
+
+  /** Current sequence number + account state, needed as the source account
+   * for every unsigned transaction this backend builds. */
+  async getAccount(publicKey: string): Promise<Account> {
+    return this.call(() => this.server.getAccount(publicKey), 'getAccount');
+  }
+
+  /** Simulates a contract-invocation transaction and returns it fully
+   * assembled (resource fees, footprint, and auth entries populated) —
+   * required before a Soroban transaction can be submitted. Not retried on
+   * simulation/contract-level failures (e.g. an `Unauthorized` panic) since
+   * `isRetryableRpcError` only matches network-level error messages, and
+   * retrying a genuine simulation failure would just repeat it. */
+  async prepareTransaction(tx: Transaction | FeeBumpTransaction) {
+    return this.call(() => this.server.prepareTransaction(tx), 'prepareTransaction');
+  }
+
+  /** Simulates without assembling a submittable transaction — for read-only
+   * contract queries (e.g. `get_delivery`), where only `result.retval`
+   * matters and there's nothing to sign/submit. Verified empirically
+   * against the real testnet RPC and a real deployed contract that
+   * simulation succeeds with a fresh, unfunded source account — Soroban
+   * read-only simulation doesn't require the source account to actually
+   * exist on-ledger. */
+  async simulateTransaction(
+    tx: Transaction | FeeBumpTransaction,
+  ): Promise<rpc.Api.SimulateTransactionResponse> {
+    return this.call(() => this.server.simulateTransaction(tx), 'simulateTransaction');
   }
 
   private async call<T>(fn: () => Promise<T>, operation: string): Promise<T> {

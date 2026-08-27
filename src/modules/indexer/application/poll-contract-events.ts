@@ -58,6 +58,7 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
         txHash: event.txHash,
         topic: event.topic,
         payload: event.value,
+        closedAt: event.closedAt,
       };
 
       const inserted = await deps.eventStore.tryInsert(stored);

@@ -27,4 +27,9 @@ export interface StoredEvent {
   txHash: string;
   topic: string[];
   payload: unknown;
+  /** When this actually happened on-chain (ledger close time), not when
+   * this backend ingested it — consuming modules that need an on-chain
+   * timestamp (e.g. `deliveries` recording `deliveredAt`) use this rather
+   * than `new Date()` at processing time. */
+  closedAt: Date;
 }

@@ -15,6 +15,9 @@ export interface BlockchainEventEnvelope {
   txHash: string;
   topic: string[];
   payload: unknown;
+  /** On-chain ledger close time — use this, not `new Date()`, when a
+   * handler needs an on-chain timestamp. */
+  closedAt: Date;
 }
 
 const CHANNEL = 'blockchain-event';

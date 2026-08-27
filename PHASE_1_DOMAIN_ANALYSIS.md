@@ -1,4 +1,4 @@
-# Phase 1 — Domain & Smart Contract Analysis
+                    # Phase 1 — Domain & Smart Contract Analysis
 
 **Status:** Complete
 **Scope:** Study of `FaniLab-SmartContract` (local path: `../FaniLab-SmartContract`) as the business source of truth for `fanilab-backend`.

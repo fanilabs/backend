@@ -51,6 +51,8 @@ A handler that fails to parse an event logs and records the failure (not silentl
 
 Implemented for **`escrow_contract` and `delivery_contract` only** — the minimal slice needed to unblock the `deliveries` and `escrow` modules next (`ROADMAP.md` §5). The polling engine (`createPollContractEventsUseCase`) is fully contract-agnostic; adding `dispute_resolution_contract`, `fleet_management_contract`, `identity_reputation_contract`, and `settlement_contract` later is a matter of adding entries to `getTrackedContracts()` in `src/modules/indexer/index.ts`, not new architecture.
 
+The `deliveries` module is the first real subscriber on the event bus (`src/modules/deliveries/infrastructure/event-subscription.ts`), reacting to `delivery_created`/`driver_assigned`/`DeliveryInTransit`/`delivery_confirmed`/`delivery_cancelled`/`delivery_disputed` and filtering out every other contract's events on the same channel. `escrow_contract`'s events are still ingested (checkpointed and stored) but have no subscriber yet — that's the `escrow` module's job next, not a gap in the indexer itself.
+
 No FaniLab contracts are deployed anywhere reachable from this repository's own environment, so `ESCROW_CONTRACT_ID`/`DELIVERY_CONTRACT_ID` are blank by default (`.env.example`) and the indexer simply skips scheduling for whichever contracts aren't configured, logging a warning rather than failing.
 
 ## Status

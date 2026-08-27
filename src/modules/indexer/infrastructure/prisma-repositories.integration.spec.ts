@@ -44,6 +44,7 @@ describe.skipIf(!dbAvailable)('Prisma indexer repositories (integration)', () =>
       txHash: 'tx-hash',
       topic: ['escrow_funded'],
       payload: { amount: '100' },
+      closedAt: new Date(),
     };
 
     expect(await eventStore.tryInsert(event)).toBe(true);

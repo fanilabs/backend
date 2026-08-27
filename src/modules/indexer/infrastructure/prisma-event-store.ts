@@ -30,6 +30,7 @@ export function createPrismaEventStore(prisma: PrismaClient): EventStore {
             txHash: event.txHash,
             topic: event.topic,
             payload: event.payload as Prisma.InputJsonValue,
+            ledgerClosedAt: event.closedAt,
           },
         });
         return true;

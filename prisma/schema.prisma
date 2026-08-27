@@ -330,13 +330,16 @@ model BlockchainEvent {
   /// ledger/tx/operation/event position) — already globally unique on the
   /// network, so it's the idempotency key directly rather than a hand-rolled
   /// composite. See src/modules/indexer/infrastructure/soroban-event-source.ts.
-  rpcEventId   String    @map("rpc_event_id")
-  ledgerSeq    BigInt    @map("ledger_seq")
-  txHash       String    @map("tx_hash")
-  topic        String[]
-  payload      Json
-  ingestedAt   DateTime  @default(now()) @map("ingested_at")
-  processedAt  DateTime? @map("processed_at")
+  rpcEventId    String    @map("rpc_event_id")
+  ledgerSeq     BigInt    @map("ledger_seq")
+  txHash        String    @map("tx_hash")
+  topic         String[]
+  payload       Json
+  /// When this happened on-chain (ledger close time) — distinct from
+  /// ingestedAt, which is when this backend observed/stored it.
+  ledgerClosedAt DateTime @map("ledger_closed_at")
+  ingestedAt    DateTime  @default(now()) @map("ingested_at")
+  processedAt   DateTime? @map("processed_at")
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])

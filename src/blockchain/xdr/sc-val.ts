@@ -1,5 +1,4 @@
-import { Address } from '@stellar/stellar-sdk';
-import type { xdr } from '@stellar/stellar-sdk';
+import { Address, xdr } from '@stellar/stellar-sdk';
 
 /**
  * Converts a Soroban `xdr.ScVal` into a plain JS value. Covers the variants
@@ -74,4 +73,69 @@ function combine128(hi: bigint, lo: bigint): string {
 
 function bufferOrStringToString(value: string | Buffer): string {
   return typeof value === 'string' ? value : value.toString('utf8');
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Native → ScVal (transaction-building direction)
+// ─────────────────────────────────────────────────────────────────────────
+//
+// These follow Soroban's documented `#[contracttype]` derive conventions:
+//   - a tuple/newtype struct (single unnamed field, e.g. shared_types'
+//     `DeliveryId(pub u64)`) encodes as a one-element Vec
+//   - a unit-variant (C-like) enum encodes as a one-element Vec containing
+//     the variant name as a Symbol
+//   - a struct with named fields encodes as a Map keyed by Symbol field
+//     names, sorted by key — Soroban's Map type requires sorted keys for
+//     canonical/host-side representation
+//
+// IMPORTANT: none of FaniLab's contracts are deployed anywhere reachable
+// from this environment (PHASE_1_DOMAIN_ANALYSIS.md), so these encoders are
+// verified here against the documented convention and via round-trip
+// through this file's own `scValToNative`, but NOT against a real deployed
+// contract accepting a transaction built with them. Treat the struct/enum
+// encoders as the first thing to validate (e.g. via `stellar contract
+// invoke --sim`) once a real FaniLab deployment exists — see
+// docs/EVENT_INDEXER.md's "Current Scope" section for the same caveat
+// applied to the read side.
+
+export function addressToScVal(address: string): xdr.ScVal {
+  return new Address(address).toScVal();
+}
+
+export function u32ToScVal(value: number): xdr.ScVal {
+  return xdr.ScVal.scvU32(value);
+}
+
+export function u64ToScVal(value: bigint | number): xdr.ScVal {
+  return xdr.ScVal.scvU64(new xdr.Uint64(BigInt(value)));
+}
+
+export function boolToScVal(value: boolean): xdr.ScVal {
+  return xdr.ScVal.scvBool(value);
+}
+
+export function stringToScVal(value: string): xdr.ScVal {
+  return xdr.ScVal.scvString(value);
+}
+
+export function symbolToScVal(value: string): xdr.ScVal {
+  return xdr.ScVal.scvSymbol(value);
+}
+
+/** Encodes a Rust tuple/newtype struct with a single unnamed field. */
+export function tupleStructToScVal(fieldScVal: xdr.ScVal): xdr.ScVal {
+  return xdr.ScVal.scvVec([fieldScVal]);
+}
+
+/** Encodes a C-like (all-unit-variant) Rust enum from its variant name. */
+export function unitEnumToScVal(variantName: string): xdr.ScVal {
+  return xdr.ScVal.scvVec([xdr.ScVal.scvSymbol(variantName)]);
+}
+
+/** Encodes a Rust struct with named fields as a Map sorted by field name. */
+export function namedStructToScVal(fields: Record<string, xdr.ScVal>): xdr.ScVal {
+  const entries = Object.entries(fields)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, val]) => new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(key), val }));
+  return xdr.ScVal.scvMap(entries);
 }

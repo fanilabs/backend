@@ -74,7 +74,8 @@ Each module, before moving to the next, must ship with:
 | `auth` | ✅ Done — register/login/refresh/logout/verify-email/password-reset, RBAC guard, 42 passing unit/infra tests + skip-gated Prisma/API integration tests |
 | `users` | ✅ Done — profile read, wallet linking (challenge/signature via real Stellar ed25519 verification), wallet list/unlink, RBAC-ready |
 | `indexer` | ✅ Done (minimal scope: `escrow_contract` + `delivery_contract` only, see `EVENT_INDEXER.md`) — checkpointed idempotent polling, generic ScVal XDR decoder, BullMQ repeatable job + worker, `GET /health/indexer`, verified against real Postgres and the real public testnet RPC |
-| `deliveries`, `escrow`, `fleet`, `disputes`, `reputation` | Pending |
+| `deliveries` | ✅ Done — read model synced from indexed events (with a supplementary `get_delivery` read call to hydrate the sparse `delivery_created` event), unsigned-XDR builders for all six `delivery_contract` calls, real ScVal struct/enum encoding verified by construction + round-trip (not yet against a live deployment — see `EVENT_INDEXER.md`) |
+| `escrow`, `fleet`, `disputes`, `reputation` | Pending |
 | `notifications`, `analytics`, `fraud-detection`, `admin` | Pending |
 
 ## 6. Milestones & Deliverables
@@ -166,4 +167,4 @@ Each module, before moving to the next, must ship with:
 
 ---
 
-**Current status:** Phase 5 in progress. `auth`, `users`, and `indexer` (minimal scope) modules complete. Next: `deliveries`.
+**Current status:** Phase 5 in progress. `auth`, `users`, `indexer` (minimal scope), and `deliveries` modules complete. Next: `escrow`.

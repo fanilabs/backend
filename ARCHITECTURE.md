@@ -161,7 +161,7 @@ fanilab-backend/
 │   ├── blockchain/
 │   │   ├── soroban-client.ts        (resilient RPC wrapper: retry/backoff/circuit-breaker)
 │   │   ├── contracts/               (typed client per contract: escrow, delivery, dispute, fleet, identity, settlement)
-│   │   └── xdr/                     (sc-val.ts: generic ScVal↔native decoder; unsigned-transaction builders land here too)
+│   │   └── xdr/                     (sc-val.ts: generic ScVal↔native encode/decode; build-invoke-transaction.ts + simulate-read-call.ts: generic write/read contract-call helpers every module's own contract client builds on)
 │   ├── shared/
 │   │   ├── config/                  (Zod env schema + typed config)
 │   │   ├── errors/                  (single error hierarchy + Fastify error handler)
