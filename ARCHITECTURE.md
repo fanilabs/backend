@@ -161,7 +161,7 @@ fanilab-backend/
 │   ├── blockchain/
 │   │   ├── soroban-client.ts        (resilient RPC wrapper: retry/backoff/circuit-breaker)
 │   │   ├── contracts/               (typed client per contract: escrow, delivery, dispute, fleet, identity, settlement)
-│   │   └── xdr/                     (unsigned-transaction builders)
+│   │   └── xdr/                     (sc-val.ts: generic ScVal↔native decoder; unsigned-transaction builders land here too)
 │   ├── shared/
 │   │   ├── config/                  (Zod env schema + typed config)
 │   │   ├── errors/                  (single error hierarchy + Fastify error handler)
@@ -169,8 +169,10 @@ fanilab-backend/
 │   │   ├── database/                (Prisma client singleton)
 │   │   ├── queue/                   (BullMQ connection + queue registry)
 │   │   ├── cache/                   (Redis adapter)
+│   │   ├── events/                  (in-process pub/sub — indexer publishes, future modules subscribe)
 │   │   ├── http/                    (Fastify plugins: helmet, cors, rate-limit, swagger, auth guard)
-│   │   └── testing/                 (shared test fixtures/factories)
+│   │   ├── jwt/                     (shared access/refresh token sign+verify)
+│   │   └── testing/                 (shared test fixtures/factories + DB/RPC reachability gates)
 │   ├── workers/
 │   │   └── index.ts                 (BullMQ worker process entrypoint — separate from API process)
 │   ├── app.ts                        (Fastify instance composition — no side effects, testable)
@@ -216,7 +218,7 @@ Module-local tests live next to source (`*.spec.ts` colocated, per Phase 2 §5.6
 (Full detail deferred to `docs/EVENT_INDEXER.md` in Phase 4/5; this is the Phase 3 design contract.)
 
 - **Checkpointing**: one `BlockchainCheckpoint` row per contract per network (`contractName`, `network`, `lastLedgerSeq`, `updatedAt`). Polling resumes from the persisted checkpoint, never from "now," so no gap is possible across restarts.
-- **Idempotent ingestion**: every raw event is first persisted to `BlockchainEvent` keyed by a unique `(contractName, txHash, eventIndex)` constraint *before* domain handlers run, so re-polling an overlapping ledger range is a safe no-op (directly adopting the Phase 2 §3 idempotency lesson).
+- **Idempotent ingestion**: every raw event is first persisted to `BlockchainEvent` keyed by a unique `(contractName, network, rpcEventId)` constraint (the RPC's own globally-unique event id) *before* domain handlers run, so re-polling an overlapping ledger range is a safe no-op (directly adopting the Phase 2 §3 idempotency lesson).
 - **Dual dispute/reputation reconciliation**: handlers for `dispute_resolution_contract`'s five dispute events and `escrow_contract`'s dispute-adjacent events (`delivery_disputed`, `dispute_resolved`) both write into one `Dispute` timeline per `deliveryId`, per the Phase 1 §5 finding that neither contract alone tells the full story.
 - **Event-shape adapter boundary**: the raw Soroban RPC → typed-event mapping is isolated behind one adapter interface per contract so a future SDK/event-API migration (Phase 1 §9 — SDK 27 deprecation warning already present in the contracts) only touches `blockchain/contracts/*`, not module domain logic.
 - **Dispatch**: after durable ingestion, the indexer publishes an internal domain event (in-process event emitter, not yet a distributed bus — documented as a v2 candidate if the system needs multi-instance indexer scaling) that module-local handlers (deliveries, escrow, disputes, reputation, fleet, notifications, fraud-detection) subscribe to.
@@ -386,7 +388,7 @@ erDiagram
     }
 ```
 
-`BLOCKCHAIN_EVENT` carries a unique constraint on `(contractName, txHash, eventIndex)` — the idempotency key from §6.
+`BLOCKCHAIN_EVENT` carries a unique constraint on `(contractName, network, rpcEventId)` — the idempotency key from §6.
 
 ---
 

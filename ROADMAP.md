@@ -73,7 +73,7 @@ Each module, before moving to the next, must ship with:
 | `shared` / `blockchain` foundations | ✅ Done (Phase 4) |
 | `auth` | ✅ Done — register/login/refresh/logout/verify-email/password-reset, RBAC guard, 42 passing unit/infra tests + skip-gated Prisma/API integration tests |
 | `users` | ✅ Done — profile read, wallet linking (challenge/signature via real Stellar ed25519 verification), wallet list/unlink, RBAC-ready |
-| `indexer` | Pending |
+| `indexer` | ✅ Done (minimal scope: `escrow_contract` + `delivery_contract` only, see `EVENT_INDEXER.md`) — checkpointed idempotent polling, generic ScVal XDR decoder, BullMQ repeatable job + worker, `GET /health/indexer`, verified against real Postgres and the real public testnet RPC |
 | `deliveries`, `escrow`, `fleet`, `disputes`, `reputation` | Pending |
 | `notifications`, `analytics`, `fraud-detection`, `admin` | Pending |
 
@@ -166,4 +166,4 @@ Each module, before moving to the next, must ship with:
 
 ---
 
-**Current status:** Phase 5 in progress. `auth` and `users` modules complete. Next: `indexer` (minimal — escrow + delivery events).
+**Current status:** Phase 5 in progress. `auth`, `users`, and `indexer` (minimal scope) modules complete. Next: `deliveries`.

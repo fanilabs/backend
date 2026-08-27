@@ -326,15 +326,19 @@ model BlockchainEvent {
   id           String    @id @default(uuid())
   contractName String    @map("contract_name")
   network      String
+  /// The Soroban RPC's own event id (a monotonic "total order id" encoding
+  /// ledger/tx/operation/event position) — already globally unique on the
+  /// network, so it's the idempotency key directly rather than a hand-rolled
+  /// composite. See src/modules/indexer/infrastructure/soroban-event-source.ts.
+  rpcEventId   String    @map("rpc_event_id")
   ledgerSeq    BigInt    @map("ledger_seq")
   txHash       String    @map("tx_hash")
-  eventIndex   Int       @map("event_index")
-  topic        String
+  topic        String[]
   payload      Json
   ingestedAt   DateTime  @default(now()) @map("ingested_at")
   processedAt  DateTime? @map("processed_at")
 
-  @@unique([contractName, txHash, eventIndex])
+  @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])
   @@map("blockchain_events")
 }

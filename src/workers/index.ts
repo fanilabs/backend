@@ -1,9 +1,10 @@
 import type { Worker } from 'bullmq';
 import closeWithGrace from 'close-with-grace';
 import { logger } from '../shared/logger/index.js';
-import { disconnectPrisma } from '../shared/database/index.js';
+import { getPrismaClient, disconnectPrisma } from '../shared/database/index.js';
 import { disconnectRedis } from '../shared/cache/index.js';
-import { disconnectQueueConnection } from '../shared/queue/index.js';
+import { disconnectQueueConnection, closeAllQueues } from '../shared/queue/index.js';
+import { createIndexerBackgroundWorker, scheduleIndexer } from '../modules/indexer/index.js';
 
 const log = logger.child({ process: 'worker' });
 
@@ -12,14 +13,16 @@ const log = logger.child({ process: 'worker' });
  * (ARCHITECTURE.md §4 — runs as a separate process/container from the API,
  * per the Phase 2 §5.3 lesson that in-process cron doesn't survive restarts
  * or scale horizontally). Each module contributes its own worker(s) here as
- * it's implemented in Phase 5 — e.g. `registerWorkers.push(createIndexerWorker())`.
+ * it's implemented in Phase 5.
  */
-const registerWorkers: Array<() => Worker> = [];
+const registerWorkers: Array<() => Worker> = [
+  () => createIndexerBackgroundWorker(getPrismaClient()),
+];
 
 async function main(): Promise<void> {
-  if (registerWorkers.length === 0) {
-    log.warn('No BullMQ workers registered yet — modules add their processors in Phase 5.');
-  }
+  // Repeatable job registration is idempotent (BullMQ upserts by
+  // name+repeat+jobId) — safe to call on every worker-process start.
+  await scheduleIndexer();
 
   const workers = registerWorkers.map((register) => register());
 
@@ -30,6 +33,7 @@ async function main(): Promise<void> {
       log.info('Shutting down worker process gracefully');
     }
     await Promise.all(workers.map((worker) => worker.close()));
+    await closeAllQueues();
     await Promise.all([disconnectPrisma(), disconnectRedis(), disconnectQueueConnection()]);
   });
 

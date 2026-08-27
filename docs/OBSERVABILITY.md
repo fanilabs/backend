@@ -9,8 +9,8 @@ Fastify's request logging is enabled by default (disabled only in `test` to keep
 ## Health Checks
 
 - `GET /health` — database + Redis reachability, `200` when both are `ok`, `503` otherwise (`src/shared/http/routes/health.ts`).
-- `GET /health/indexer` — indexer lag against the latest ledger, once the `indexer` module ships (Phase 5; design in [`EVENT_INDEXER.md`](./EVENT_INDEXER.md)).
-- `GET /health/queue` — BullMQ queue depth/failure counts, once background jobs exist (Phase 5).
+- `GET /health/indexer` — per-contract indexer lag against the real current ledger (queries the live Soroban RPC on every call), `200`/`503` per contract's lag vs. `INDEXER_LAG_ALERT_LEDGERS`. Implemented (`src/modules/indexer`); see [`EVENT_INDEXER.md`](./EVENT_INDEXER.md).
+- `GET /health/queue` — BullMQ queue depth/failure counts, once more background jobs exist beyond the indexer's own polling (Phase 5).
 
 ## Error Reporting
 
@@ -26,4 +26,4 @@ Not yet implemented. If/when the module count and cross-service call graph (API 
 
 ## What to Watch in Production
 
-Once Phase 5's `indexer` module ships, the single most important operational signal is **indexer lag** (`now_ledger - lastLedgerSeq` per contract) — every other module's read model is only as fresh as the indexer, so lag is the leading indicator for "the API is about to start looking stale," ahead of any user-facing symptom. This mirrors the lesson in `PHASE_2_REFERENCE_ANALYSIS.md` §3 about treating indexer lag as a first-class health signal, not an afterthought.
+The single most important operational signal is **indexer lag** (`GET /health/indexer`, `now_ledger - lastLedgerSeq` per contract) — every other module's read model is only as fresh as the indexer, so lag is the leading indicator for "the API is about to start looking stale," ahead of any user-facing symptom. This mirrors the lesson in `PHASE_2_REFERENCE_ANALYSIS.md` §3 about treating indexer lag as a first-class health signal, not an afterthought. Currently tracks `escrow_contract` and `delivery_contract` only (`EVENT_INDEXER.md` § Current Scope) — a contract with no id configured reports `configured: false` and is excluded from the lag calculation rather than reported as failing.

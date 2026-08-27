@@ -10,6 +10,7 @@ import { securityPlugin, docsPlugin, healthRoutes } from './shared/http/index.js
 import { getPrismaClient } from './shared/database/index.js';
 import { createAuthModule } from './modules/auth/index.js';
 import { createUsersModule } from './modules/users/index.js';
+import { createIndexerHealthPlugin } from './modules/indexer/index.js';
 
 /**
  * Composes the Fastify instance with no side effects (no `listen()` call) so
@@ -42,6 +43,7 @@ export async function buildApp() {
   const prisma = getPrismaClient();
   await app.register(createAuthModule(prisma), { prefix: '/api/v1' });
   await app.register(createUsersModule(prisma), { prefix: '/api/v1' });
+  await app.register(createIndexerHealthPlugin(prisma));
 
   return app;
 }

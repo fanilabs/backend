@@ -21,11 +21,13 @@ Restart safety follows directly from this: the indexer always resumes from persi
 
 ## Idempotent Ingestion
 
-Every raw event is written to `blockchain_events` first, with a unique constraint on `(contractName, txHash, eventIndex)`, **before** any domain handler runs. Re-polling an overlapping ledger range (which can happen — RPC pagination and retries are not guaranteed exactly-once) becomes a harmless upsert-or-skip instead of double-processing a payout or double-incrementing reputation. This is the single most important lesson carried over from `PHASE_2_REFERENCE_ANALYSIS.md` §3 — the reference implementation got this right and it's worth taking seriously.
+Every raw event is written to `blockchain_events` first, with a unique constraint on `(contractName, network, rpcEventId)` (the Soroban RPC's own globally-unique, monotonic event id), **before** any domain handler runs. Re-polling an overlapping ledger range (which can happen — RPC pagination and retries are not guaranteed exactly-once) becomes a harmless upsert-or-skip instead of double-processing a payout or double-incrementing reputation. This is the single most important lesson carried over from `PHASE_2_REFERENCE_ANALYSIS.md` §3 — the reference implementation got this right and it's worth taking seriously.
 
 ## Event → Handler Mapping
 
-Each contract gets one adapter (`src/blockchain/contracts/<contract>.ts`, Phase 5) that turns a raw RPC event into a typed domain event, isolating the raw Soroban event shape from module code. Handlers subscribe to typed events via an in-process event bus (`src/shared/events`, Phase 5) — not a distributed bus in v1 (see `ARCHITECTURE.md` §11 for why, and when that might change).
+XDR decoding is isolated behind one generic adapter, `src/blockchain/xdr/sc-val.ts` (`scValToNative`), rather than a bespoke per-event-type parser for all ~30 events across six contracts — stellar-sdk 12.x doesn't ship a built-in `scValToNative`, so this is a scoped equivalent covering the ScVal variants FaniLab's contracts actually use (u32/i32, u64/i64 as strings, u128/i128 as decimal strings, bool, string/Symbol, Address, Vec, Map). Richer, event-specific interpretation (e.g. turning a decoded `escrow_funded` payload into a typed domain event with a known `amount`/`sender`/`recipient` shape) is each consuming module's own job as it's implemented — see **Current Scope** below for why that's deliberately not built yet.
+
+Once decoded, every event is published on the in-process bus (`src/shared/events` — `publishBlockchainEvent`/`onBlockchainEvent`) as a `BlockchainEventEnvelope`. Handlers subscribe to typed events there — not a distributed bus in v1 (see `ARCHITECTURE.md` §11 for why, and when that might change).
 
 | Contract | Events | Primary consumer(s) |
 |---|---|---|
@@ -39,12 +41,18 @@ Note from `PHASE_1_DOMAIN_ANALYSIS.md` §5: **neither dispute event stream alone
 
 ## Lag Monitoring
 
-`now_ledger - lastLedgerSeq` (via `SorobanClient.getLatestLedger()` compared against the checkpoint) is exposed on `GET /health/indexer` (Phase 5) and alerted on past `INDEXER_LAG_ALERT_LEDGERS`. This is the "indexer lag as a first-class health signal" pattern adopted from `PHASE_2_REFERENCE_ANALYSIS.md` §3.
+`now_ledger - lastLedgerSeq` (via `SorobanClient.getLatestLedger()` compared against the checkpoint) is exposed on `GET /health/indexer` and alerted on past `INDEXER_LAG_ALERT_LEDGERS`. This is the "indexer lag as a first-class health signal" pattern adopted from `PHASE_2_REFERENCE_ANALYSIS.md` §3. A contract with no id configured is reported `configured: false` and counts as healthy — "not deployed to this environment yet" isn't a failure.
 
 ## Malformed Events
 
 A handler that fails to parse an event logs and records the failure (not silently dropped, not a crash of the whole poll cycle) — the batch continues, and the raw event is still durably stored in `blockchain_events` for later manual inspection or reprocessing.
 
+## Current Scope
+
+Implemented for **`escrow_contract` and `delivery_contract` only** — the minimal slice needed to unblock the `deliveries` and `escrow` modules next (`ROADMAP.md` §5). The polling engine (`createPollContractEventsUseCase`) is fully contract-agnostic; adding `dispute_resolution_contract`, `fleet_management_contract`, `identity_reputation_contract`, and `settlement_contract` later is a matter of adding entries to `getTrackedContracts()` in `src/modules/indexer/index.ts`, not new architecture.
+
+No FaniLab contracts are deployed anywhere reachable from this repository's own environment, so `ESCROW_CONTRACT_ID`/`DELIVERY_CONTRACT_ID` are blank by default (`.env.example`) and the indexer simply skips scheduling for whichever contracts aren't configured, logging a warning rather than failing.
+
 ## Status
 
-Not yet implemented (Phase 5, after the `shared`/`blockchain` foundations and before `deliveries`/`escrow`, per `ROADMAP.md` §5). This document is the design contract Phase 5 implements against.
+Implemented (Phase 5). Verified against the real public Soroban testnet RPC (not just fakes) for `getLatestLedger`/`getEvents` connectivity and XDR decoding — there being no deployed FaniLab contracts to fetch real business events from is a deployment-environment fact, not a testing gap; the request/response/decode pipeline itself is proven against a live network. Checkpoint/event-store idempotency is verified against a real Postgres database (CI) or skipped honestly where none is reachable.
