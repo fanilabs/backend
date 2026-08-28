@@ -39,9 +39,9 @@ Contract IDs (`ESCROW_CONTRACT_ID`, etc.) and network settings (`STELLAR_NETWORK
 
 ## Health Checks
 
-- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`).
+- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`). **Point your orchestrator's readiness probe at this endpoint.**
 - `GET /health/indexer` — indexer lag — see [`EVENT_INDEXER.md`](./EVENT_INDEXER.md).
-- `GET /health/queue` — BullMQ queue job counts/failures — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
+- `GET /health/queue` — an **alerting signal, not a readiness probe**. Reports BullMQ queue job counts, including `failed` (all-time failure history, retained for up to 7 days) and `failedRecent` (failures within the last 15 minutes). Returns `200` with `status: 'degraded'` when there is failure history, and only returns `503`/`status: 'unavailable'` when the queue backend is unreachable or a queue looks stalled (backlog with nothing active). Do not wire an orchestrator's readiness/liveness check to this endpoint — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
 - `GET /metrics` — Prometheus scrape endpoint for whatever monitoring stack the deployment environment runs (Phase 6 — see [`OBSERVABILITY.md`](./OBSERVABILITY.md)); point network policy, not app-level auth, at restricting who can reach it.
 
 Point your orchestrator's readiness probe at `/health`; a `503` means don't route traffic yet, not that the process should be killed — Postgres/Redis blips are often transient.
