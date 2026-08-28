@@ -21,7 +21,39 @@ const envSchema = z.object({
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
-  CORS_ORIGIN: z.string().default('http://localhost:3000'),
+  CORS_ORIGIN: z
+    .string()
+    .default('http://localhost:3000')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    )
+    .refine((origins) => origins.length > 0, {
+      message: 'CORS_ORIGIN must contain at least one origin',
+    })
+    .refine((origins) => !origins.includes('*'), {
+      message:
+        'CORS_ORIGIN must not be "*" — this backend always sets credentials: true, and a ' +
+        'wildcard origin combined with credentials is an explicitly disallowed configuration ' +
+        '(see docs/SECURITY.md § Baseline HTTP Security)',
+    })
+    .refine(
+      (origins) =>
+        origins.every((origin) => {
+          try {
+            return new URL(origin).origin === origin;
+          } catch {
+            return false;
+          }
+        }),
+      {
+        message:
+          'Every CORS_ORIGIN entry must be a well-formed scheme+host+optional-port origin ' +
+          '(e.g. "https://example.com"), with no path, query, or trailing slash',
+      },
+    ),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(100),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
 

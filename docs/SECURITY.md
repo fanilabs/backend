@@ -11,7 +11,7 @@ Please do not open a public GitHub issue for security vulnerabilities. Instead, 
 ## Baseline HTTP Security
 
 - **Helmet** (`@fastify/helmet`) with a strict default CSP (`default-src 'self'`, `object-src 'none'`); relaxed only for the Swagger UI route, never globally.
-- **CORS**: explicit allow-listed origins (`CORS_ORIGIN`), credentials only for those origins — never a wildcard with credentials enabled.
+- **CORS**: explicit allow-listed origins (`CORS_ORIGIN`), credentials only for those origins — never a wildcard with credentials enabled. Enforced at boot, not just by convention: `src/shared/config/env.ts` parses `CORS_ORIGIN` into an array, rejects `*` outright, and rejects any entry that isn't a well-formed `scheme://host[:port]` origin (no path, no trailing slash, no empty segments from a stray comma) — a misconfigured value fails startup with a clear error instead of silently never matching at request time.
 - **Rate limiting**: Redis-backed (`@fastify/rate-limit`), so limits hold across horizontally scaled API instances rather than resetting per-process.
 - **Input validation**: every route's request body/params/query validated by a Zod schema (`fastify-type-provider-zod`) before handler code runs — rejected requests never reach application logic.
 - **SQL injection**: Prisma's parameterized queries throughout; no raw string-interpolated SQL. The one `$queryRaw` usage (`src/shared/http/routes/health.ts`) is a static, parameter-free `SELECT 1`.
