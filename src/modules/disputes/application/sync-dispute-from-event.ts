@@ -214,12 +214,25 @@ async function upsertResolution(
   resolvedAt: Date,
 ): Promise<void> {
   const existing = await deps.disputeRepository.findByChainDeliveryId(chainDeliveryId);
+
+  // A resolution event always implies a prior raise — but this column is
+  // read downstream as a Stellar address (including as an authorisation
+  // subject in downloadEvidence), so it must never fall back to a
+  // non-address sentinel. If this handler somehow observes a resolution
+  // out of order (e.g. a reprocessed/replayed batch) with neither a known
+  // prior raiser nor a caller address on the resolution itself, there is
+  // nothing valid to write — skip the upsert rather than poison the column.
+  const raisedBy = existing?.raisedBy ?? resolvedBy;
+  if (raisedBy === null) {
+    console.warn(
+      `[disputes] ${status} resolution observed for chainDeliveryId=${chainDeliveryId} with no known raiser (no prior raise, no caller address) — skipping.`,
+    );
+    return;
+  }
+
   await deps.disputeRepository.upsert(chainDeliveryId, {
     status,
-    // A resolution event always implies a prior raise — but fall back
-    // defensively rather than crash if this handler somehow observes one
-    // out of order (e.g. a reprocessed/replayed batch).
-    raisedBy: existing?.raisedBy ?? resolvedBy ?? 'unknown',
+    raisedBy,
     raisedAt: existing?.raisedAt ?? resolvedAt,
     ...(resolvedBy !== null && { resolvedBy }),
     resolvedAt,

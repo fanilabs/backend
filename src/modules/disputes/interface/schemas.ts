@@ -19,7 +19,12 @@ const disputeDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
   status: disputeStatus,
-  raisedBy: z.string(),
+  // Tightened to the same Stellar-address shape every request schema
+  // already enforces — raisedBy is used as an authorisation subject
+  // (downloadEvidence's raiser check), so a malformed value stored by a
+  // future bug should fail loudly here at the API boundary rather than
+  // being served as if it were a real address.
+  raisedBy: stellarAddress,
   raisedAt: z.string().datetime(),
   resolvedBy: z.string().nullable(),
   resolvedAt: z.string().datetime().nullable(),
