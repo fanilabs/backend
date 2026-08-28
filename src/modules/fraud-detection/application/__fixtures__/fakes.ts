@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { BlockchainEventEnvelope } from '../../../../shared/events/index.js';
-import type { ActorActivityCategory, ActorActivityRepository } from '../../domain/index.js';
+import type { ActorActivityCategory, ActorActivityRepository, Clock } from '../../domain/index.js';
+
+/** A `Clock` fixed to a given instant, for deterministic window tests. */
+export function createFixedClock(at: Date): Clock {
+  return { now: () => Promise.resolve(at) };
+}
 
 export function createInMemoryActorActivityRepository(): ActorActivityRepository & {
   seed(address: string, category: ActorActivityCategory, occurredAt: Date): void;

@@ -5,6 +5,7 @@ import {
   createRecordActorActivityFromEventUseCase,
 } from './application/index.js';
 import {
+  createLedgerClock,
   createPrismaActorActivityRepository,
   subscribeFraudDetectionEventDispatch,
 } from './infrastructure/index.js';
@@ -29,7 +30,10 @@ export function createFraudDetectionModule(prisma: PrismaClient): FastifyPluginA
   subscribeFraudDetectionEventDispatch(recordActorActivityFromEvent);
 
   const useCases = {
-    assessActor: createAssessActorUseCase({ activityRepository }),
+    assessActor: createAssessActorUseCase({
+      activityRepository,
+      clock: createLedgerClock(prisma),
+    }),
   };
 
   return createFraudDetectionRoutes(useCases);
