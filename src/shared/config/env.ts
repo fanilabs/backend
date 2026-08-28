@@ -5,9 +5,12 @@ import { z } from 'zod';
  * Failing fast here (instead of discovering a missing var mid-request) is
  * the whole point — see docs/DEPLOYMENT.md.
  */
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // No `.default()` here: whether an unset LOG_LEVEL means 'info' or 'silent'
+  // depends on NODE_ENV (see the `.transform` below, which is the single
+  // place that decides it) — see src/shared/logger/index.ts.
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
 
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -43,6 +46,18 @@ const envSchema = z.object({
    * src/modules/disputes/infrastructure/local-evidence-storage.ts. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
 });
+
+/**
+ * `LOG_LEVEL`'s effective default depends on `NODE_ENV`: tests should be
+ * quiet unless a level is explicitly requested, everything else defaults to
+ * `info`. Expressing that here — the single source of truth for config —
+ * means src/shared/logger/index.ts can trust `getConfig().LOG_LEVEL` as-is
+ * instead of re-reading `process.env` itself and bypassing validation.
+ */
+const envSchema = baseEnvSchema.transform((env) => ({
+  ...env,
+  LOG_LEVEL: env.LOG_LEVEL ?? (env.NODE_ENV === 'test' ? ('silent' as const) : ('info' as const)),
+}));
 
 export type Env = z.infer<typeof envSchema>;
 
