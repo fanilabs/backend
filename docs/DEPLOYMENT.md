@@ -52,6 +52,19 @@ Point your orchestrator's readiness probe at `/health`; a `503` means don't rout
 - **`worker`** — has no HTTP surface, so liveness is a heartbeat file (`/var/lib/fanilab/heartbeat/worker.heartbeat`) touched every 15s by the process itself (`src/workers/index.ts`); the healthcheck fails once that file is more than 45s stale, which catches an event-loop-blocked or hung process, not just a crashed one. `restart: unless-stopped` applies the same as `api`.
 - The `observability` profile's `prometheus`/`grafana` services `depends_on: api: condition: service_healthy`, so they don't start scraping/rendering against an API that isn't listening yet.
 
+## Evidence Storage
+
+Dispute evidence (`src/modules/disputes/infrastructure/local-evidence-storage.ts`)
+is written to `EVIDENCE_STORAGE_DIR`. The `api`/`worker` images create that
+directory as `/var/lib/fanilab/evidence`, owned by the non-root `node` user
+the containers run as (`Dockerfile`), and `docker-compose.yml` points
+`EVIDENCE_STORAGE_DIR` at that same absolute path — the config default
+(`./storage/evidence`) is relative to the process working directory and is a
+development-only convenience, not something to rely on in a deployed
+environment. `createDisputesModule` checks the directory is writable at boot
+and fails fast with a clear error if it is not, rather than surfacing as a
+generic 500 on the first evidence upload.
+
 ## Rollback
 
 Because migrations are a separate, explicit step from image deployment, rolling back the `api`/`worker` images to a previous tag is safe as long as no destructive (column-dropping) migration has been applied since that tag — additive migrations are preferred for exactly this reason during active development.

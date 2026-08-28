@@ -37,6 +37,7 @@ services:
     environment:
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
+      EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
     ports:
       - '3000:3000'
     depends_on:
@@ -66,6 +67,7 @@ services:
     environment:
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
+      EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
     depends_on:
       postgres:
         condition: service_healthy
