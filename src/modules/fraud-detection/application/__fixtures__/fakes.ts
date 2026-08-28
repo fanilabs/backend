@@ -28,6 +28,16 @@ export function createInMemoryActorActivityRepository(): ActorActivityRepository
         (row) => row.address === address && row.category === category && row.occurredAt >= since,
       ).length;
     },
+    async deleteOlderThan(olderThan) {
+      let removed = 0;
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        if (rows[i].occurredAt < olderThan) {
+          rows.splice(i, 1);
+          removed += 1;
+        }
+      }
+      return removed;
+    },
   };
 }
 

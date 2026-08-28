@@ -42,6 +42,19 @@ const envSchema = z.object({
   /** Local-filesystem root for dispute evidence files — see
    * src/modules/disputes/infrastructure/local-evidence-storage.ts. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
+
+  /** How long `actor_activities` rows are kept before the scheduled cleanup
+   * job deletes them (src/modules/fraud-detection/infrastructure/cleanup-
+   * queue.ts). Default is well above the widest current rule window (24h,
+   * DISPUTE_RAISE_VELOCITY) to leave room for future longer-window rules
+   * and for forensic/manual review of recent flagged activity. */
+  FRAUD_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+
+  /** Short-TTL cache for the ADMIN-only analytics endpoints
+   * (src/modules/analytics/infrastructure/cached-analytics-reader.ts) —
+   * each admin dashboard refresh would otherwise re-run full-table
+   * count/groupBy queries on every request. */
+  ANALYTICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
 });
 
 export type Env = z.infer<typeof envSchema>;
