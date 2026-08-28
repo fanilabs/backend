@@ -38,6 +38,8 @@ services:
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
       EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
+    volumes:
+      - evidence-data:/var/lib/fanilab/evidence
     ports:
       - '3000:3000'
     depends_on:
@@ -128,5 +130,11 @@ services:
 volumes:
   postgres-data:
   redis-data:
+  # Dispute evidence files — the only copy of this data outside of the
+  # evidence rows' storageUrl/content-hash in Postgres. Without a named
+  # volume this lived in the api container's writable layer and was
+  # destroyed on every `docker compose down`/rebuild; back this volume up
+  # the same way you back up postgres-data. See docs/DEPLOYMENT.md.
+  evidence-data:
   prometheus-data:
   grafana-data:

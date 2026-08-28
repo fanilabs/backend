@@ -65,6 +65,18 @@ environment. `createDisputesModule` checks the directory is writable at boot
 and fails fast with a clear error if it is not, rather than surfacing as a
 generic 500 on the first evidence upload.
 
+`docker-compose.yml` persists that directory with a named volume,
+**`evidence-data`**, mounted into the `api` service at
+`/var/lib/fanilab/evidence` — without it, evidence files lived in the
+container's writable layer and were silently destroyed by
+`docker compose down` or any image rebuild, while the corresponding
+`Evidence` rows (with their `storageUrl` and content hash) survived in
+Postgres. Back this volume up on the same schedule as `postgres-data`;
+losing it without a backup means the evidence rows point at files that no
+longer exist. A missing file on read now maps to a domain
+`EvidenceNotFoundError` (`local-evidence-storage.ts`), so a genuinely lost
+file returns a standard `404` response instead of an unmapped `500`.
+
 ## Rollback
 
 Because migrations are a separate, explicit step from image deployment, rolling back the `api`/`worker` images to a previous tag is safe as long as no destructive (column-dropping) migration has been applied since that tag — additive migrations are preferred for exactly this reason during active development.

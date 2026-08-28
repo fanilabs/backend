@@ -40,7 +40,13 @@ const envSchema = z.object({
   INDEXER_LAG_ALERT_LEDGERS: z.coerce.number().int().positive().default(50),
 
   /** Local-filesystem root for dispute evidence files — see
-   * src/modules/disputes/infrastructure/local-evidence-storage.ts. */
+   * src/modules/disputes/infrastructure/local-evidence-storage.ts. The
+   * relative default resolves against the process working directory and is
+   * a development-only convenience; a deployed environment must set this to
+   * an absolute path backed by persistent storage (docker-compose.yml's
+   * `evidence-data` volume mounts it at /var/lib/fanilab/evidence) or every
+   * uploaded file is lost on container recreation. See docs/DEPLOYMENT.md
+   * § Evidence Storage. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
 });
 
