@@ -48,6 +48,17 @@ const envSchema = z.object({
    * uploaded file is lost on container recreation. See docs/DEPLOYMENT.md
    * § Evidence Storage. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
+
+  /** Selects the Mailer/NotificationSender adapter each composition root
+   * wires up (src/modules/auth/index.ts, src/modules/notifications/index.ts).
+   * `logger` is the development/test default — it logs instead of sending
+   * real mail and is deliberately refused when NODE_ENV=production (see
+   * select-mailer.ts / select-notification-sender.ts): a production
+   * deployment with no real provider configured should fail loudly at boot,
+   * not silently send no mail. No real provider is wired up yet — set this
+   * once one exists. */
+  MAIL_PROVIDER: z.enum(['logger']).default('logger'),
+  NOTIFICATION_PROVIDER: z.enum(['logger']).default('logger'),
 });
 
 export type Env = z.infer<typeof envSchema>;

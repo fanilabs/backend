@@ -37,6 +37,8 @@ All configuration is environment variables, validated at boot by `src/shared/con
 
 Contract IDs (`ESCROW_CONTRACT_ID`, etc.) and network settings (`STELLAR_NETWORK`, `SOROBAN_RPC_URL`, `STELLAR_NETWORK_PASSPHRASE`) must match the actual deployed `FaniLab-SmartContract` instance for the target environment — cross-check against that repository's deployment output before promoting to a new network.
 
+`MAIL_PROVIDER`/`NOTIFICATION_PROVIDER` default to `logger` — a genuinely functional dev/test default that logs mail instead of sending it (see `docs/AUTHENTICATION.md` § Dev email delivery). Booting with `NODE_ENV=production` while either is left at `logger` fails at startup with a clear error; a real provider must be wired into `select-mailer.ts`/`select-notification-sender.ts` before a production deployment.
+
 ## Health Checks
 
 - `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`).
