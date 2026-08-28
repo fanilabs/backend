@@ -1,6 +1,16 @@
 import { z } from 'zod';
 
-const notificationChannel = z.enum(['EMAIL', 'SMS', 'PUSH']);
+/**
+ * Deliberately narrower than `NotificationChannel`'s three Prisma enum
+ * variants (see #103): `dispatchNotificationsFromEvent` only ever produces
+ * `EMAIL` rows, and `LoggerNotificationSender`/any future real sender is
+ * email-shaped by construction — SMS/PUSH are reachable in the database
+ * enum (kept for forward compatibility once a real multi-channel sender
+ * exists) but were never reachable through this API, so the response
+ * contract is narrowed to match what the system can actually produce
+ * rather than advertising values it can never return.
+ */
+const notificationChannel = z.literal('EMAIL');
 const notificationStatus = z.enum(['PENDING', 'SENT', 'FAILED']);
 
 const notificationDto = z.object({

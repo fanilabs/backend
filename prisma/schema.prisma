@@ -91,6 +91,11 @@ enum DriverTier {
   @@map("driver_tier")
 }
 
+// SMS/PUSH kept for forward compatibility only — as of #103 the only
+// producer (`dispatchNotificationsFromEvent`) and the only sender
+// (`NotificationSender`) are both EMAIL-only, and the API's response schema
+// was narrowed to the `EMAIL` literal to match. Widen the schema alongside
+// a real multi-channel `NotificationSender` implementation, not before.
 enum NotificationChannel {
   EMAIL
   SMS

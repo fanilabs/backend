@@ -75,6 +75,13 @@ export interface NotificationEmailInput {
  * and push are documented future work, not built here). Throws on any
  * failure (unconfigured channel, SMTP error) rather than silently
  * pretending success — `sendNotification` maps a throw to `FAILED`.
+ *
+ * Per #103, the API's `notificationChannel` response schema was narrowed to
+ * the single `EMAIL` literal to match — `NotificationChannel`'s database
+ * enum keeps its three variants for forward compatibility, but nothing in
+ * this module can produce or send `SMS`/`PUSH` today, so nothing advertises
+ * them as possible. Widen this port (and the schema) together once a real
+ * multi-channel sender exists.
  */
 export interface NotificationSender {
   send(input: NotificationEmailInput): Promise<void>;
