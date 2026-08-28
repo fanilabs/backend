@@ -8,6 +8,8 @@ export type {
   NotificationEmailInput,
   NotificationSender,
   NotificationJobScheduler,
+  DeliveryParties,
+  DeliveryPartyLookup,
 } from './ports.js';
 export {
   NotificationNotFoundError,

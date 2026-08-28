@@ -11,6 +11,7 @@ import {
   createLoggerNotificationSender,
   createNotificationJobScheduler,
   createNotificationsWorker,
+  createPrismaDeliveryPartyLookup,
   createPrismaNotificationRepository,
   createPrismaUserContactLookup,
   subscribeNotificationsEventDispatch,
@@ -31,11 +32,13 @@ import { createNotificationsRoutes } from './interface/routes.js';
 export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const notificationRepository = createPrismaNotificationRepository(prisma);
   const userContactLookup = createPrismaUserContactLookup(prisma);
+  const deliveryPartyLookup = createPrismaDeliveryPartyLookup(prisma);
   const jobScheduler = createNotificationJobScheduler();
 
   const dispatchNotificationsFromEvent = createDispatchNotificationsFromEventUseCase({
     notificationRepository,
     userContactLookup,
+    deliveryPartyLookup,
     jobScheduler,
   });
   subscribeNotificationsEventDispatch(dispatchNotificationsFromEvent);

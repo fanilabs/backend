@@ -89,3 +89,32 @@ export interface NotificationSender {
 export interface NotificationJobScheduler {
   enqueueDelivery(notificationId: string): Promise<void>;
 }
+
+export interface DeliveryParties {
+  sender: string;
+  recipient: string;
+  driver: string | null;
+}
+
+/**
+ * Resolves a delivery's other parties (sender/recipient/driver addresses)
+ * from `deliveries`' own read-model table — the same documented,
+ * `ARCHITECTURE.md`-sanctioned cross-module read exception `UserContactLookup`
+ * above already establishes for this module, and the same precedent
+ * `analytics`/`admin` rely on for their own read-model access
+ * (`analytics/domain/ports.ts`, `admin/domain/ports.ts`).
+ *
+ * Exists so counterparty-facing events — `delivery_confirmed`,
+ * `delivery_cancelled`, `DeliveryInTransit`, `escrow_refunded`, and the
+ * three `dispute_resolved_*` events — can notify the sender/driver even
+ * though none of those events carries a useful address of its own in its
+ * payload (see `dispatch-notifications-from-event.ts`'s header comment).
+ * `recipient` is exposed for completeness with `Delivery`'s own shape but
+ * deliberately never used as a notification target today: every event this
+ * port serves is one where the recipient is either the acting party
+ * (`delivery_confirmed`) or not a documented interested party for that
+ * event, so only `sender`/`driver` are ever candidates in practice.
+ */
+export interface DeliveryPartyLookup {
+  findParties(chainDeliveryId: string): Promise<DeliveryParties | null>;
+}
