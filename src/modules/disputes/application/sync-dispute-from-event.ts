@@ -1,8 +1,9 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
-import type { DisputeRepository } from '../domain/index.js';
+import type { DisputeEscrowStateReader, DisputeRepository } from '../domain/index.js';
 
 export interface SyncDisputeFromEventDeps {
   disputeRepository: DisputeRepository;
+  escrowStateReader: DisputeEscrowStateReader;
 }
 
 /**
@@ -12,20 +13,19 @@ export interface SyncDisputeFromEventDeps {
  *  - `dispute_resolution_contract` ("Layer B", contractName `dispute-resolution`)
  *    — `dispute_raised`, `dispute_resolved_refund`, `dispute_resolved_split`,
  *    `dispute_resolved_payout`. `evidence_added` is intentionally a no-op
- *    here (see below).
+ *    here (see below). This is the authoritative signal for status whenever
+ *    it fires.
  *  - `escrow_contract` ("Layer A", contractName `escrow`) —
- *    `delivery_disputed` only. `dispute_resolved` is deliberately **not**
- *    handled: both of `resolve_dispute`'s branches (and
- *    `resolve_dispute_split`) emit that identical, ambiguous event
- *    (verified against `escrow_contract/lib.rs`, same fact the `escrow`
- *    module's own handler documents), and unlike `escrow`'s handler this one
- *    has no `get_escrow`-style fallback to disambiguate it — the
- *    dispute-resolution-contract-specific events above are the authoritative
- *    signal for status. A dispute raised *and* resolved purely through
- *    escrow_contract's Layer A, without ever touching
- *    dispute_resolution_contract, is a real on-chain possibility this read
- *    model cannot fully resolve; it is documented here and in
- *    `EVENT_INDEXER.md` rather than guessed at.
+ *    `delivery_disputed` and `dispute_resolved`. `dispute_resolved` is
+ *    ambiguous by itself: both of `resolve_dispute`'s branches (and
+ *    `resolve_dispute_split`) emit that identical event (verified against
+ *    `escrow_contract/lib.rs`, same fact the `escrow` module's own handler
+ *    documents), so — mirroring that handler's own `get_escrow` fallback —
+ *    this one reads the escrow's current on-chain status via
+ *    `DisputeEscrowStateReader` and maps it to a resolved dispute status.
+ *    This only ever *sets* a resolution when the dispute is still `OPEN`:
+ *    a Layer B resolution, once recorded, is authoritative and is never
+ *    overwritten by a later Layer A event (see `handleEscrowEvent` below).
  *
  * Both `dispute_raised` and `delivery_disputed` can arrive first depending
  * on which on-chain path raised the dispute (verified against
@@ -116,8 +116,6 @@ async function handleEscrowEvent(
   deps: SyncDisputeFromEventDeps,
   event: BlockchainEventEnvelope,
 ): Promise<void> {
-  if (event.topic[0] !== 'delivery_disputed') return;
-
   // escrow_contract's own delivery_id convention: a bare u64 in the topic,
   // not the tuple-wrapped DeliveryId dispute_resolution_contract uses —
   // verified against escrow_contract/lib.rs (same convention the `escrow`
@@ -125,17 +123,87 @@ async function handleEscrowEvent(
   const chainDeliveryId = parseBareDeliveryId(event.topic[1]);
   if (chainDeliveryId === null) return;
 
-  const disputedBy = parseAddress(Array.isArray(event.payload) ? event.payload[0] : undefined);
-  if (disputedBy === null) return;
+  if (event.topic[0] === 'delivery_disputed') {
+    const disputedBy = parseAddress(Array.isArray(event.payload) ? event.payload[0] : undefined);
+    if (disputedBy === null) return;
 
-  // A dispute row raised purely via Layer A (no dispute_resolution_contract
-  // case ever created) should still exist and be visible — create it as
-  // OPEN if this is the first event either layer has produced for it.
-  await deps.disputeRepository.upsert(chainDeliveryId, {
-    status: 'OPEN',
-    raisedBy: disputedBy,
-    raisedAt: event.closedAt,
-  });
+    // A dispute row raised purely via Layer A (no dispute_resolution_contract
+    // case ever created) should still exist and be visible — create it as
+    // OPEN if this is the first event either layer has produced for it.
+    await deps.disputeRepository.upsert(chainDeliveryId, {
+      status: 'OPEN',
+      raisedBy: disputedBy,
+      raisedAt: event.closedAt,
+    });
+    return;
+  }
+
+  if (event.topic[0] === 'dispute_resolved') {
+    await handleEscrowOnlyResolution(deps, chainDeliveryId, event.closedAt);
+  }
+}
+
+/**
+ * A dispute resolved purely via `escrow_contract`'s Layer A, without
+ * `dispute_resolution_contract` ever touching it (see this file's header
+ * comment). `escrow.dispute_resolved` alone can't say whether the outcome
+ * was a release or a refund — the same ambiguity `escrow`'s own handler
+ * resolves with a supplementary `get_escrow` read — so this reads the
+ * escrow's current status and maps it accordingly.
+ *
+ * Only ever applied when the dispute is still `OPEN`: if a Layer B
+ * resolution already landed (or a prior Layer A one did), that value is
+ * authoritative and is left untouched — this never re-derives or
+ * overwrites an existing resolution.
+ */
+async function handleEscrowOnlyResolution(
+  deps: SyncDisputeFromEventDeps,
+  chainDeliveryId: bigint,
+  resolvedAt: Date,
+): Promise<void> {
+  const existing = await deps.disputeRepository.findByChainDeliveryId(chainDeliveryId);
+  if (existing !== null && existing.status !== 'OPEN') return;
+
+  if (existing === null) {
+    // A dispute_resolved event with no prior raise recorded at all (neither
+    // Layer A's delivery_disputed nor Layer B's dispute_raised) — nothing
+    // to resolve, and no raisedBy to record it against. Out-of-order/
+    // replayed event, not expected on the happy path.
+    console.warn(
+      `[disputes] escrow.dispute_resolved observed for chainDeliveryId=${chainDeliveryId} with no prior dispute raised — skipping.`,
+    );
+    return;
+  }
+
+  const escrowStatus = await deps.escrowStateReader.getEscrowStatus(chainDeliveryId);
+
+  if (escrowStatus === 'RELEASED') {
+    await deps.disputeRepository.upsert(chainDeliveryId, {
+      status: 'RESOLVED_PAYOUT',
+      raisedBy: existing.raisedBy,
+      raisedAt: existing.raisedAt,
+      resolvedAt,
+    });
+    return;
+  }
+
+  if (escrowStatus === 'REFUNDED') {
+    await deps.disputeRepository.upsert(chainDeliveryId, {
+      status: 'RESOLVED_REFUND',
+      raisedBy: existing.raisedBy,
+      raisedAt: existing.raisedAt,
+      resolvedAt,
+    });
+    return;
+  }
+
+  // LOCKED/PAUSED — dispute_resolved fired but the escrow hasn't actually
+  // settled from this read's point of view (a race with indexing, or an
+  // on-chain state this handler doesn't expect). Leave it OPEN rather than
+  // guess.
+  console.warn(
+    `[disputes] escrow.dispute_resolved observed for chainDeliveryId=${chainDeliveryId} but escrow status is "${escrowStatus}" — leaving dispute OPEN.`,
+  );
 }
 
 async function upsertResolution(
