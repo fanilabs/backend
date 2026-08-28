@@ -50,7 +50,18 @@ cp .env.example .env
 make docker-up
 ```
 
-Brings up `api`, `worker`, `postgres`, and `redis`. See the [`Makefile`](./Makefile) for all shortcuts (`make help`).
+Brings up `postgres`, `redis`, a one-shot `migrate` service that applies Prisma
+migrations, then `api` and `worker` (both wait for `migrate` to complete
+successfully before starting). A clean `docker compose down -v && make
+docker-up` produces a stack that serves `GET /api/v1/deliveries` with no
+manual migration step. Re-run migrations against a running stack with `make
+docker-migrate`. See the [`Makefile`](./Makefile) for all shortcuts (`make
+help`).
+
+`migrate` is a local/dev convenience only — it does not change the production
+release process (see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) § Release
+Process), and the `api`/`worker` images still never migrate on boot
+themselves.
 
 ### Common tasks
 
