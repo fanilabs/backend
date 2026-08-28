@@ -46,6 +46,12 @@ Contract IDs (`ESCROW_CONTRACT_ID`, etc.) and network settings (`STELLAR_NETWORK
 
 Point your orchestrator's readiness probe at `/health`; a `503` means don't route traffic yet, not that the process should be killed — Postgres/Redis blips are often transient.
 
+`docker-compose.yml` wires this in directly so the reference topology isn't just documentation:
+
+- **`api`** — Docker `HEALTHCHECK` (also declared in `Dockerfile`) polls `GET /health` every 10s; `docker compose ps` only reports `api` as `healthy` once it returns `200`. `restart: unless-stopped` restarts the container if the process dies or is OOM-killed.
+- **`worker`** — has no HTTP surface, so liveness is a heartbeat file (`/var/lib/fanilab/heartbeat/worker.heartbeat`) touched every 15s by the process itself (`src/workers/index.ts`); the healthcheck fails once that file is more than 45s stale, which catches an event-loop-blocked or hung process, not just a crashed one. `restart: unless-stopped` applies the same as `api`.
+- The `observability` profile's `prometheus`/`grafana` services `depends_on: api: condition: service_healthy`, so they don't start scraping/rendering against an API that isn't listening yet.
+
 ## Rollback
 
 Because migrations are a separate, explicit step from image deployment, rolling back the `api`/`worker` images to a previous tag is safe as long as no destructive (column-dropping) migration has been applied since that tag — additive migrations are preferred for exactly this reason during active development.
