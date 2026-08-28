@@ -95,6 +95,8 @@ Same auth/config-fallback rules as escrow/deliveries: every `/transactions/build
 
 **Encoding caveat**: same as escrow/deliveries/disputes above — `reputation-scval-mapping.ts` encodes/decodes `identity_reputation_contract`'s `DriverProfile` type by construction and round-trip only, not yet against a live deployment.
 
+**Tier derivation**: `tier` has no on-chain event or field of its own — it's derived off-chain, in `sync-reputation-from-event.ts`, purely as a function of `reputationScore`: BRONZE below 50, SILVER 50–74, GOLD 75 and above. These thresholds live in one named constant, `modules/reputation/domain/tier-thresholds.ts`'s `DRIVER_TIER_THRESHOLDS`, documented there as mirroring `identity_reputation_contract.get_driver_tier` exactly — if the contract's own thresholds ever change, that constant (and its boundary tests in `sync-reputation-from-event.spec.ts`) must change in the same PR, or the stored `tier`/this endpoint will silently disagree with the contract.
+
 | `GET` | `/api/v1/notifications` | List the authenticated user's own notifications, newest first — optional `status` (`PENDING`/`SENT`/`FAILED`) and `limit` (default 20, max 100) query params |
 | `GET` | `/api/v1/notifications/:id` | Get one notification by id — `404` if it doesn't exist, `403 FORBIDDEN` if it exists but belongs to a different user |
 
