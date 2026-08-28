@@ -60,7 +60,7 @@ Same auth/config-fallback rules as deliveries: all three build endpoints require
 
 **Read-model gaps** (see `EVENT_INDEXER.md` for the full event-to-state mapping): `platformFee` is `null` until an escrow reaches `RELEASED` (it's only known from the `escrow_released` event payload — a `dispute_resolved`-driven release doesn't carry it, so it stays `null` in that path); `dispute_resolved` events are ambiguous about outcome (both the release and refund branches emit the identical event), so the indexer resolves the actual status via a supplementary `get_escrow` read call rather than guessing from the event alone.
 
-| `GET` | `/api/v1/fleets/:chainFleetId` | Get one fleet (with its drivers) by its on-chain id (`404` if not yet indexed) |
+| `GET` | `/api/v1/fleets/:chainFleetId` | Get one fleet (with its drivers) by its on-chain id (`404` if not yet indexed). `?includeRemoved=true` includes historically removed drivers (default: current members only, `removedAt === null`); `?driverLimit=` bounds the `drivers` array (default `100`, max `500`). `totalActiveDrivers` always reflects the fleet's full membership, independent of both query params |
 | `GET` | `/api/v1/fleets/:chainFleetId/payout-address/:driverAddress` | Live `get_payout_address` read — resolves to the fleet treasury if the driver is `ACTIVE` in that fleet, else the driver's own address. A pre-transaction convenience only; `escrow_contract` never calls this itself (`PHASE_1_DOMAIN_ANALYSIS.md` §6) |
 | `POST` | `/api/v1/transactions/build/register-fleet` | Unsigned XDR for `register_fleet` — `{ ownerAddress, treasuryAddress }` |
 | `POST` | `/api/v1/transactions/build/update-fleet-treasury` | Unsigned XDR for `update_fleet_treasury` — owner only |

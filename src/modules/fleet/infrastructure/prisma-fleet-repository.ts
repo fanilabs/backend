@@ -29,12 +29,12 @@ function toFleet(record: PrismaFleet): Fleet {
 
 function toFleetWithDrivers(
   record: PrismaFleet & { drivers: PrismaFleetDriver[] },
+  totalActiveDrivers: number,
 ): FleetWithDrivers {
-  const drivers = record.drivers.map(toDriver);
   return {
     ...toFleet(record),
-    drivers,
-    totalActiveDrivers: drivers.filter((d) => d.status === 'ACTIVE' && d.removedAt === null).length,
+    drivers: record.drivers.map(toDriver),
+    totalActiveDrivers,
   };
 }
 
@@ -46,12 +46,33 @@ function toFleetWithDrivers(
  */
 export function createPrismaFleetRepository(prisma: PrismaClient): FleetRepository {
   return {
-    async findByChainFleetId(chainFleetId) {
+    async findByChainFleetId(chainFleetId, options) {
+      const includeRemoved = options?.includeRemoved ?? false;
+      const driverLimit = options?.driverLimit ?? 100;
+
       const record = await prisma.fleet.findUnique({
         where: { chainFleetId },
-        include: { drivers: true },
+        include: {
+          // Filtered — and bounded — in the query itself, not in memory:
+          // an unfiltered `include` returns every driver ever associated
+          // with the fleet, unbounded by its churn history.
+          drivers: {
+            where: includeRemoved ? undefined : { removedAt: null },
+            take: driverLimit,
+            orderBy: { invitedAt: 'desc' },
+          },
+        },
       });
-      return record ? toFleetWithDrivers(record) : null;
+      if (!record) return null;
+
+      // Always computed from the full, unfiltered membership — must stay
+      // correct regardless of whether `drivers` above was filtered or
+      // truncated for the response.
+      const totalActiveDrivers = await prisma.fleetDriver.count({
+        where: { fleetId: record.id, status: 'ACTIVE', removedAt: null },
+      });
+
+      return toFleetWithDrivers(record, totalActiveDrivers);
     },
 
     async create(record) {
