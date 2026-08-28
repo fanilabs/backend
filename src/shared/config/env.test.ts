@@ -1,5 +1,24 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { parseEnv } from './env.js';
+import { envSchemaKeys, parseEnv } from './env.js';
+
+/**
+ * Every variable documented in .env.example should correspond to a schema
+ * key (and vice versa) — otherwise either an operator is told to set a
+ * variable that does nothing (see the SETTLEMENT_CONTRACT_ID removal this
+ * test was added alongside), or the schema silently requires something
+ * .env.example never mentions.
+ */
+function readEnvExampleKeys(): string[] {
+  const path = fileURLToPath(new URL('../../../.env.example', import.meta.url));
+  const contents = readFileSync(path, 'utf-8');
+  return contents
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && !line.startsWith('#'))
+    .map((line) => line.split('=')[0]);
+}
 
 const required = {
   DATABASE_URL: 'postgresql://fanilab:fanilab@localhost:5432/fanilab_backend_test?schema=public',
@@ -32,5 +51,10 @@ describe('parseEnv', () => {
 
   it('accepts extra unknown environment variables without failing', () => {
     expect(() => parseEnv({ ...required, SOME_UNRELATED_VAR: 'x' })).not.toThrow();
+  });
+
+  it('keeps .env.example in sync with the schema (no undocumented or dead keys)', () => {
+    const exampleKeys = readEnvExampleKeys().sort();
+    expect(exampleKeys).toEqual([...envSchemaKeys].sort());
   });
 });

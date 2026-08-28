@@ -32,12 +32,16 @@ const baseEnvSchema = z.object({
   SOROBAN_RPC_URL: z.string().url().default('https://soroban-testnet.stellar.org'),
   STELLAR_NETWORK_PASSPHRASE: z.string().default('Test SDF Network ; September 2015'),
 
+  // `SETTLEMENT_CONTRACT_ID` deliberately does not exist here: settlement is
+  // an unimplemented on-chain stub with no consuming module (see the same
+  // exclusion in src/modules/indexer/index.ts and ROADMAP.md §9) — a config
+  // variable with no reader is documentation debt CONTRIBUTING.md prohibits.
+  // Re-add it when settlement_contract is actually implemented.
   ESCROW_CONTRACT_ID: z.string().optional(),
   DELIVERY_CONTRACT_ID: z.string().optional(),
   DISPUTE_RESOLUTION_CONTRACT_ID: z.string().optional(),
   FLEET_MANAGEMENT_CONTRACT_ID: z.string().optional(),
   IDENTITY_REPUTATION_CONTRACT_ID: z.string().optional(),
-  SETTLEMENT_CONTRACT_ID: z.string().optional(),
 
   INDEXER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   INDEXER_LAG_ALERT_LEDGERS: z.coerce.number().int().positive().default(50),
@@ -60,6 +64,9 @@ const envSchema = baseEnvSchema.transform((env) => ({
 }));
 
 export type Env = z.infer<typeof envSchema>;
+
+/** Exposed only for the .env.example drift test — see env.test.ts. */
+export const envSchemaKeys = Object.keys(baseEnvSchema.shape);
 
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const result = envSchema.safeParse(source);
