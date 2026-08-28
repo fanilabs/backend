@@ -43,6 +43,10 @@ From `PHASE_1_DOMAIN_ANALYSIS.md` §3: `escrow_contract.freeze_funds` has no `re
 
 Dependabot (`.github/dependabot.yml`) tracks npm, Docker base images, and GitHub Actions weekly; major version bumps require manual review rather than auto-merge.
 
+Dependabot only proposes upgrades — it does not fail a build for a known-vulnerable dependency that hasn't been upgraded yet. To close that gap, the `audit` job in `.github/workflows/ci.yml` runs `pnpm audit --audit-level=high` on every PR and on `main`; a `high` or `critical` advisory anywhere in the dependency tree (direct or transitive) fails CI. Run it locally with `pnpm audit`.
+
+**Accepted exceptions:** none currently. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
+
 ## Reporting Timeline & Disclosure
 
 Coordinated disclosure: we ask reporters to give us a reasonable window to ship a fix before public disclosure. Credited in release notes unless anonymity is requested.
