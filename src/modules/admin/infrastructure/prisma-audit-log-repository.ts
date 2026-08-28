@@ -31,10 +31,11 @@ export function createPrismaAuditLogRepository(prisma: PrismaClient): AuditLogRe
       });
     },
 
-    async list(limit) {
+    async list(filter) {
       const records = await prisma.auditLog.findMany({
+        where: { ...(filter.before && { createdAt: { lt: filter.before } }) },
         orderBy: { createdAt: 'desc' },
-        take: limit,
+        take: filter.limit,
       });
       return records.map(toDomain);
     },

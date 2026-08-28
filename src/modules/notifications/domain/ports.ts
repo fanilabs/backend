@@ -10,6 +10,11 @@ export interface CreateNotificationInput {
 export interface ListNotificationsFilter {
   status?: NotificationStatus;
   limit: number;
+  /** Cursor for keyset pagination — only rows strictly older than this
+   * timestamp are returned, so the response's `nextCursor` (the oldest
+   * row's `createdAt`) can be fed back in to fetch the next page without
+   * relying on an unstable `skip` offset. */
+  before?: Date;
 }
 
 /**

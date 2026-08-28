@@ -408,6 +408,7 @@ model Notification {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
@@ -425,5 +426,6 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorId])
+  @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
 }

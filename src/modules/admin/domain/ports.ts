@@ -42,7 +42,15 @@ export interface RecordAuditLogInput {
  * before this module). `admin` is the first and only consumer so far, so
  * this stays module-local rather than speculatively generalized into a
  * shared decorator with one caller. */
+export interface ListAuditLogFilter {
+  limit: number;
+  /** Keyset cursor — only rows strictly older than this are returned, the
+   * same `before`-cursor pattern `notifications` uses (#101), so paging
+   * past `MAX_LIMIT` rows stays possible without an unstable `skip`. */
+  before?: Date;
+}
+
 export interface AuditLogRepository {
   record(input: RecordAuditLogInput): Promise<void>;
-  list(limit: number): Promise<AuditLogEntry[]>;
+  list(filter: ListAuditLogFilter): Promise<AuditLogEntry[]>;
 }

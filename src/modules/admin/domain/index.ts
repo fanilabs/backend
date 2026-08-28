@@ -8,6 +8,7 @@ export type {
 export type {
   AuditLogRepository,
   DisputeReviewReader,
+  ListAuditLogFilter,
   RecordAuditLogInput,
   UserRoleRepository,
 } from './ports.js';

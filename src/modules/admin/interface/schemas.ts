@@ -24,6 +24,7 @@ export const updateUserRoleResponseSchema = z.object({
 
 export const listAuditLogQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
+  before: z.string().datetime().optional(),
 });
 export const listAuditLogResponseSchema = z.object({
   data: z.array(
@@ -38,4 +39,8 @@ export const listAuditLogResponseSchema = z.object({
       createdAt: z.string().datetime(),
     }),
   ),
+  meta: z.object({
+    limit: z.number().int(),
+    nextCursor: z.string().datetime().nullable(),
+  }),
 });
