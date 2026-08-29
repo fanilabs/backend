@@ -83,7 +83,11 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       '/transactions/build/register-fleet',
       {
         preHandler: authenticate,
-        schema: { body: registerFleetBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: registerFleetBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildRegisterFleetTransaction(
@@ -98,6 +102,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: updateFleetTreasuryBodySchema,
           response: { 200: transactionResponseSchema },
         },
@@ -115,7 +120,11 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       '/transactions/build/add-driver-to-fleet',
       {
         preHandler: authenticate,
-        schema: { body: addDriverToFleetBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: addDriverToFleetBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildAddDriverToFleetTransaction({
@@ -131,6 +140,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: acceptFleetInviteBodySchema,
           response: { 200: transactionResponseSchema },
         },
@@ -149,6 +159,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: removeDriverFromFleetBodySchema,
           response: { 200: transactionResponseSchema },
         },

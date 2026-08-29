@@ -51,7 +51,11 @@ export function createReputationRoutes(useCases: ReputationUseCases): FastifyPlu
       '/transactions/build/register-driver',
       {
         preHandler: authenticate,
-        schema: { body: registerDriverBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: registerDriverBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildRegisterDriverTransaction(
@@ -66,6 +70,7 @@ export function createReputationRoutes(useCases: ReputationUseCases): FastifyPlu
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: updateDriverKycStatusBodySchema,
           response: { 200: transactionResponseSchema },
         },

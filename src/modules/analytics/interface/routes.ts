@@ -35,7 +35,14 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
   return async function analyticsRoutes(app) {
     app.get(
       '/analytics/gmv',
-      { preHandler: adminOnly, schema: { response: { 200: gmvResponseSchema } } },
+      {
+        preHandler: adminOnly,
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          response: { 200: gmvResponseSchema },
+        },
+      },
       async (_request, reply) => {
         const rows = await useCases.getGmv();
         void reply.status(200).send(
@@ -52,7 +59,14 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
 
     app.get(
       '/analytics/completion-rate',
-      { preHandler: adminOnly, schema: { response: { 200: completionRateResponseSchema } } },
+      {
+        preHandler: adminOnly,
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          response: { 200: completionRateResponseSchema },
+        },
+      },
       async (_request, reply) => {
         void reply.status(200).send(ok(await useCases.getCompletionRate()));
       },
@@ -60,7 +74,14 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
 
     app.get(
       '/analytics/dispute-rate',
-      { preHandler: adminOnly, schema: { response: { 200: disputeRateResponseSchema } } },
+      {
+        preHandler: adminOnly,
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          response: { 200: disputeRateResponseSchema },
+        },
+      },
       async (_request, reply) => {
         void reply.status(200).send(ok(await useCases.getDisputeRate()));
       },
@@ -70,7 +91,11 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
       '/analytics/driver-tiers',
       {
         preHandler: adminOnly,
-        schema: { response: { 200: driverTierDistributionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          response: { 200: driverTierDistributionResponseSchema },
+        },
       },
       async (_request, reply) => {
         void reply.status(200).send(ok(await useCases.getDriverTierDistribution()));

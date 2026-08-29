@@ -55,7 +55,11 @@ export function createEscrowRoutes(useCases: EscrowUseCases): FastifyPluginAsync
       '/transactions/build/create-escrow',
       {
         preHandler: authenticate,
-        schema: { body: createEscrowBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: createEscrowBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildCreateEscrowTransaction({
@@ -71,7 +75,11 @@ export function createEscrowRoutes(useCases: EscrowUseCases): FastifyPluginAsync
       '/transactions/build/release-escrow',
       {
         preHandler: authenticate,
-        schema: { body: releaseEscrowBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: releaseEscrowBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildReleaseEscrowTransaction({
@@ -86,7 +94,11 @@ export function createEscrowRoutes(useCases: EscrowUseCases): FastifyPluginAsync
       '/transactions/build/refund-escrow',
       {
         preHandler: authenticate,
-        schema: { body: refundEscrowBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: refundEscrowBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildRefundEscrowTransaction({
