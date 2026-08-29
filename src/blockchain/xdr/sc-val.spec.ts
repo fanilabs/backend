@@ -149,6 +149,28 @@ describe('native -> ScVal encoders', () => {
     });
   });
 
+  it('sorts Map keys by byte order, not locale-dependent localeCompare', () => {
+    // This test verifies that key sorting uses byte order (UTF-8) comparison,
+    // not localeCompare which is locale/ICU-dependent. localeCompare may
+    // reorder keys inconsistently across environments or treat punctuation
+    // and case differently, breaking Soroban's canonical Map ordering requirement.
+    // Using mixed case which localeCompare handles differently from byte order:
+    // - Byte order: 'A' (0x41=65) < 'a' (0x61=97)
+    // - localeCompare in many locales: treats 'A' and 'a' as equivalent or reorders them
+    const scVal = namedStructToScVal({
+      ABigField: u32ToScVal(1),
+      aBigField: u32ToScVal(2),
+      aSmallField: u32ToScVal(3),
+    });
+
+    const map = scVal.map();
+    expect(map).not.toBeNull();
+    const keys = map?.map((entry) => scValToNative(entry.key()));
+
+    // Byte order: 'A' (65) < 'a' (97), so 'ABigField' < 'aBigField' < 'aSmallField'
+    expect(keys).toEqual(['ABigField', 'aBigField', 'aSmallField']);
+  });
+
   it('builds a realistic nested DeliveryMetadata-shaped structure', () => {
     const scVal = namedStructToScVal({
       delivery_id: u64ToScVal(7n),

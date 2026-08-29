@@ -4,7 +4,11 @@ import type {
   UserRole,
   UserRoleRepository,
 } from '../domain/index.js';
-import { AdminUserNotFoundError } from '../domain/index.js';
+import {
+  AdminUserNotFoundError,
+  CannotChangeOwnRoleError,
+  LastAdministratorError,
+} from '../domain/index.js';
 
 export interface UpdateUserRoleDeps {
   userRoleRepository: UserRoleRepository;
@@ -29,6 +33,17 @@ export function createUpdateUserRoleUseCase(deps: UpdateUserRoleDeps) {
   return async function updateUserRole(input: UpdateUserRoleInput): Promise<AdminUser> {
     const target = await deps.userRoleRepository.findById(input.userId);
     if (!target) throw new AdminUserNotFoundError();
+
+    if (input.actorId === input.userId) {
+      throw new CannotChangeOwnRoleError();
+    }
+
+    if (target.role === 'ADMIN' && input.role !== 'ADMIN') {
+      const adminCount = await deps.userRoleRepository.countByRole('ADMIN');
+      if (adminCount <= 1) {
+        throw new LastAdministratorError();
+      }
+    }
 
     await deps.userRoleRepository.updateRole(input.userId, input.role);
 

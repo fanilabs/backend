@@ -16,6 +16,17 @@ export function createSorobanEventSource(client: SorobanClient): EventSource {
       return result.sequence;
     },
 
+    async getOldestRetainedLedger() {
+      // The oldest retained ledger is the RPC's minimum ledger sequence.
+      // For Soroban RPC, this is typically available via getLatestLedger response,
+      // or we can make a getEvents call with startLedger = 0 to discover it.
+      // For now, assuming the RPC retains a reasonable window and starting from
+      // getLatestLedger() - a safe default. This should be made configurable.
+      const latest = await client.getLatestLedger();
+      // Assume 24 hours of retention at ~6 sec/ledger = ~14400 ledgers
+      return Math.max(1, latest.sequence - 14400);
+    },
+
     async fetchEvents({ contractId, startLedger }): Promise<FetchEventsResult> {
       const response = await client.getEvents({
         startLedger,

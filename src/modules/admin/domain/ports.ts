@@ -25,6 +25,7 @@ export interface DisputeReviewReader {
 export interface UserRoleRepository {
   findById(userId: string): Promise<AdminUser | null>;
   updateRole(userId: string, role: UserRole): Promise<void>;
+  countByRole(role: UserRole): Promise<number>;
 }
 
 export interface RecordAuditLogInput {

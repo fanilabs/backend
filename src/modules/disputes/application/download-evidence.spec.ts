@@ -162,4 +162,34 @@ describe('downloadEvidence', () => {
     expect(result.bytes).toEqual(bytes);
     expect(result.contentType).toBe('image/png');
   });
+
+  it('prevents access when a different user claims a wallet that was previously linked by the uploader', async () => {
+    const {
+      evidenceRepository,
+      disputeRepository,
+      walletOwnershipRepository,
+      evidenceStorage,
+      downloadEvidence,
+    } = setup();
+    const dispute = buildDispute({ chainDeliveryId: 1n, raisedBy: 'GRAISER' });
+    disputeRepository.seed(dispute);
+    const evidence = buildEvidence({
+      disputeId: dispute.id,
+      uploadedBy: 'GORIGINAL_OWNER',
+      storageUrl: 'fake://d/transfer-test',
+    });
+    evidenceRepository.seed(evidence);
+    evidenceStorage.seed('fake://d/transfer-test', Buffer.from('confidential-data'));
+
+    walletOwnershipRepository.seed('original-user', 'GORIGINAL_OWNER');
+    walletOwnershipRepository.seed('new-owner-user', 'GORIGINAL_OWNER');
+
+    await expect(
+      downloadEvidence({
+        evidenceId: evidence.id,
+        requesterId: 'new-owner-user',
+        requesterRole: 'CUSTOMER',
+      }),
+    ).rejects.toBeInstanceOf(ForbiddenEvidenceAccessError);
+  });
 });

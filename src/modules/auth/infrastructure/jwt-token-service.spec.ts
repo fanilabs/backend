@@ -93,4 +93,22 @@ describe('createJwtTokenService', () => {
     expect(tokenService.peekPasswordResetSubject(token)).toBe(user.id);
     expect(tokenService.peekPasswordResetSubject('garbage')).toBeNull();
   });
+
+  it('rejects an email-verification token when presented to the access token verifier (purpose confusion protection)', () => {
+    const tokenService = createJwtTokenService();
+    const user = testUser();
+
+    const emailVerificationToken = tokenService.issueEmailVerificationToken(user);
+
+    expect(() => verifyAccessToken(emailVerificationToken)).toThrow();
+  });
+
+  it('rejects a password-reset token when presented to the access token verifier (purpose confusion protection)', () => {
+    const tokenService = createJwtTokenService();
+    const user = testUser();
+
+    const resetToken = tokenService.issuePasswordResetToken(user);
+
+    expect(() => verifyAccessToken(resetToken)).toThrow();
+  });
 });

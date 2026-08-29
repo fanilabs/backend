@@ -1,17 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { createUpdateUserRoleUseCase } from './update-user-role.js';
-import { AdminUserNotFoundError } from '../domain/index.js';
+import {
+  AdminUserNotFoundError,
+  CannotChangeOwnRoleError,
+  LastAdministratorError,
+} from '../domain/index.js';
 import {
   buildAdminUser,
   createInMemoryAuditLogRepository,
   createInMemoryUserRoleRepository,
+  createFakeSessionRevoker,
 } from './__fixtures__/fakes.js';
 
 function setup() {
   const userRoleRepository = createInMemoryUserRoleRepository();
   const auditLogRepository = createInMemoryAuditLogRepository();
-  const updateUserRole = createUpdateUserRoleUseCase({ userRoleRepository, auditLogRepository });
-  return { userRoleRepository, auditLogRepository, updateUserRole };
+  const sessionRevoker = createFakeSessionRevoker();
+  const updateUserRole = createUpdateUserRoleUseCase({
+    userRoleRepository,
+    auditLogRepository,
+    sessionRevoker,
+  });
+  return { userRoleRepository, auditLogRepository, sessionRevoker, updateUserRole };
 }
 
 describe('updateUserRole', () => {
@@ -59,5 +69,21 @@ describe('updateUserRole', () => {
     await expect(
       updateUserRole({ actorId: 'admin-1', userId: 'missing', role: 'ADMIN' }),
     ).rejects.toBeInstanceOf(AdminUserNotFoundError);
+  });
+
+  it('revokes all sessions for the target user when their role is changed', async () => {
+    const { userRoleRepository, sessionRevoker, updateUserRole } = setup();
+    const target = buildAdminUser({ id: 'target-1', role: 'CUSTOMER' });
+    const actor = buildAdminUser({ id: 'admin-1', email: 'admin@example.com', role: 'ADMIN' });
+    userRoleRepository.seed(target);
+    userRoleRepository.seed(actor);
+
+    await updateUserRole({
+      actorId: 'admin-1',
+      userId: 'target-1',
+      role: 'ADMIN',
+    });
+
+    expect(sessionRevoker.wasCalledFor('target-1')).toBe(true);
   });
 });

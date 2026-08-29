@@ -43,18 +43,10 @@ const envSchema = z.object({
    * src/modules/disputes/infrastructure/local-evidence-storage.ts. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
 
-  /** How long `actor_activities` rows are kept before the scheduled cleanup
-   * job deletes them (src/modules/fraud-detection/infrastructure/cleanup-
-   * queue.ts). Default is well above the widest current rule window (24h,
-   * DISPUTE_RAISE_VELOCITY) to leave room for future longer-window rules
-   * and for forensic/manual review of recent flagged activity. */
-  FRAUD_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
-
-  /** Short-TTL cache for the ADMIN-only analytics endpoints
-   * (src/modules/analytics/infrastructure/cached-analytics-reader.ts) —
-   * each admin dashboard refresh would otherwise re-run full-table
-   * count/groupBy queries on every request. */
-  ANALYTICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
+  /** Maximum size in bytes for evidence file uploads. Base64-encoded payloads
+   * are ~33% larger than the decoded file, so the actual file limit is
+   * approximately EVIDENCE_MAX_BYTES * 0.75. */
+  EVIDENCE_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
 });
 
 export type Env = z.infer<typeof envSchema>;

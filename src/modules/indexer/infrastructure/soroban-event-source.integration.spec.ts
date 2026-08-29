@@ -48,4 +48,14 @@ describe.skipIf(!rpcAvailable)('createSorobanEventSource (real testnet RPC)', ()
     expect(Array.isArray(result.events)).toBe(true);
     expect(result.latestLedgerSeen).toBeGreaterThan(0);
   });
+
+  it('reports the oldest retained ledger', async () => {
+    const client = new SorobanClient();
+    const eventSource = createSorobanEventSource(client);
+    const latestLedger = await eventSource.getLatestLedger();
+    const oldestRetained = await eventSource.getOldestRetainedLedger();
+
+    expect(oldestRetained).toBeGreaterThan(0);
+    expect(oldestRetained).toBeLessThanOrEqual(latestLedger);
+  });
 });

@@ -168,4 +168,69 @@ describe.skipIf(!dbAvailable)('admin routes (integration)', () => {
 
     expect(response.statusCode).toBe(404);
   });
+
+  it('revokes refresh tokens when a user role is changed', async () => {
+    const admin = await registerAndLogin('ADMIN');
+    const target = await registerAndLogin('CUSTOMER');
+    const authHeader = { authorization: `Bearer ${admin.accessToken}` };
+
+    const originalRefreshToken = (
+      await app.inject({
+        method: 'POST',
+        url: '/api/v1/auth/login',
+        payload: {
+          email: `admin-test-${randomUUID()}@example.com`,
+          password: 'password123',
+        },
+      })
+    ).json<SuccessBody<{ refreshToken: string }>>().data.refreshToken;
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/users/${target.userId}/role`,
+      headers: authHeader,
+      payload: { role: 'ADMIN' },
+    });
+
+    const refreshResponse = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/refresh',
+      payload: { refreshToken: originalRefreshToken },
+    });
+
+    expect(refreshResponse.statusCode).toBe(401);
+    expect(refreshResponse.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('records audit log entry when revoking sessions on role change', async () => {
+    const admin = await registerAndLogin('ADMIN');
+    const target = await registerAndLogin('CUSTOMER');
+    const authHeader = { authorization: `Bearer ${admin.accessToken}` };
+
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/users/${target.userId}/role`,
+      headers: authHeader,
+      payload: { role: 'COURIER' },
+    });
+
+    const auditResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/audit-log?limit=200',
+      headers: authHeader,
+    });
+
+    expect(auditResponse.statusCode).toBe(200);
+    const entries = auditResponse.json<
+      SuccessBody<Array<{ actorId: string; entityId: string; action: string }>>
+    >().data;
+    expect(
+      entries.some(
+        (e) =>
+          e.actorId === admin.userId &&
+          e.entityId === target.userId &&
+          e.action === 'user.role_updated',
+      ),
+    ).toBe(true);
+  });
 });

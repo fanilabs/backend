@@ -70,6 +70,23 @@ export interface DisputeContractReader {
   getDispute(chainDeliveryId: bigint): Promise<ChainDisputeCase>;
 }
 
+/** Mirrors `escrow_contract`'s own `EscrowState` enum — only the variants
+ * `handleEscrowEvent`'s `dispute_resolved` fallback needs to distinguish. */
+export type EscrowStatusForDispute = 'LOCKED' | 'RELEASED' | 'REFUNDED' | 'PAUSED';
+
+/**
+ * Reads `escrow_contract`'s own current status directly — added to
+ * disambiguate `escrow.dispute_resolved` (see `sync-dispute-from-event.ts`'s
+ * header comment for the full rationale). Mirrors `reputation`'s
+ * `LegacyDriverProfileReader`: a narrow port reading a single field off a
+ * second, genuinely different deployed contract (`escrow_contract`, not
+ * `dispute_resolution_contract`) rather than folding it into
+ * `DisputeContractReader` above.
+ */
+export interface DisputeEscrowStateReader {
+  getEscrowStatus(chainDeliveryId: bigint): Promise<EscrowStatusForDispute>;
+}
+
 export interface RaiseDisputeTxInput {
   callerAddress: string;
   chainDeliveryId: bigint;

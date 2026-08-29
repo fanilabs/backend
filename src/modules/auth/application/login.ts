@@ -6,6 +6,8 @@ import type {
 } from '../domain/index.js';
 import { InvalidCredentialsError } from '../domain/index.js';
 
+const DUMMY_PASSWORD_HASH = '$2b$12$7c8JfTQ/c4AUhXcHq6p7J.hgBlJz4k1EqjEkDLFt6k5qqMOaV.tWy';
+
 export interface LoginDeps {
   userRepository: UserRepository;
   passwordHasher: PasswordHasher;
@@ -32,6 +34,7 @@ export function createLoginUseCase(deps: LoginDeps) {
     // Deliberately identical failure for "no such user" and "wrong password"
     // — distinguishing them lets an attacker enumerate registered emails.
     if (!user) {
+      await deps.passwordHasher.compare(input.password, DUMMY_PASSWORD_HASH);
       throw new InvalidCredentialsError();
     }
     const passwordMatches = await deps.passwordHasher.compare(input.password, user.passwordHash);

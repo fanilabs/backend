@@ -23,7 +23,8 @@ export interface DeliveryRepository {
   findByChainId(chainDeliveryId: bigint): Promise<Delivery | null>;
   list(filter: DeliveryFilter): Promise<Delivery[]>;
   create(record: ChainDeliveryRecord): Promise<Delivery>;
-  updateStatus(chainDeliveryId: bigint, patch: DeliveryStatusPatch): Promise<void>;
+  upsert(record: ChainDeliveryRecord): Promise<Delivery>;
+  updateStatus(chainDeliveryId: bigint, patch: DeliveryStatusPatch): Promise<boolean>;
 }
 
 /**
