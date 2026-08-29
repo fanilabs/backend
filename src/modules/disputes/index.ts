@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { PrismaClient } from '@prisma/client';
+import { accessSync, constants, mkdirSync } from 'node:fs';
 import { getConfig } from '../../shared/config/index.js';
 import { getSorobanClient } from '../../blockchain/index.js';
 import { BlockchainError } from '../../shared/errors/index.js';
@@ -63,6 +64,7 @@ function createUnconfiguredEscrowStateReader(): DisputeEscrowStateReader {
 
 export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const config = getConfig();
+  assertEvidenceStorageWritable(config.EVIDENCE_STORAGE_DIR);
   const disputeRepository = createPrismaDisputeRepository(prisma);
   const evidenceRepository = createPrismaEvidenceRepository(prisma);
   const evidenceStorage = createLocalEvidenceStorage(config.EVIDENCE_STORAGE_DIR);
