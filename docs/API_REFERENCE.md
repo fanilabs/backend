@@ -127,6 +127,18 @@ All three `ADMIN`-gated. `GET /admin/audit-log` uses the same `before`-cursor ke
 
 Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
 
+## Prisma Error Mapping
+
+`handleError` (`src/shared/errors/error-handler.ts`) maps the following Prisma known-request-error codes to distinguishable HTTP responses. Any Prisma code not listed here still falls through to a masked `500 INTERNAL_ERROR`.
+
+| Prisma code | HTTP status | `error.code` | Notes |
+|---|---|---|---|
+| `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
+| `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
+| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | Foreign-key constraint violation; `details` includes `meta` (constraint name) |
+| `P2034` | 409 | `WRITE_CONFLICT` | Transaction write conflict / deadlock — safe to retry |
+| `P1001` / `P1002` | 503 | `DATABASE_UNAVAILABLE` | Database unreachable / connection timed out |
+
 ## Planned Endpoint Families
 
 | Module | Example routes |
