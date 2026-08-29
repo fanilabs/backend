@@ -42,6 +42,11 @@ const envSchema = z.object({
   /** Local-filesystem root for dispute evidence files — see
    * src/modules/disputes/infrastructure/local-evidence-storage.ts. */
   EVIDENCE_STORAGE_DIR: z.string().default('./storage/evidence'),
+
+  /** Maximum size in bytes for evidence file uploads. Base64-encoded payloads
+   * are ~33% larger than the decoded file, so the actual file limit is
+   * approximately EVIDENCE_MAX_BYTES * 0.75. */
+  EVIDENCE_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
 });
 
 export type Env = z.infer<typeof envSchema>;

@@ -58,6 +58,34 @@ describe('createDeliveryArgsToScVal', () => {
       String(Math.floor(estimatedDelivery.getTime() / 1000)),
     );
   });
+
+  it('produces deterministic XDR output — identical inputs yield identical XDR', () => {
+    const sender = Keypair.random().publicKey();
+    const recipient = Keypair.random().publicKey();
+    const estimatedDelivery = new Date('2026-06-01T00:00:00Z');
+
+    const input = {
+      senderAddress: sender,
+      recipientAddress: recipient,
+      origin: 'Lagos',
+      destination: 'Accra',
+      cargoCategory: 'ELECTRONICS' as const,
+      weightGrams: 750,
+      fragile: true,
+      estimatedDelivery,
+    };
+
+    // Call twice with identical inputs
+    const args1 = createDeliveryArgsToScVal(input);
+    const args2 = createDeliveryArgsToScVal(input);
+
+    // Convert to XDR strings for comparison
+    const xdr1 = args1.map((arg) => arg.toXDR('base64')).join('|');
+    const xdr2 = args2.map((arg) => arg.toXDR('base64')).join('|');
+
+    // Identical inputs must produce identical XDR (no timestamp drift)
+    expect(xdr1).toBe(xdr2);
+  });
 });
 
 /** Hand-builds a `get_delivery`-shaped ScVal using the same low-level

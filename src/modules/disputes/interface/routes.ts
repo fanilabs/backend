@@ -11,6 +11,7 @@ import type {
 } from '../application/index.js';
 import {
   addEvidenceHashBodySchema,
+  createUploadEvidenceBodySchema,
   disputeIdParamsSchema,
   evidenceIdParamsSchema,
   getDisputeResponseSchema,
@@ -18,7 +19,6 @@ import {
   resolveDisputeBodySchema,
   resolveDisputeSplitFundsBodySchema,
   transactionResponseSchema,
-  uploadEvidenceBodySchema,
   uploadEvidenceResponseSchema,
 } from './schemas.js';
 
@@ -27,6 +27,10 @@ export interface DisputeUseCases {
   uploadEvidence: ReturnType<typeof createUploadEvidenceUseCase>;
   downloadEvidence: ReturnType<typeof createDownloadEvidenceUseCase>;
   buildTransactions: ReturnType<typeof createBuildDisputeTransactionsUseCases>;
+}
+
+export interface DisputeRoutesConfig {
+  evidenceMaxBytes: number;
 }
 
 function serializeEvidence(evidence: EvidenceWithVerification) {
@@ -66,7 +70,8 @@ function requireUser(request: { user?: { id: string; role: UserRole } }): {
   return request.user;
 }
 
-export function createDisputeRoutes(useCases: DisputeUseCases): FastifyPluginAsyncZod {
+export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRoutesConfig): FastifyPluginAsyncZod {
+  const uploadEvidenceBodySchemaWithLimit = createUploadEvidenceBodySchema(config.evidenceMaxBytes);
   return async function disputeRoutes(app) {
     app.get(
       '/disputes/:chainDeliveryId',
@@ -85,7 +90,7 @@ export function createDisputeRoutes(useCases: DisputeUseCases): FastifyPluginAsy
         preHandler: authenticate,
         schema: {
           params: disputeIdParamsSchema,
-          body: uploadEvidenceBodySchema,
+          body: uploadEvidenceBodySchemaWithLimit,
           response: { 200: uploadEvidenceResponseSchema },
         },
       },
@@ -111,7 +116,20 @@ export function createDisputeRoutes(useCases: DisputeUseCases): FastifyPluginAsy
           requesterId: user.id,
           requesterRole: user.role,
         });
-        void reply.status(200).type(contentType).send(bytes);
+        const allowedTypes = [
+          'image/jpeg',
+          'image/png',
+          'image/webp',
+          'application/pdf',
+          'audio/mpeg',
+          'video/mp4',
+        ];
+        const safeContentType = allowedTypes.includes(contentType) ? contentType : 'application/octet-stream';
+        void reply
+          .status(200)
+          .type(safeContentType)
+          .header('Content-Disposition', `attachment; filename="${request.params.evidenceId}"`)
+          .send(bytes);
       },
     );
 

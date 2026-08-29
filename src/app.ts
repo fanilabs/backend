@@ -6,6 +6,7 @@ import {
 } from 'fastify-type-provider-zod';
 import { logger } from './shared/logger/index.js';
 import { handleError } from './shared/errors/index.js';
+import { getConfig } from './shared/config/index.js';
 import {
   securityPlugin,
   docsPlugin,
@@ -42,9 +43,11 @@ import { createAdminModule } from './modules/admin/index.js';
  * ships in Phase 5 — see ROADMAP.md §5 for what's left.
  */
 export async function buildApp() {
+  const config = getConfig();
   const app = Fastify({
     loggerInstance: logger,
     trustProxy: true,
+    bodyLimit: config.EVIDENCE_MAX_BYTES,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

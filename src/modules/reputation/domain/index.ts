@@ -9,3 +9,4 @@ export type {
   UpdateDriverKycStatusTxInput,
 } from './ports.js';
 export { DriverProfileNotFoundError } from './errors.js';
+export { DRIVER_TIER_THRESHOLDS, tierFromScore } from './tier-thresholds.js';

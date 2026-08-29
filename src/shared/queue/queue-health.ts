@@ -17,7 +17,11 @@ export interface QueueCounts {
  * queue nothing ever produces to or consumes from would be misleading,
  * not informative.
  */
-const MONITORED_QUEUES = [QueueName.BlockchainIndexer, QueueName.Notifications] as const;
+const MONITORED_QUEUES = [
+  QueueName.BlockchainIndexer,
+  QueueName.Notifications,
+  QueueName.FraudActivityCleanup,
+] as const;
 
 export async function getQueueHealth(): Promise<QueueCounts[]> {
   return Promise.all(

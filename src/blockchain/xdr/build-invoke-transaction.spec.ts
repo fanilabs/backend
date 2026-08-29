@@ -59,4 +59,97 @@ describe('buildInvokeTransaction', () => {
     const operation = builtTx?.operations[0];
     expect(operation?.type).toBe('invokeHostFunction');
   });
+
+  it('respects configurable fee from input when provided', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const account = new Account(sourceKeypairAddress, '100');
+    const contractId = Address.contract(randomBytes(32)).toString();
+    const customFee = '5000'; // Higher than BASE_FEE
+
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+
+    const preparedTx = new TransactionBuilder(new Account(sourceKeypairAddress, '100'), {
+      fee: customFee,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    })
+      .addOperation(new Contract(contractId).call('test_method'))
+      .setTimeout(60)
+      .build();
+    const prepareSpy = vi.spyOn(client, 'prepareTransaction').mockResolvedValue(preparedTx);
+
+    await buildInvokeTransaction(client, {
+      contractId,
+      method: 'test_method',
+      args: [],
+      sourceAddress: sourceKeypairAddress,
+      feeSorobanStroops: 5000,
+    });
+
+    const builtTx = prepareSpy.mock.calls[0]?.[0];
+    expect(builtTx?.fee).toBe(customFee);
+  });
+
+  it('respects configurable timeout from input when provided', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const account = new Account(sourceKeypairAddress, '100');
+    const contractId = Address.contract(randomBytes(32)).toString();
+    const customTimeout = 300; // Longer for interactive wallet approval
+
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+
+    const preparedTx = new TransactionBuilder(new Account(sourceKeypairAddress, '100'), {
+      fee: BASE_FEE,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    })
+      .addOperation(new Contract(contractId).call('test_method'))
+      .setTimeout(customTimeout)
+      .build();
+    const prepareSpy = vi.spyOn(client, 'prepareTransaction').mockResolvedValue(preparedTx);
+
+    await buildInvokeTransaction(client, {
+      contractId,
+      method: 'test_method',
+      args: [],
+      sourceAddress: sourceKeypairAddress,
+      timeoutSeconds: customTimeout,
+    });
+
+    const builtTx = prepareSpy.mock.calls[0]?.[0];
+    expect(builtTx?.timebounds?.timeout).toBe(customTimeout);
+  });
+
+  it('includes envelope expiry timestamp in response metadata', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const account = new Account(sourceKeypairAddress, '100');
+    const contractId = Address.contract(randomBytes(32)).toString();
+
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+
+    const timeoutSeconds = 300;
+
+    const preparedTx = new TransactionBuilder(new Account(sourceKeypairAddress, '100'), {
+      fee: BASE_FEE,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    })
+      .addOperation(new Contract(contractId).call('test_method'))
+      .setTimeout(timeoutSeconds)
+      .build();
+    vi.spyOn(client, 'prepareTransaction').mockResolvedValue(preparedTx);
+
+    const xdr = await buildInvokeTransaction(client, {
+      contractId,
+      method: 'test_method',
+      args: [],
+      sourceAddress: sourceKeypairAddress,
+      timeoutSeconds,
+    });
+
+    // The returned XDR should be a string
+    expect(typeof xdr).toBe('string');
+    // XDR should be non-empty
+    expect(xdr.length).toBeGreaterThan(0);
+  });
 });

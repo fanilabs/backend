@@ -223,6 +223,10 @@ model Escrow {
 
   delivery Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
 
+  /// Backs `analytics.getGmvByToken`'s `groupBy` on exactly this predicate
+  /// (`status = 'RELEASED'`, grouped by `token`) — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([status, token])
   @@map("escrows")
 }
 
@@ -320,6 +324,9 @@ model DriverProfile {
   registeredAt              DateTime   @map("registered_at")
   updatedAt                 DateTime   @updatedAt @map("updated_at")
 
+  /// Backs `analytics.getDriverTierCounts`'s `groupBy` on `tier` — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([tier])
   @@map("driver_profiles")
 }
 
@@ -389,6 +396,7 @@ model BlockchainEvent {
   ledgerClosedAt DateTime @map("ledger_closed_at")
   ingestedAt    DateTime  @default(now()) @map("ingested_at")
   processedAt   DateTime? @map("processed_at")
+  processingError String? @map("processing_error")
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])

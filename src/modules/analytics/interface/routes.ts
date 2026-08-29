@@ -1,4 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
+import { getConfig } from '../../../shared/config/index.js';
 import { authenticate, ok, requireRole } from '../../../shared/http/index.js';
 import type {
   createGetCompletionRateUseCase,
@@ -32,21 +33,34 @@ export interface AnalyticsUseCases {
 const adminOnly = [authenticate, requireRole('ADMIN')];
 
 export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPluginAsyncZod {
+  /**
+   * Mirrors the read-through cache TTL in the infrastructure layer
+   * (`infrastructure/cached-analytics-reader.ts`) so an admin dashboard can
+   * also cache these responses client-side instead of re-fetching on every
+   * render within the same staleness window. `private` — these are
+   * `ADMIN`-gated business metrics, never meant for a shared/proxy cache.
+   * Computed lazily (not at module load) so config parsing stays lazy too.
+   */
+  const cacheControlHeader = `private, max-age=${getConfig().ANALYTICS_CACHE_TTL_SECONDS}`;
+
   return async function analyticsRoutes(app) {
     app.get(
       '/analytics/gmv',
       { preHandler: adminOnly, schema: { response: { 200: gmvResponseSchema } } },
       async (_request, reply) => {
         const rows = await useCases.getGmv();
-        void reply.status(200).send(
-          ok(
-            rows.map((row) => ({
-              token: row.token,
-              releasedAmount: row.releasedAmount.toString(),
-              releasedCount: row.releasedCount,
-            })),
-          ),
-        );
+        void reply
+          .header('Cache-Control', cacheControlHeader)
+          .status(200)
+          .send(
+            ok(
+              rows.map((row) => ({
+                token: row.token,
+                releasedAmount: row.releasedAmount.toString(),
+                releasedCount: row.releasedCount,
+              })),
+            ),
+          );
       },
     );
 
@@ -54,7 +68,10 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
       '/analytics/completion-rate',
       { preHandler: adminOnly, schema: { response: { 200: completionRateResponseSchema } } },
       async (_request, reply) => {
-        void reply.status(200).send(ok(await useCases.getCompletionRate()));
+        void reply
+          .header('Cache-Control', cacheControlHeader)
+          .status(200)
+          .send(ok(await useCases.getCompletionRate()));
       },
     );
 
@@ -62,7 +79,10 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
       '/analytics/dispute-rate',
       { preHandler: adminOnly, schema: { response: { 200: disputeRateResponseSchema } } },
       async (_request, reply) => {
-        void reply.status(200).send(ok(await useCases.getDisputeRate()));
+        void reply
+          .header('Cache-Control', cacheControlHeader)
+          .status(200)
+          .send(ok(await useCases.getDisputeRate()));
       },
     );
 
@@ -73,7 +93,10 @@ export function createAnalyticsRoutes(useCases: AnalyticsUseCases): FastifyPlugi
         schema: { response: { 200: driverTierDistributionResponseSchema } },
       },
       async (_request, reply) => {
-        void reply.status(200).send(ok(await useCases.getDriverTierDistribution()));
+        void reply
+          .header('Cache-Control', cacheControlHeader)
+          .status(200)
+          .send(ok(await useCases.getDriverTierDistribution()));
       },
     );
   };

@@ -12,4 +12,8 @@ export type {
   RecordAuditLogInput,
   UserRoleRepository,
 } from './ports.js';
-export { AdminUserNotFoundError } from './errors.js';
+export {
+  AdminUserNotFoundError,
+  CannotChangeOwnRoleError,
+  LastAdministratorError,
+} from './errors.js';

@@ -16,10 +16,15 @@ import {
   createPrismaEvidenceRepository,
   createPrismaWalletOwnershipRepository,
   createSorobanDisputeContractClient,
+  createSorobanEscrowStateReader,
   subscribeDisputeEventSync,
 } from './infrastructure/index.js';
 import { createDisputeRoutes } from './interface/routes.js';
-import type { DisputeContractReader, DisputeTransactionBuilder } from './domain/index.js';
+import type {
+  DisputeContractReader,
+  DisputeEscrowStateReader,
+  DisputeTransactionBuilder,
+} from './domain/index.js';
 
 /** Same "fail loudly, not at boot" fallback as escrow/fleet/deliveries'
  * createUnconfiguredContractClient — used when DISPUTE_RESOLUTION_CONTRACT_ID
@@ -40,6 +45,22 @@ function createUnconfiguredContractClient(): DisputeContractReader & DisputeTran
   };
 }
 
+/** Same fallback shape as above, for the escrow-state reader added to
+ * disambiguate `escrow.dispute_resolved` (see
+ * `sync-dispute-from-event.ts`'s header comment) — used when
+ * `ESCROW_CONTRACT_ID` is left blank. */
+function createUnconfiguredEscrowStateReader(): DisputeEscrowStateReader {
+  return {
+    getEscrowStatus(): Promise<never> {
+      return Promise.reject(
+        new BlockchainError(
+          'ESCROW_CONTRACT_ID is not configured — this environment has no escrow_contract deployment to call.',
+        ),
+      );
+    },
+  };
+}
+
 export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const config = getConfig();
   const disputeRepository = createPrismaDisputeRepository(prisma);
@@ -49,8 +70,14 @@ export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZo
   const contractClient = config.DISPUTE_RESOLUTION_CONTRACT_ID
     ? createSorobanDisputeContractClient(getSorobanClient(), config.DISPUTE_RESOLUTION_CONTRACT_ID)
     : createUnconfiguredContractClient();
+  const escrowStateReader = config.ESCROW_CONTRACT_ID
+    ? createSorobanEscrowStateReader(getSorobanClient(), config.ESCROW_CONTRACT_ID)
+    : createUnconfiguredEscrowStateReader();
 
-  const syncDisputeFromEvent = createSyncDisputeFromEventUseCase({ disputeRepository });
+  const syncDisputeFromEvent = createSyncDisputeFromEventUseCase({
+    disputeRepository,
+    escrowStateReader,
+  });
   subscribeDisputeEventSync(syncDisputeFromEvent);
 
   const useCases = {
@@ -76,5 +103,7 @@ export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZo
     }),
   };
 
-  return createDisputeRoutes(useCases);
+  return createDisputeRoutes(useCases, {
+    evidenceMaxBytes: config.EVIDENCE_MAX_BYTES,
+  });
 }

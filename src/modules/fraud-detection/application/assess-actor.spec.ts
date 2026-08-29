@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createAssessActorUseCase } from './assess-actor.js';
-import { createInMemoryActorActivityRepository } from './__fixtures__/fakes.js';
+import { createFixedClock, createInMemoryActorActivityRepository } from './__fixtures__/fakes.js';
 
 describe('assessActor', () => {
   it('returns not-flagged, zero counts for an actor with no activity', async () => {
@@ -54,5 +54,45 @@ describe('assessActor', () => {
     const signal = result.signals.find((s) => s.ruleType === 'DISPUTE_RAISE_VELOCITY');
     expect(signal).toMatchObject({ count: 4, threshold: 3, windowHours: 24, triggered: true });
     expect(result.flagged).toBe(true);
+  });
+
+  describe('under simulated indexer lag', () => {
+    it('with an injected fixed clock, activity just inside the window relative to that clock is counted even when wall-clock time has moved on', async () => {
+      const activityRepository = createInMemoryActorActivityRepository();
+      // The indexer is 3 hours behind: this activity's on-chain occurredAt
+      // is only 30 minutes before the *ledger* clock, even though real
+      // wall-clock "now" (not used here) is much later.
+      const laggedLedgerNow = new Date('2026-01-01T12:00:00Z');
+      const occurredAt = new Date('2026-01-01T11:30:00Z');
+      for (let i = 0; i < 11; i += 1) {
+        activityRepository.seed('GLAGGED', 'DELIVERY_CREATED', occurredAt);
+      }
+      const assessActor = createAssessActorUseCase({
+        activityRepository,
+        clock: createFixedClock(laggedLedgerNow),
+      });
+
+      const result = await assessActor({ address: 'GLAGGED' });
+
+      const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
+      expect(signal).toMatchObject({ count: 11, triggered: true });
+    });
+
+    it('without a lag-aware clock, comparing lagged occurredAt values against real wall-clock time would incorrectly exclude them', async () => {
+      const activityRepository = createInMemoryActorActivityRepository();
+      // Real "now" is far ahead of the on-chain occurredAt values because
+      // the indexer has fallen behind — with the default systemClock (no
+      // clock injected), this activity falls outside every rule window.
+      const longAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      for (let i = 0; i < 11; i += 1) {
+        activityRepository.seed('GSTALE', 'DELIVERY_CREATED', longAgo);
+      }
+      const assessActor = createAssessActorUseCase({ activityRepository });
+
+      const result = await assessActor({ address: 'GSTALE' });
+
+      const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
+      expect(signal).toMatchObject({ count: 0, triggered: false });
+    });
   });
 });
