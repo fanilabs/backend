@@ -10,6 +10,11 @@ export interface CreateNotificationInput {
 export interface ListNotificationsFilter {
   status?: NotificationStatus;
   limit: number;
+  /** Cursor for keyset pagination — only rows strictly older than this
+   * timestamp are returned, so the response's `nextCursor` (the oldest
+   * row's `createdAt`) can be fed back in to fetch the next page without
+   * relying on an unstable `skip` offset. */
+  before?: Date;
 }
 
 /**
@@ -70,6 +75,13 @@ export interface NotificationEmailInput {
  * and push are documented future work, not built here). Throws on any
  * failure (unconfigured channel, SMTP error) rather than silently
  * pretending success — `sendNotification` maps a throw to `FAILED`.
+ *
+ * Per #103, the API's `notificationChannel` response schema was narrowed to
+ * the single `EMAIL` literal to match — `NotificationChannel`'s database
+ * enum keeps its three variants for forward compatibility, but nothing in
+ * this module can produce or send `SMS`/`PUSH` today, so nothing advertises
+ * them as possible. Widen this port (and the schema) together once a real
+ * multi-channel sender exists.
  */
 export interface NotificationSender {
   send(input: NotificationEmailInput): Promise<void>;
@@ -83,4 +95,33 @@ export interface NotificationSender {
  */
 export interface NotificationJobScheduler {
   enqueueDelivery(notificationId: string): Promise<void>;
+}
+
+export interface DeliveryParties {
+  sender: string;
+  recipient: string;
+  driver: string | null;
+}
+
+/**
+ * Resolves a delivery's other parties (sender/recipient/driver addresses)
+ * from `deliveries`' own read-model table — the same documented,
+ * `ARCHITECTURE.md`-sanctioned cross-module read exception `UserContactLookup`
+ * above already establishes for this module, and the same precedent
+ * `analytics`/`admin` rely on for their own read-model access
+ * (`analytics/domain/ports.ts`, `admin/domain/ports.ts`).
+ *
+ * Exists so counterparty-facing events — `delivery_confirmed`,
+ * `delivery_cancelled`, `DeliveryInTransit`, `escrow_refunded`, and the
+ * three `dispute_resolved_*` events — can notify the sender/driver even
+ * though none of those events carries a useful address of its own in its
+ * payload (see `dispatch-notifications-from-event.ts`'s header comment).
+ * `recipient` is exposed for completeness with `Delivery`'s own shape but
+ * deliberately never used as a notification target today: every event this
+ * port serves is one where the recipient is either the acting party
+ * (`delivery_confirmed`) or not a documented interested party for that
+ * event, so only `sender`/`driver` are ever candidates in practice.
+ */
+export interface DeliveryPartyLookup {
+  findParties(chainDeliveryId: string): Promise<DeliveryParties | null>;
 }

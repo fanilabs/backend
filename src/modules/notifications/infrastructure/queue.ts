@@ -37,7 +37,9 @@ export function createNotificationsWorker(
   return new Worker<SendNotificationJobData>(
     QueueName.Notifications,
     async (job) => {
-      await sendNotification({ notificationId: job.data.notificationId });
+      const maxAttempts = job.opts.attempts ?? 1;
+      const isFinalAttempt = job.attemptsMade + 1 >= maxAttempts;
+      await sendNotification({ notificationId: job.data.notificationId, isFinalAttempt });
       log.debug({ notificationId: job.data.notificationId }, 'Notification delivered');
     },
     { connection: getQueueConnection() },

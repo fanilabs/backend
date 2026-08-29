@@ -2,6 +2,11 @@ import { randomUUID } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { EvidenceStorage } from '../domain/index.js';
+import { EvidenceNotFoundError } from '../domain/index.js';
+
+function isEnoentError(error: unknown): error is NodeJS.ErrnoException {
+  return error instanceof Error && (error as NodeJS.ErrnoException).code === 'ENOENT';
+}
 
 /**
  * Local-filesystem-backed `EvidenceStorage` for v1 (ROADMAP.md §2 objective
@@ -34,7 +39,18 @@ export function createLocalEvidenceStorage(baseDir: string): EvidenceStorage {
       if (!resolved.startsWith(resolvedBaseDir + path.sep)) {
         throw new Error('Invalid evidence storage path');
       }
-      return readFile(resolved);
+      try {
+        return await readFile(resolved);
+      } catch (error) {
+        // A genuinely missing file (deleted out-of-band, or a storageUrl
+        // whose bytes were never persisted — e.g. lost with the container's
+        // writable layer before the evidence-data volume existed) should
+        // surface as a domain 404, not an unmapped 500.
+        if (isEnoentError(error)) {
+          throw new EvidenceNotFoundError();
+        }
+        throw error;
+      }
     },
   };
 }

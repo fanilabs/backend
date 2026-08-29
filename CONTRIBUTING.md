@@ -21,8 +21,9 @@ See [`README.md` → Getting Started](./README.md#getting-started).
 4. Update the relevant doc (`docs/API_REFERENCE.md`, `docs/DATABASE.md`, etc.) in the same PR — documentation debt is not deferred to "later."
 5. Run the full local check before pushing:
    ```bash
-   pnpm lint && pnpm typecheck && pnpm test
+   pnpm lint && pnpm typecheck && pnpm test && pnpm audit
    ```
+   CI runs a required `audit` job (`pnpm audit --audit-level=high`) on every PR — a new `high`/`critical` advisory in the dependency tree (direct or transitive) fails the build. See [`docs/SECURITY.md`](./docs/SECURITY.md) § Dependency Management for the exceptions process.
 6. Open a PR against `main` using the PR template's checklist, including the architecture checklist items (no duplicate implementations, no cross-module internal imports, no invented blockchain behavior).
 
 ## Commit Messages

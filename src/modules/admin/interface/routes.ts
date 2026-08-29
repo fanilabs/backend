@@ -64,7 +64,14 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
   return async function adminRoutes(app) {
     app.get(
       '/admin/disputes',
-      { preHandler: adminOnly, schema: { response: { 200: listOpenDisputesResponseSchema } } },
+      {
+        preHandler: adminOnly,
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          response: { 200: listOpenDisputesResponseSchema },
+        },
+      },
       async (_request, reply) => {
         const disputes = await useCases.listOpenDisputes();
         void reply.status(200).send(ok(disputes.map(serializeDispute)));
@@ -76,6 +83,8 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       {
         preHandler: adminOnly,
         schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
           params: userIdParamsSchema,
           body: updateUserRoleBodySchema,
           response: { 200: updateUserRoleResponseSchema },
@@ -96,14 +105,21 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       {
         preHandler: adminOnly,
         schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
           querystring: listAuditLogQuerySchema,
           response: { 200: listAuditLogResponseSchema },
         },
       },
       async (request, reply) => {
-        const { limit } = request.query;
-        const entries = await useCases.listAuditLog({ ...(limit !== undefined && { limit }) });
-        void reply.status(200).send(ok(entries.map(serializeAuditLogEntry)));
+        const { limit, before } = request.query;
+        const { items, nextCursor, limit: appliedLimit } = await useCases.listAuditLog({
+          ...(limit !== undefined && { limit }),
+          ...(before !== undefined && { before }),
+        });
+        void reply
+          .status(200)
+          .send(ok(items.map(serializeAuditLogEntry), { limit: appliedLimit, nextCursor }));
       },
     );
   };

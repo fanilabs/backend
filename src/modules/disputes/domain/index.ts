@@ -2,9 +2,11 @@ export type { ChainDisputeCase, Dispute, DisputeStatus, Evidence, UserRole } fro
 export type {
   AddEvidenceHashTxInput,
   DisputeContractReader,
+  DisputeEscrowStateReader,
   DisputeRepository,
   DisputeTransactionBuilder,
   DisputeUpsertFields,
+  EscrowStatusForDispute,
   EvidenceRepository,
   EvidenceStorage,
   RaiseDisputeTxInput,

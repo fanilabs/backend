@@ -35,7 +35,11 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
 
     async listByUserId(userId, filter) {
       const records = await prisma.notification.findMany({
-        where: { userId, ...(filter.status && { status: filter.status }) },
+        where: {
+          userId,
+          ...(filter.status && { status: filter.status }),
+          ...(filter.before && { createdAt: { lt: filter.before } }),
+        },
         orderBy: { createdAt: 'desc' },
         take: filter.limit,
       });

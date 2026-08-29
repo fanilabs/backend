@@ -37,14 +37,47 @@ All configuration is environment variables, validated at boot by `src/shared/con
 
 Contract IDs (`ESCROW_CONTRACT_ID`, etc.) and network settings (`STELLAR_NETWORK`, `SOROBAN_RPC_URL`, `STELLAR_NETWORK_PASSPHRASE`) must match the actual deployed `FaniLab-SmartContract` instance for the target environment — cross-check against that repository's deployment output before promoting to a new network.
 
+`MAIL_PROVIDER`/`NOTIFICATION_PROVIDER` default to `logger` — a genuinely functional dev/test default that logs mail instead of sending it (see `docs/AUTHENTICATION.md` § Dev email delivery). Booting with `NODE_ENV=production` while either is left at `logger` fails at startup with a clear error; a real provider must be wired into `select-mailer.ts`/`select-notification-sender.ts` before a production deployment.
+
 ## Health Checks
 
-- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`).
+- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`). **Point your orchestrator's readiness probe at this endpoint.**
 - `GET /health/indexer` — indexer lag — see [`EVENT_INDEXER.md`](./EVENT_INDEXER.md).
-- `GET /health/queue` — BullMQ queue job counts/failures — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
+- `GET /health/queue` — an **alerting signal, not a readiness probe**. Reports BullMQ queue job counts, including `failed` (all-time failure history, retained for up to 7 days) and `failedRecent` (failures within the last 15 minutes). Returns `200` with `status: 'degraded'` when there is failure history, and only returns `503`/`status: 'unavailable'` when the queue backend is unreachable or a queue looks stalled (backlog with nothing active). Do not wire an orchestrator's readiness/liveness check to this endpoint — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
 - `GET /metrics` — Prometheus scrape endpoint for whatever monitoring stack the deployment environment runs (Phase 6 — see [`OBSERVABILITY.md`](./OBSERVABILITY.md)); point network policy, not app-level auth, at restricting who can reach it.
 
 Point your orchestrator's readiness probe at `/health`; a `503` means don't route traffic yet, not that the process should be killed — Postgres/Redis blips are often transient.
+
+`docker-compose.yml` wires this in directly so the reference topology isn't just documentation:
+
+- **`api`** — Docker `HEALTHCHECK` (also declared in `Dockerfile`) polls `GET /health` every 10s; `docker compose ps` only reports `api` as `healthy` once it returns `200`. `restart: unless-stopped` restarts the container if the process dies or is OOM-killed.
+- **`worker`** — has no HTTP surface, so liveness is a heartbeat file (`/var/lib/fanilab/heartbeat/worker.heartbeat`) touched every 15s by the process itself (`src/workers/index.ts`); the healthcheck fails once that file is more than 45s stale, which catches an event-loop-blocked or hung process, not just a crashed one. `restart: unless-stopped` applies the same as `api`.
+- The `observability` profile's `prometheus`/`grafana` services `depends_on: api: condition: service_healthy`, so they don't start scraping/rendering against an API that isn't listening yet.
+
+## Evidence Storage
+
+Dispute evidence (`src/modules/disputes/infrastructure/local-evidence-storage.ts`)
+is written to `EVIDENCE_STORAGE_DIR`. The `api`/`worker` images create that
+directory as `/var/lib/fanilab/evidence`, owned by the non-root `node` user
+the containers run as (`Dockerfile`), and `docker-compose.yml` points
+`EVIDENCE_STORAGE_DIR` at that same absolute path — the config default
+(`./storage/evidence`) is relative to the process working directory and is a
+development-only convenience, not something to rely on in a deployed
+environment. `createDisputesModule` checks the directory is writable at boot
+and fails fast with a clear error if it is not, rather than surfacing as a
+generic 500 on the first evidence upload.
+
+`docker-compose.yml` persists that directory with a named volume,
+**`evidence-data`**, mounted into the `api` service at
+`/var/lib/fanilab/evidence` — without it, evidence files lived in the
+container's writable layer and were silently destroyed by
+`docker compose down` or any image rebuild, while the corresponding
+`Evidence` rows (with their `storageUrl` and content hash) survived in
+Postgres. Back this volume up on the same schedule as `postgres-data`;
+losing it without a backup means the evidence rows point at files that no
+longer exist. A missing file on read now maps to a domain
+`EvidenceNotFoundError` (`local-evidence-storage.ts`), so a genuinely lost
+file returns a standard `404` response instead of an unmapped `500`.
 
 ## Rollback
 

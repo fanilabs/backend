@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { PrismaClient } from '@prisma/client';
+import { getConfig } from '../../shared/config/index.js';
 import {
   createLoginUseCase,
   createLogoutUseCase,
@@ -12,9 +13,9 @@ import {
 import {
   createBcryptPasswordHasher,
   createJwtTokenService,
-  createLoggerMailer,
   createPrismaRefreshTokenRepository,
   createPrismaUserRepository,
+  selectMailer,
 } from './infrastructure/index.js';
 import { createAuthRoutes } from './interface/routes.js';
 
@@ -30,7 +31,8 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const refreshTokenRepository = createPrismaRefreshTokenRepository(prisma);
   const passwordHasher = createBcryptPasswordHasher();
   const tokenService = createJwtTokenService();
-  const mailer = createLoggerMailer();
+  const config = getConfig();
+  const mailer = selectMailer(config.NODE_ENV, config.MAIL_PROVIDER);
 
   const useCases = {
     registerUser: createRegisterUserUseCase({

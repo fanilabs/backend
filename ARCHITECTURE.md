@@ -190,8 +190,7 @@ fanilab-backend/
 │   ├── EVENT_INDEXER.md
 │   ├── SECURITY.md
 │   ├── DEPLOYMENT.md
-│   ├── OBSERVABILITY.md
-│   └── adr/                          (Architecture Decision Records, mirroring the smart-contract repo's own ADR practice)
+│   └── OBSERVABILITY.md
 ├── tests/
 │   └── e2e/                          (cross-module flows; module-local unit/integration tests live inside each module)
 ├── .github/

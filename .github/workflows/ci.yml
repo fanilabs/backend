@@ -17,6 +17,19 @@ env:
   JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-use-00000
 
 jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Audit dependency tree for known vulnerabilities
+        run: pnpm audit --audit-level=high
+
   lint-and-typecheck:
     runs-on: ubuntu-latest
     steps:

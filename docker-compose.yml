@@ -29,6 +29,25 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot local/dev convenience: applies pending Prisma migrations before
+  # `api`/`worker` start, so `make docker-up` produces a working stack on a
+  # clean volume instead of every request failing with "table does not
+  # exist". This does NOT change the production release process
+  # (docs/DEPLOYMENT.md § Release Process still runs `prisma:migrate:deploy`
+  # as its own explicit, reviewed step) — `api`/`worker` still never migrate
+  # on boot themselves, this container just runs once and exits.
+  migrate:
+    build:
+      context: .
+      target: deps
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
+    command: ['pnpm', 'prisma:migrate:deploy']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -37,6 +56,9 @@ services:
     environment:
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
+      EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
+    volumes:
+      - evidence-data:/var/lib/fanilab/evidence
     ports:
       - '3000:3000'
     depends_on:
@@ -44,6 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -53,11 +77,14 @@ services:
     environment:
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
+      EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   # `docker compose --profile observability up` — a local Prometheus +
   # Grafana starter, not part of the default topology `docker compose up`
@@ -75,7 +102,8 @@ services:
     ports:
       - '9090:9090'
     depends_on:
-      - api
+      api:
+        condition: service_healthy
 
   grafana:
     image: grafana/grafana:11.4.0
@@ -91,10 +119,19 @@ services:
     ports:
       - '3001:3000'
     depends_on:
-      - prometheus
+      api:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
 
 volumes:
   postgres-data:
   redis-data:
+  # Dispute evidence files — the only copy of this data outside of the
+  # evidence rows' storageUrl/content-hash in Postgres. Without a named
+  # volume this lived in the api container's writable layer and was
+  # destroyed on every `docker compose down`/rebuild; back this volume up
+  # the same way you back up postgres-data. See docs/DEPLOYMENT.md.
+  evidence-data:
   prometheus-data:
   grafana-data:
