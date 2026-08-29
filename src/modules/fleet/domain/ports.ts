@@ -7,8 +7,22 @@ import type { ChainFleetRecord, Fleet, FleetWithDrivers } from './entities.js';
  * that's the only identifier the indexer's events ever carry; the Prisma
  * implementation resolves the local fleet row internally.
  */
+export interface FindFleetOptions {
+  /** When `false` (the default), the returned `drivers` list is filtered to
+   * `removedAt === null` in the query itself, not in memory — see
+   * `prisma-fleet-repository.ts`. `totalActiveDrivers` is unaffected either
+   * way; it's always computed from the full, unfiltered membership. */
+  includeRemoved?: boolean;
+  /** Caps how many driver rows the `drivers` array can contain — a
+   * long-lived fleet's full membership history is otherwise unbounded. */
+  driverLimit?: number;
+}
+
 export interface FleetRepository {
-  findByChainFleetId(chainFleetId: bigint): Promise<FleetWithDrivers | null>;
+  findByChainFleetId(
+    chainFleetId: bigint,
+    options?: FindFleetOptions,
+  ): Promise<FleetWithDrivers | null>;
   create(record: ChainFleetRecord): Promise<Fleet>;
   updateTreasury(chainFleetId: bigint, treasuryAddress: string): Promise<void>;
   inviteDriver(chainFleetId: bigint, driverAddress: string, invitedAt: Date): Promise<void>;

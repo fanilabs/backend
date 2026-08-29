@@ -16,7 +16,11 @@ import {
   createNotificationsBackgroundWorker,
   createNotificationsModule,
 } from '../modules/notifications/index.js';
-import { createFraudDetectionModule } from '../modules/fraud-detection/index.js';
+import {
+  createFraudDetectionCleanupBackgroundWorker,
+  createFraudDetectionModule,
+  scheduleFraudDetectionCleanup,
+} from '../modules/fraud-detection/index.js';
 
 const log = logger.child({ process: 'worker' });
 
@@ -50,6 +54,7 @@ async function writeHeartbeat(): Promise<void> {
 const registerWorkers: Array<() => Worker> = [
   () => createIndexerBackgroundWorker(getPrismaClient()),
   () => createNotificationsBackgroundWorker(getPrismaClient()),
+  () => createFraudDetectionCleanupBackgroundWorker(getPrismaClient()),
 ];
 
 /**
@@ -81,6 +86,7 @@ async function main(): Promise<void> {
   // Repeatable job registration is idempotent (BullMQ upserts by
   // name+repeat+jobId) — safe to call on every worker-process start.
   await scheduleIndexer();
+  await scheduleFraudDetectionCleanup();
 
   wireModuleEventSubscriptions.forEach((wire) => wire());
 

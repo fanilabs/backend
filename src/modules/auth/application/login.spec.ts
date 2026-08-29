@@ -62,4 +62,33 @@ describe('login', () => {
       InvalidCredentialsError,
     );
   });
+
+  it('performs password hashing work on unknown emails to prevent timing attacks', async () => {
+    const { login } = setup();
+    let compareCallCount = 0;
+    const userRepository = createInMemoryUserRepository();
+    const passwordHasher = {
+      async hash(plain: string) {
+        return `hashed:${plain}`;
+      },
+      async compare() {
+        compareCallCount++;
+        return false;
+      },
+    };
+    const tokenService = createFakeTokenService();
+    const refreshTokenRepository = createInMemoryRefreshTokenRepository();
+    const loginWithSpy = createLoginUseCase({
+      userRepository,
+      passwordHasher,
+      tokenService,
+      refreshTokenRepository,
+    });
+
+    await expect(
+      loginWithSpy({ email: 'nobody@example.com', password: 'anypassword' }),
+    ).rejects.toThrow(InvalidCredentialsError);
+
+    expect(compareCallCount).toBe(1);
+  });
 });

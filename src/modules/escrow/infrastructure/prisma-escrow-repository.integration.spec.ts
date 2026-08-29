@@ -81,4 +81,11 @@ describe.skipIf(!dbAvailable)('Prisma escrow repository (integration)', () => {
     const found = await escrowRepository.findByChainDeliveryId(chainDeliveryId);
     expect(found?.amount).toBe(amount);
   });
+
+  it('fails with foreign key violation when delivery does not exist (issue #37)', async () => {
+    const orphanedDeliveryId = 999_999_999_999n;
+    const record = buildChainEscrowRecord({ chainDeliveryId: orphanedDeliveryId });
+
+    await expect(escrowRepository.create(record)).rejects.toThrow();
+  });
 });

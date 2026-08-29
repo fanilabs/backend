@@ -21,5 +21,7 @@ export function getQueueConnection(): Redis {
 }
 
 export async function disconnectQueueConnection(): Promise<void> {
-  await connection?.quit();
+  const current = connection;
+  connection = undefined;
+  await current?.quit();
 }

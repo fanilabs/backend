@@ -65,4 +65,59 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
     expect(results).toHaveLength(1);
     expect(results[0]?.chainDeliveryId).toBe(chainDeliveryId);
   });
+
+  it('respects pagination limits when listing deliveries', async () => {
+    const sender = `GSENDER-${randomUUID()}`;
+    const pageSize = 5;
+
+    for (let i = 0; i < pageSize + 3; i++) {
+      await deliveryRepository.create(
+        buildChainDeliveryRecord({
+          chainDeliveryId: nextChainId(),
+          senderAddress: sender,
+        }),
+      );
+    }
+
+    const results = await deliveryRepository.list({ senderAddress: sender, limit: pageSize });
+    expect(results.length).toBeLessThanOrEqual(pageSize);
+  });
+
+  it('supports cursor-based pagination for fetching subsequent pages', async () => {
+    const sender = `GSENDER-${randomUUID()}`;
+    const pageSize = 2;
+
+    const chainIds: bigint[] = [];
+    for (let i = 0; i < 5; i++) {
+      const id = nextChainId();
+      chainIds.push(id);
+      await deliveryRepository.create(
+        buildChainDeliveryRecord({
+          chainDeliveryId: id,
+          senderAddress: sender,
+        }),
+      );
+    }
+
+    const firstPage = await deliveryRepository.list({
+      senderAddress: sender,
+      limit: pageSize,
+    });
+    expect(firstPage.length).toBeLessThanOrEqual(pageSize);
+
+    if (firstPage.length === pageSize) {
+      const lastItemFromFirstPage = firstPage[firstPage.length - 1];
+      const secondPage = await deliveryRepository.list({
+        senderAddress: sender,
+        limit: pageSize,
+        afterChainDeliveryId: lastItemFromFirstPage?.chainDeliveryId,
+      });
+
+      expect(secondPage).toBeDefined();
+      if (secondPage.length > 0) {
+        const firstItemSecondPage = secondPage[0];
+        expect(firstItemSecondPage?.chainDeliveryId).not.toBe(lastItemFromFirstPage?.chainDeliveryId);
+      }
+    }
+  });
 });

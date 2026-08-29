@@ -105,4 +105,16 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
     expect(evidence).toHaveLength(2);
     expect(evidence.map((e) => e.hash)).toEqual(['aa'.repeat(32), 'bb'.repeat(32)]);
   });
+
+  it('fails with foreign key violation when delivery does not exist (issue #37)', async () => {
+    const orphanedDeliveryId = 999_999_999_999n;
+
+    await expect(
+      disputeRepository.upsert(orphanedDeliveryId, {
+        status: 'OPEN',
+        raisedBy: 'GRAISER',
+        raisedAt: new Date(),
+      }),
+    ).rejects.toThrow();
+  });
 });

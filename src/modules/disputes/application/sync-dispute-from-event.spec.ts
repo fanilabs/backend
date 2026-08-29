@@ -137,4 +137,22 @@ describe('syncDisputeFromEvent', () => {
 
     expect((await disputeRepository.findByChainDeliveryId(1n))?.status).toBe('OPEN');
   });
+
+  it('dispute_resolved_split: records senderShareBps from the event payload (issue #40)', async () => {
+    const { disputeRepository, syncDisputeFromEvent } = setup();
+    disputeRepository.seed(buildDispute({ chainDeliveryId: 2n, status: 'OPEN' }));
+    const resolvedAt = new Date('2026-03-01T00:00:00Z');
+
+    await syncDisputeFromEvent(
+      buildDisputeResolutionEvent({
+        topic: ['dispute_resolved_split', '["2"]'],
+        payload: ['GADMIN', ['2'], 7500],
+        closedAt: resolvedAt,
+      }),
+    );
+
+    const stored = await disputeRepository.findByChainDeliveryId(2n);
+    expect(stored?.status).toBe('SPLIT');
+    expect(stored?.senderShareBps).toBe(7500);
+  });
 });

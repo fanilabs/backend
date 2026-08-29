@@ -14,5 +14,9 @@ export function createPrismaUserRoleRepository(prisma: PrismaClient): UserRoleRe
     async updateRole(userId, role) {
       await prisma.user.update({ where: { id: userId }, data: { role } });
     },
+
+    async countByRole(role) {
+      return prisma.user.count({ where: { role } });
+    },
   };
 }

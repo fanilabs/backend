@@ -1,8 +1,23 @@
-import type { ActorActivityRepository, ActorAssessment, FraudRuleType } from '../domain/index.js';
+import type {
+  ActorActivityRepository,
+  ActorAssessment,
+  Clock,
+  FraudRuleType,
+} from '../domain/index.js';
 import type { ActorActivityCategory } from '../domain/index.js';
+import { systemClock } from '../domain/index.js';
 
 export interface AssessActorDeps {
   activityRepository: ActorActivityRepository;
+  /**
+   * Time base for rule windows — see `../domain/clock.ts`'s header comment
+   * for why this must not just be `Date.now()` inline. Defaults to
+   * `systemClock` (real wall-clock time) so existing callers/tests are
+   * unaffected; production wiring (`../index.ts`) passes a ledger-time-
+   * derived clock instead so window boundaries share the same time base as
+   * the `occurredAt` values they're compared against, immune to indexer lag.
+   */
+  clock?: Clock;
 }
 
 export interface AssessActorInput {
@@ -48,8 +63,10 @@ const RULES: RuleDefinition[] = [
  * persisted "verdict" to go stale, same rationale as `record-actor-
  * activity-from-event.ts`'s header comment. */
 export function createAssessActorUseCase(deps: AssessActorDeps) {
+  const clock = deps.clock ?? systemClock;
+
   return async function assessActor(input: AssessActorInput): Promise<ActorAssessment> {
-    const now = Date.now();
+    const now = (await clock.now()).getTime();
     const signals = await Promise.all(
       RULES.map(async (rule) => {
         const since = new Date(now - rule.windowHours * 60 * 60 * 1000);

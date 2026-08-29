@@ -26,6 +26,24 @@ const fleetDto = z.object({
 });
 
 export const fleetIdParamsSchema = z.object({ chainFleetId });
+
+/**
+ * `includeRemoved` defaults to `false` so `GET /fleets/:chainFleetId`
+ * returns current members only — the `removedAt === null` filter
+ * `FleetDriver`'s own doc comment says every caller must otherwise
+ * reimplement. `z.coerce.boolean()` isn't used here: it treats *any*
+ * non-empty query string (including the literal `"false"`) as `true`, which
+ * would make `?includeRemoved=false` a no-op — this explicit `enum` +
+ * `transform` avoids that trap.
+ */
+export const getFleetQuerySchema = z.object({
+  includeRemoved: z
+    .enum(['true', 'false'])
+    .optional()
+    .default('false')
+    .transform((value) => value === 'true'),
+  driverLimit: z.coerce.number().int().positive().max(500).optional().default(100),
+});
 export const getFleetResponseSchema = z.object({ data: fleetDto });
 
 export const payoutAddressParamsSchema = z.object({ chainFleetId, driverAddress: stellarAddress });

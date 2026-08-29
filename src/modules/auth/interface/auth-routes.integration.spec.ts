@@ -184,4 +184,73 @@ describe.skipIf(!dbAvailable)('auth routes (integration)', () => {
     expect(response.statusCode).toBe(401);
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
+
+  it('rejects an email-verification token when presented as Bearer access token to a protected route', async () => {
+    const email = uniqueEmail();
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email, password: 'password123' },
+    });
+
+    const prisma = getPrismaClient();
+    const tokenService = (await import('../infrastructure/jwt-token-service.js')).createJwtTokenService();
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    const emailVerificationToken = tokenService.issueEmailVerificationToken(user);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/users/me',
+      headers: { authorization: `Bearer ${emailVerificationToken}` },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects a password-reset token when presented as Bearer access token to a protected route', async () => {
+    const email = uniqueEmail();
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email, password: 'password123' },
+    });
+
+    const prisma = getPrismaClient();
+    const tokenService = (await import('../infrastructure/jwt-token-service.js')).createJwtTokenService();
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    const passwordResetToken = tokenService.issuePasswordResetToken(user);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/users/me',
+      headers: { authorization: `Bearer ${passwordResetToken}` },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects a wallet-link challenge token when presented as Bearer access token to a protected route', async () => {
+    const email = uniqueEmail();
+    await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/register',
+      payload: { email, password: 'password123' },
+    });
+
+    const prisma = getPrismaClient();
+    const challengeService = (await import('../../users/infrastructure/jwt-challenge-service.js')).createJwtChallengeService();
+    const user = await prisma.user.findUniqueOrThrow({ where: { email } });
+    const walletLinkChallenge = challengeService.issueWalletLinkChallenge(user.id, 'GXXXXXX');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/users/me',
+      headers: { authorization: `Bearer ${walletLinkChallenge}` },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
 });

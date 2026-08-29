@@ -19,4 +19,13 @@ export interface RecordActivityInput {
 export interface ActorActivityRepository {
   record(input: RecordActivityInput): Promise<void>;
   countSince(address: string, category: ActorActivityCategory, since: Date): Promise<number>;
+  /**
+   * Deletes rows with `occurredAt` older than `olderThan`, in batches of at
+   * most `batchSize`, returning the total number of rows removed. Used by
+   * the scheduled retention job (`../infrastructure/cleanup-queue.ts`) —
+   * batched so a large backlog can't hold a single long-running delete
+   * that locks the table, see `prisma/schema.prisma`'s `ActorActivity`
+   * comment and `FRAUD_ACTIVITY_RETENTION_DAYS` in `shared/config/env.ts`.
+   */
+  deleteOlderThan(olderThan: Date, batchSize: number): Promise<number>;
 }

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:20-slim AS base
+FROM node:26-slim AS base
 # `node:20-slim` doesn't ship OpenSSL as an OS package — Prisma's query
 # engine binary is dynamically linked against libssl and fails at runtime
 # ("Prisma cannot find the required libssl system library") without it,

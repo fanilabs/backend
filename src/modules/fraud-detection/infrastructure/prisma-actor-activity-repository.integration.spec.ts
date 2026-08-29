@@ -64,4 +64,28 @@ describe.skipIf(!dbAvailable)('Prisma actor activity repository (integration)', 
 
     expect(count).toBe(1);
   });
+
+  it('deleteOlderThan removes only rows older than the cutoff, in batches', async () => {
+    const address = nextAddress();
+    const now = new Date();
+    const fortyDaysAgo = new Date(now.getTime() - 40 * 24 * 60 * 60 * 1000);
+    const retentionCutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+    // 3 old rows (beyond a 30-day retention window) and 2 recent rows.
+    await activityRepository.record({ address, category: 'DELIVERY_CREATED', occurredAt: fortyDaysAgo });
+    await activityRepository.record({ address, category: 'ESCROW_RELEASED', occurredAt: fortyDaysAgo });
+    await activityRepository.record({ address, category: 'DISPUTE_RAISED', occurredAt: fortyDaysAgo });
+    await activityRepository.record({ address, category: 'DELIVERY_CREATED', occurredAt: now });
+    await activityRepository.record({ address, category: 'ESCROW_RELEASED', occurredAt: now });
+
+    // Small batch size exercises the multi-iteration loop, not just a
+    // single-pass delete.
+    const deletedCount = await activityRepository.deleteOlderThan(retentionCutoff, 2);
+
+    expect(deletedCount).toBe(3);
+
+    const remaining = await prisma.actorActivity.findMany({ where: { address } });
+    expect(remaining).toHaveLength(2);
+    expect(remaining.every((row) => row.occurredAt >= retentionCutoff)).toBe(true);
+  });
 });

@@ -29,6 +29,25 @@ services:
       timeout: 5s
       retries: 10
 
+  # One-shot local/dev convenience: applies pending Prisma migrations before
+  # `api`/`worker` start, so `make docker-up` produces a working stack on a
+  # clean volume instead of every request failing with "table does not
+  # exist". This does NOT change the production release process
+  # (docs/DEPLOYMENT.md § Release Process still runs `prisma:migrate:deploy`
+  # as its own explicit, reviewed step) — `api`/`worker` still never migrate
+  # on boot themselves, this container just runs once and exits.
+  migrate:
+    build:
+      context: .
+      target: deps
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
+    command: ['pnpm', 'prisma:migrate:deploy']
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   api:
     build:
       context: .
@@ -47,19 +66,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'node',
-          '-e',
-          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    restart: unless-stopped
+      migrate:
+        condition: service_completed_successfully
 
   worker:
     build:
@@ -75,19 +83,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    healthcheck:
-      test:
-        [
-          'CMD',
-          'node',
-          '-e',
-          "const fs=require('fs');try{const s=fs.statSync('/var/lib/fanilab/heartbeat/worker.heartbeat');process.exit(Date.now()-s.mtimeMs<45000?0:1)}catch(e){process.exit(1)}",
-        ]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 15s
-    restart: unless-stopped
+      migrate:
+        condition: service_completed_successfully
 
   # `docker compose --profile observability up` — a local Prometheus +
   # Grafana starter, not part of the default topology `docker compose up`

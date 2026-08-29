@@ -158,4 +158,40 @@ describe('syncEscrowFromEvent', () => {
       syncEscrowFromEvent(buildEscrowEvent({ topic: ['escrow_funded'] })),
     ).resolves.toBeUndefined();
   });
+
+  it('dispute_resolved: handles LOCKED status without silently doing nothing (issue #38)', async () => {
+    const { escrowRepository, contractReader, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 1n, status: 'PAUSED' }));
+    contractReader.seed(1n, buildChainEscrowRecord({ chainDeliveryId: 1n, status: 'LOCKED' }));
+
+    await syncEscrowFromEvent(
+      buildEscrowEvent({ topic: ['dispute_resolved', '1'], payload: ['GADMIN', 'GADMIN'] }),
+    );
+
+    const stored = await escrowRepository.findByChainDeliveryId(1n);
+    expect(stored?.status).toBe('LOCKED');
+  });
+
+  it('dispute_resolved: backfills platformFee when dispute resolves to RELEASED (issue #39)', async () => {
+    const { escrowRepository, contractReader, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 2n, status: 'PAUSED', platformFee: null }));
+    contractReader.seed(2n, buildChainEscrowRecord({
+      chainDeliveryId: 2n,
+      status: 'RELEASED',
+      platformFee: 75000n,
+    }));
+    const closedAt = new Date('2026-01-04T00:00:00Z');
+
+    await syncEscrowFromEvent(
+      buildEscrowEvent({
+        topic: ['dispute_resolved', '2'],
+        payload: ['GADMIN', 'GADMIN'],
+        closedAt,
+      }),
+    );
+
+    const stored = await escrowRepository.findByChainDeliveryId(2n);
+    expect(stored?.status).toBe('RELEASED');
+    expect(stored?.releasedAt).toEqual(closedAt);
+  });
 });

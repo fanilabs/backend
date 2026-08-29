@@ -9,6 +9,7 @@ export { FleetNotFoundError, DriverFleetRecordNotFoundError } from './errors.js'
 export type {
   AcceptFleetInviteTxInput,
   AddDriverToFleetTxInput,
+  FindFleetOptions,
   FleetContractReader,
   FleetRepository,
   FleetTransactionBuilder,

@@ -1,6 +1,6 @@
 .PHONY: help install dev dev-worker build start lint format test test-watch \
         typecheck db-up db-down db-migrate db-studio seed docker-up docker-down docker-logs \
-        docker-up-observability load-test
+        docker-up-observability docker-migrate load-test
 
 help:
 	@echo "fanilab-backend — common tasks"
@@ -22,6 +22,7 @@ help:
 	@echo "  make docker-down           Stop the full stack"
 	@echo "  make docker-logs           Tail logs for the full stack"
 	@echo "  make docker-up-observability   Also start local Prometheus + Grafana (see docs/OBSERVABILITY.md)"
+	@echo "  make docker-migrate        Re-run Prisma migrations against the Docker Compose stack"
 	@echo "  make load-test             Run scripts/load-test.ts against BASE_URL (default localhost:3000)"
 
 install:
@@ -77,6 +78,9 @@ docker-logs:
 
 docker-up-observability:
 	docker compose --profile observability up -d --build
+
+docker-migrate:
+	docker compose run --rm migrate
 
 load-test:
 	pnpm load-test
