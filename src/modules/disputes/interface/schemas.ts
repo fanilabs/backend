@@ -1,7 +1,5 @@
 import { z } from 'zod';
-
-/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
-const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
+import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 const chainDeliveryId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
 const evidenceHash = z.string().regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
