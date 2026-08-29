@@ -53,13 +53,16 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
         },
       },
       async (request, reply) => {
-        const { status, limit } = request.query;
-        const notifications = await useCases.listNotifications({
+        const { status, limit, before } = request.query;
+        const { items, nextCursor, limit: appliedLimit } = await useCases.listNotifications({
           userId: requireUserId(request),
           ...(status && { status }),
           ...(limit !== undefined && { limit }),
+          ...(before !== undefined && { before }),
         });
-        void reply.status(200).send(ok(notifications.map(serializeNotification)));
+        void reply
+          .status(200)
+          .send(ok(items.map(serializeNotification), { limit: appliedLimit, nextCursor }));
       },
     );
 
