@@ -46,6 +46,11 @@ export function createDownloadEvidenceUseCase(deps: DownloadEvidenceDeps) {
 
     if (input.requesterRole !== 'ADMIN') {
       const dispute = await deps.disputeRepository.findById(evidence.disputeId);
+      // `dispute.raisedBy` is guaranteed to be a real Stellar address by the
+      // sync layer (sync-dispute-from-event.ts's upsertResolution skips
+      // writing a resolution rather than falling back to a non-address
+      // sentinel) — the only null-safety this check needs is for `dispute`
+      // itself possibly not existing.
       const [ownsUploader, ownsRaiser] = await Promise.all([
         deps.walletOwnershipRepository.isOwnedByUser(input.requesterId, evidence.uploadedBy),
         dispute
