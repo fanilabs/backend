@@ -18,7 +18,12 @@ export function createFraudDetectionRoutes(
       '/fraud-detection/actors/:address',
       {
         preHandler: [authenticate, requireRole('ADMIN')],
-        schema: { params: actorAddressParamsSchema, response: { 200: assessActorResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
+          params: actorAddressParamsSchema,
+          response: { 200: assessActorResponseSchema },
+        },
       },
       async (request, reply) => {
         const assessment = await useCases.assessActor({ address: request.params.address });

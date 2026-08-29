@@ -48,6 +48,7 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           querystring: listNotificationsQuerySchema,
           response: { 200: listNotificationsResponseSchema },
         },
@@ -71,6 +72,7 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           params: notificationIdParamsSchema,
           response: { 200: getNotificationResponseSchema },
         },

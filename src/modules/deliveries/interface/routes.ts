@@ -81,7 +81,11 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/create-delivery',
       {
         preHandler: authenticate,
-        schema: { body: createDeliveryBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: createDeliveryBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildCreateDeliveryTransaction({
@@ -96,7 +100,11 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/assign-driver',
       {
         preHandler: authenticate,
-        schema: { body: assignDriverBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: assignDriverBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildAssignDriverTransaction({
@@ -111,7 +119,11 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/mark-in-transit',
       {
         preHandler: authenticate,
-        schema: { body: markInTransitBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: markInTransitBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildMarkInTransitTransaction({
@@ -126,7 +138,11 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/confirm-delivery',
       {
         preHandler: authenticate,
-        schema: { body: confirmDeliveryBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: confirmDeliveryBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildConfirmDeliveryTransaction({
@@ -141,7 +157,11 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/cancel-delivery',
       {
         preHandler: authenticate,
-        schema: { body: cancelDeliveryBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: cancelDeliveryBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildCancelDeliveryTransaction({

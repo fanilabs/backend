@@ -52,7 +52,10 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
   return async function usersRoutes(app) {
     app.get(
       '/users/me',
-      { preHandler: authenticate, schema: { response: { 200: profileResponseSchema } } },
+      {
+        preHandler: authenticate,
+        schema: { security: [{ bearerAuth: [] }], response: { 200: profileResponseSchema } },
+      },
       async (request, reply) => {
         const profile = await useCases.getMyProfile({ userId: requireUserId(request) });
         void reply.status(200).send(
@@ -71,7 +74,10 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
 
     app.get(
       '/users/me/wallets',
-      { preHandler: authenticate, schema: { response: { 200: listWalletsResponseSchema } } },
+      {
+        preHandler: authenticate,
+        schema: { security: [{ bearerAuth: [] }], response: { 200: listWalletsResponseSchema } },
+      },
       async (request, reply) => {
         const wallets = await useCases.listWallets({ userId: requireUserId(request) });
         void reply.status(200).send(ok(wallets.map(serializeWallet)));
@@ -83,6 +89,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: requestChallengeBodySchema,
           response: { 200: requestChallengeResponseSchema },
         },
@@ -100,7 +107,11 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       '/users/me/wallets/confirm',
       {
         preHandler: authenticate,
-        schema: { body: confirmWalletBodySchema, response: { 200: walletResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: confirmWalletBodySchema,
+          response: { 200: walletResponseSchema },
+        },
       },
       async (request, reply) => {
         const wallet = await useCases.confirmWalletLink({
@@ -115,7 +126,11 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       '/users/me/wallets/:id',
       {
         preHandler: authenticate,
-        schema: { params: walletIdParamsSchema, response: { 200: emptyDataResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          params: walletIdParamsSchema,
+          response: { 200: emptyDataResponseSchema },
+        },
       },
       async (request, reply) => {
         await useCases.unlinkWallet({
