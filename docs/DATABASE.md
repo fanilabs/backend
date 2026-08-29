@@ -39,6 +39,31 @@ pnpm prisma:studio           # browse data locally
 
 Migrations are committed to `prisma/migrations/` and reviewed like any other code change — no migration is squashed or edited after merge to `main`.
 
+## Seed Data
+
+`pnpm seed` (`prisma/seed.ts`, also `make seed`, and wired as Prisma's own
+`prisma.seed` hook) populates a small, coherent local dataset covering every
+read model:
+
+- An `ADMIN` and a `CUSTOMER` user, each with one linked `WalletAddress`.
+  Development-only credentials, printed to stdout when the script runs —
+  see `README.md` § Local development.
+- Six `deliveries`, one per `DeliveryStatus` value.
+- Four `escrows`, one per `EscrowStatus` value, linked to a subset of the
+  seeded deliveries.
+- Four additional deliveries dedicated to disputes, one per `DisputeStatus`
+  value, plus one `Evidence` row on the `OPEN` dispute.
+- One `Fleet` (owned by the seeded admin) with two `FleetDriver` rows, one
+  per `FleetDriverStatus` value.
+- Three `DriverProfile` rows, one per `DriverTier` value.
+- Three `Notification` rows, one per `NotificationStatus` value.
+- Two `AuditLog` rows.
+
+The script upserts on each table's natural unique key (email, wallet
+address, `chainDeliveryId`, `chainFleetId`, etc.) or a fixed seed id, so
+running it more than once does not create duplicate rows. It refuses to run
+when `NODE_ENV=production`.
+
 ## Money/Amounts
 
 `escrows.amount` and `.platform_fee` are `Decimal(39, 0)` — exactly large enough to hold any Soroban `i128` value as an integer (`i128::MAX` has 39 digits; `Decimal(38, 0)` is one digit short), never a floating-point representation. Display formatting (applying decimals for a given asset) happens in the application layer, not the database.
