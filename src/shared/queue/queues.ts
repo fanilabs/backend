@@ -10,7 +10,6 @@ import { getQueueConnection } from './connection.js';
 export const QueueName = {
   BlockchainIndexer: 'blockchain-indexer',
   Notifications: 'notifications',
-  ReputationReconciliation: 'reputation-reconciliation',
 } as const;
 
 export type QueueNameValue = (typeof QueueName)[keyof typeof QueueName];

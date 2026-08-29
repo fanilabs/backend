@@ -10,7 +10,7 @@ Fastify's request logging is enabled by default (disabled only in `test` to keep
 
 - `GET /health` — database + Redis reachability, `200` when both are `ok`, `503` otherwise (`src/shared/http/routes/health.ts`).
 - `GET /health/indexer` — per-contract indexer lag against the real current ledger (queries the live Soroban RPC on every call), `200`/`503` per contract's lag vs. `INDEXER_LAG_ALERT_LEDGERS`. Implemented (`src/modules/indexer`); see [`EVENT_INDEXER.md`](./EVENT_INDEXER.md).
-- `GET /health/queue` — per-queue job counts (`waiting`/`active`/`delayed`/`failed`/`completed`) for every monitored BullMQ queue (`blockchain-indexer`, `notifications`). `503 degraded` if any queue has ever produced a job that exhausted all 5 of its retries (`failed > 0`) — unlike the indexer's numeric lag threshold, there's no natural "how many failures are acceptable" number here, so any failure at all is the signal. `reputation-reconciliation` is a queue name declared in `shared/queue/queues.ts` but never actually produced to or consumed from (`reputation` ended up doing a synchronous full-refresh instead) — deliberately excluded rather than reporting health for a queue nothing uses.
+- `GET /health/queue` — per-queue job counts (`waiting`/`active`/`delayed`/`failed`/`completed`) for every monitored BullMQ queue (`blockchain-indexer`, `notifications`). `503 degraded` if any queue has ever produced a job that exhausted all 5 of its retries (`failed > 0`) — unlike the indexer's numeric lag threshold, there's no natural "how many failures are acceptable" number here, so any failure at all is the signal.
 
 ## Error Reporting
 

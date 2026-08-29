@@ -9,14 +9,6 @@ export interface QueueCounts {
   completed: number;
 }
 
-/**
- * `ReputationReconciliation` is deliberately excluded — it's a queue name
- * declared for a reconciliation flow that was never actually built
- * (`reputation` ended up doing a synchronous full-refresh instead, see
- * that module's `sync-reputation-from-event.ts`); reporting health for a
- * queue nothing ever produces to or consumes from would be misleading,
- * not informative.
- */
 const MONITORED_QUEUES = [QueueName.BlockchainIndexer, QueueName.Notifications] as const;
 
 export async function getQueueHealth(): Promise<QueueCounts[]> {
