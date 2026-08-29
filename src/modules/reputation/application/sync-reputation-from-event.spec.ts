@@ -67,6 +67,28 @@ describe('syncReputationFromEvent', () => {
     expect((await driverProfileRepository.findByAddress('G3'))?.tier).toBe('GOLD');
   });
 
+  it.each([
+    [0, 'BRONZE'],
+    [49, 'BRONZE'],
+    [50, 'SILVER'],
+    [74, 'SILVER'],
+    [75, 'GOLD'],
+    [100, 'GOLD'],
+  ] as const)(
+    'tier boundary: score %i derives tier %s (mirrors identity_reputation_contract.get_driver_tier)',
+    async (score, expectedTier) => {
+      const { driverProfileRepository, contractReader, syncReputationFromEvent } = setup();
+      const address = `GBOUNDARY${score}`;
+      contractReader.seed(address, buildChainDriverProfile({ address, reputationScore: score }));
+
+      await syncReputationFromEvent(
+        buildReputationEvent({ topic: ['driver_registered'], payload: [address] }),
+      );
+
+      expect((await driverProfileRepository.findByAddress(address))?.tier).toBe(expectedTier);
+    },
+  );
+
   it('reputation_increased: refreshes from get_driver_profile rather than reimplementing the +points formula', async () => {
     const { driverProfileRepository, contractReader, syncReputationFromEvent } = setup();
     contractReader.seed(
