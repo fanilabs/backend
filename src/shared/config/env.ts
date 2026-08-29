@@ -5,9 +5,12 @@ import { z } from 'zod';
  * Failing fast here (instead of discovering a missing var mid-request) is
  * the whole point — see docs/DEPLOYMENT.md.
  */
-const envSchema = z.object({
+const baseEnvSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // No `.default()` here: whether an unset LOG_LEVEL means 'info' or 'silent'
+  // depends on NODE_ENV (see the `.transform` below, which is the single
+  // place that decides it) — see src/shared/logger/index.ts.
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).optional(),
 
   HOST: z.string().default('0.0.0.0'),
   PORT: z.coerce.number().int().positive().default(3000),
@@ -29,12 +32,16 @@ const envSchema = z.object({
   SOROBAN_RPC_URL: z.string().url().default('https://soroban-testnet.stellar.org'),
   STELLAR_NETWORK_PASSPHRASE: z.string().default('Test SDF Network ; September 2015'),
 
+  // `SETTLEMENT_CONTRACT_ID` deliberately does not exist here: settlement is
+  // an unimplemented on-chain stub with no consuming module (see the same
+  // exclusion in src/modules/indexer/index.ts and ROADMAP.md §9) — a config
+  // variable with no reader is documentation debt CONTRIBUTING.md prohibits.
+  // Re-add it when settlement_contract is actually implemented.
   ESCROW_CONTRACT_ID: z.string().optional(),
   DELIVERY_CONTRACT_ID: z.string().optional(),
   DISPUTE_RESOLUTION_CONTRACT_ID: z.string().optional(),
   FLEET_MANAGEMENT_CONTRACT_ID: z.string().optional(),
   IDENTITY_REPUTATION_CONTRACT_ID: z.string().optional(),
-  SETTLEMENT_CONTRACT_ID: z.string().optional(),
 
   INDEXER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   INDEXER_LAG_ALERT_LEDGERS: z.coerce.number().int().positive().default(50),
@@ -49,7 +56,22 @@ const envSchema = z.object({
   EVIDENCE_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
 });
 
+/**
+ * `LOG_LEVEL`'s effective default depends on `NODE_ENV`: tests should be
+ * quiet unless a level is explicitly requested, everything else defaults to
+ * `info`. Expressing that here — the single source of truth for config —
+ * means src/shared/logger/index.ts can trust `getConfig().LOG_LEVEL` as-is
+ * instead of re-reading `process.env` itself and bypassing validation.
+ */
+const envSchema = baseEnvSchema.transform((env) => ({
+  ...env,
+  LOG_LEVEL: env.LOG_LEVEL ?? (env.NODE_ENV === 'test' ? ('silent' as const) : ('info' as const)),
+}));
+
 export type Env = z.infer<typeof envSchema>;
+
+/** Exposed only for the .env.example drift test — see env.test.ts. */
+export const envSchemaKeys = Object.keys(baseEnvSchema.shape);
 
 export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const result = envSchema.safeParse(source);
