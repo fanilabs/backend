@@ -1,0 +1,62 @@
+name: E2E
+
+# End-to-end tests run on a schedule and on release branches, not on every
+# PR — they boot the fully-composed server and hit it over the wire, so they
+# are costlier and flakier than the src-scoped unit/integration/API jobs
+# (`ci.yml`), exactly as ROADMAP.md §10 prescribes.
+on:
+  schedule:
+    # Nightly E2E sweep (UTC) so regressions in the composed stack surface
+    # even with no PR activity.
+    - cron: '0 3 * * *'
+  push:
+    branches:
+      - 'release/**'
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DATABASE_URL: postgresql://fanilab:fanilab@localhost:5432/fanilab_backend?schema=public
+  REDIS_URL: redis://localhost:6379
+  JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-use-000000
+  JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-use-00000
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: fanilab
+          POSTGRES_PASSWORD: fanilab
+          POSTGRES_DB: fanilab_backend
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U fanilab -d fanilab_backend"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm prisma:migrate:deploy
+      - run: pnpm test:e2e
