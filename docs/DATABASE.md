@@ -29,6 +29,35 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 
 `blockchain_checkpoints` (one row per `(contractName, network)`) and `blockchain_events` (append-only raw event log, unique on `(contractName, network, rpcEventId)` — the Soroban RPC's own globally-unique event id) are the durability layer described in `ARCHITECTURE.md` §6. `blockchain_events` is intentionally kept even after a module has processed an event — it's the replay/audit source if a module's read-model logic needs to be rebuilt.
 
+## Read-Path Indexes
+
+Several ordered list / aggregation reads filter on one column and sort on
+another (or group by one column). Each of those reads is backed by a
+composite index matching its exact filter-and-sort (or group-by) shape, so
+the planner resolves the predicate and the order from a single index instead
+of sorting the matched rows in a second pass:
+
+| Query shape (module) | Composite index |
+|---|---|
+| `notifications.listByUserId` — `WHERE user_id = ? AND status = ? … ORDER BY created_at DESC` (`notifications`) | `notifications(user_id, created_at desc)` |
+| `auditLogs.list` — `ORDER BY created_at DESC` (unbounded append-only log) (`admin`) | `audit_logs(created_at desc)` |
+| `DeliveryRepository.list` — `WHERE status = ? … ORDER BY created_at_chain DESC` (`deliveries`) | `deliveries(status, created_at_chain desc)` |
+| `analytics.getGmvByToken` — `GROUP BY token` for `status = 'RELEASED'` (`analytics`) | `escrows(status, token)` |
+| `analytics.getDriverTierCounts` — `GROUP BY tier` (`analytics`) | `driver_profiles(tier)` |
+
+See `prisma/schema.prisma` for the authoritative definitions (each carries a
+header comment naming the exact read it backs) and `API_REFERENCE.md` §
+/notifications + §/analytics for the endpoint-level detail. When a new
+composite's leading column fully covers an existing single-column index
+(i.e. every predicate that could use the single-column index is served by
+that composite as a prefix), the single-column index is dropped in the same
+migration rather than kept — that's what removed the former `deliveries_status
+_idx`, which was fully covered by `deliveries(status, created_at_chain desc)`
+and would otherwise carry duplicate write/maintenance cost for no read benefit.
+`deliveries`'s `sender_address`, `recipient_address`, and `driver_address`
+indexes are kept because they are filter-only columns with no composite
+covering them.
+
 ## Migrations
 
 ```bash
