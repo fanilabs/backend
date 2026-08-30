@@ -2,7 +2,26 @@
 
 ## Reporting a Vulnerability
 
-Please do not open a public GitHub issue for security vulnerabilities. Instead, email the maintainers (see the FaniLab organization contact in the smart contract repository's `SECURITY.md`) with a description, reproduction steps, and impact assessment. We aim to acknowledge reports within 5 business days.
+Please do not open a public GitHub issue for security vulnerabilities.
+
+**Report privately from this repository:**
+<https://github.com/fanilabs/backend/security/advisories/new> — or click
+**Report a vulnerability** under this repository's **Security** tab. GitHub's
+private vulnerability reporting is enabled for this repo, so this form is a
+direct, self-contained channel to the maintainers: no email address to guess,
+no other repository to locate first. The report, the discussion, and fix
+coordination all stay private until a patch ships.
+
+Please include a description, reproduction steps, and an impact assessment. We
+aim to acknowledge reports within 5 business days.
+
+The FaniLab organization contact in the smart contract repository's
+`SECURITY.md` remains valid as supplementary context, but the advisory form
+above is sufficient on its own and is the preferred route.
+
+`CODE_OF_CONDUCT.md`'s Enforcement section points here for conduct reports as
+well — use the same **Report a vulnerability** form; it reaches the same
+maintainers and stays private.
 
 ## Custody Model
 
@@ -45,6 +64,15 @@ From `PHASE_1_DOMAIN_ANALYSIS.md` §3: `escrow_contract.freeze_funds` has no `re
 Dependabot (`.github/dependabot.yml`) tracks npm, Docker base images, and GitHub Actions weekly; major version bumps require manual review rather than auto-merge.
 
 Dependabot only proposes upgrades — it does not fail a build for a known-vulnerable dependency that hasn't been upgraded yet. To close that gap, the `audit` job in `.github/workflows/ci.yml` runs `pnpm audit --audit-level=high` on every PR and on `main`; a `high` or `critical` advisory anywhere in the dependency tree (direct or transitive) fails CI. Run it locally with `pnpm audit`.
+
+## Automated Security Tooling (GitHub-native)
+
+Both of these are GitHub-native, free for this public repository, and enabled under **Settings → Code security**:
+
+- **Dependabot security updates** — distinct from the weekly version-update schedule in `.github/dependabot.yml` above. This feature opens targeted PRs specifically for dependencies with a published security advisory, including some transitive ones that a routine version bump would not surface, and does so as soon as the advisory lands rather than on the weekly cadence.
+- **Secret scanning** — scans commits and pushes for known credential formats (e.g. a real `.env` value, a JWT signing secret, a database connection string with embedded credentials — the class of value `.env.example` deliberately keeps as placeholders) and alerts the maintainers so an exposed credential can be rotated immediately.
+
+These complement, and do not replace, the boot-time secret validation and log redaction described under **Secrets** and the `pnpm audit` CI gate above.
 
 **Accepted exceptions:** none currently. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
 
