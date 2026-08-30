@@ -1,7 +1,17 @@
 import { z } from 'zod';
 
 const email = z.string().trim().toLowerCase().email();
-const password = z.string().min(8).max(72); // bcrypt silently truncates beyond 72 bytes
+// bcrypt truncates silently beyond 72 *bytes* (not characters — see the
+// bcrypt package README). Zod's `.max()` counts UTF-16 code units, so a
+// password with multi-byte UTF-8 characters (emoji, many non-Latin scripts)
+// can sit under a 72-character limit while still exceeding 72 bytes and
+// being silently truncated. Enforce the real byte boundary instead.
+const password = z
+  .string()
+  .min(8)
+  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, {
+    message: 'Password must be at most 72 bytes long',
+  });
 
 export const registerBodySchema = z.object({
   email,

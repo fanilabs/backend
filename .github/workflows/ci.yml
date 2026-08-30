@@ -10,6 +10,14 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# None of this workflow's jobs write to the repository, comment on PRs, or
+# otherwise need more than read access to the checked-out code. Pin an
+# explicit least-privilege ceiling here rather than inheriting the ambient
+# repository/org default GITHUB_TOKEN grant (mirrors release.yml, which
+# scopes itself to the single `contents: write` it actually needs).
+permissions:
+  contents: read
+
 env:
   DATABASE_URL: postgresql://fanilab:fanilab@localhost:5432/fanilab_backend?schema=public
   REDIS_URL: redis://localhost:6379
