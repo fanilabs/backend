@@ -1,6 +1,10 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
-const chainDeliveryId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainDeliveryId = chainId;
 const evidenceHash = z.string().regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
 
@@ -42,8 +46,6 @@ const disputeDto = z.object({
 
 export const disputeIdParamsSchema = z.object({ chainDeliveryId });
 export const getDisputeResponseSchema = z.object({ data: disputeDto });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const raiseDisputeBodySchema = z.object({
   callerAddress: stellarAddress,
