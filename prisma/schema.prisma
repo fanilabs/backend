@@ -161,6 +161,11 @@ model WalletAddress {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // At most one is_primary = true row per user is enforced by the partial
+  // unique index `wallet_addresses_user_id_primary_key` (migration
+  // 20260830120000_wallet_address_single_primary). Prisma's schema DSL
+  // can't express a partial (filtered) unique index, so it exists only in
+  // that migration — do not "resolve drift" by dropping it.
   @@map("wallet_addresses")
 }
 

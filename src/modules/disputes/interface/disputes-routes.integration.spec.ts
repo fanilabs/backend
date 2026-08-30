@@ -4,6 +4,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../../app.js';
 import { disconnectPrisma } from '../../../shared/database/index.js';
+import { signAccessToken } from '../../../shared/jwt/index.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
 
 const dbAvailable = await isDatabaseAvailable();
@@ -378,5 +379,26 @@ describe.skipIf(!dbAvailable)('dispute routes (integration)', () => {
     });
 
     expect([200, 502]).toContain(addEvidenceResponse.statusCode);
+  });
+
+  // docs/API_REFERENCE.md: with DISPUTE_RESOLUTION_CONTRACT_ID unset (its
+  // .env.example default, and the default in this test process), the build
+  // endpoints must return 502 BLOCKCHAIN_ERROR naming the missing variable —
+  // the createUnconfiguredContractClient() fallback in ../index.ts — rather
+  // than a generic failure. Fails if that fallback wiring is removed.
+  it('returns 502 BLOCKCHAIN_ERROR from a build endpoint when the contract id is unconfigured', async () => {
+    const token = signAccessToken({ sub: randomUUID(), role: 'ADMIN' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/raise-dispute',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { callerAddress: Keypair.random().publicKey(), chainDeliveryId: '1' },
+    });
+
+    expect(response.statusCode).toBe(502);
+    const body = response.json<ErrorBody>();
+    expect(body.error.code).toBe('BLOCKCHAIN_ERROR');
+    expect(body.error.message).toContain('DISPUTE_RESOLUTION_CONTRACT_ID');
   });
 });
