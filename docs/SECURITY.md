@@ -10,7 +10,7 @@ Please do not open a public GitHub issue for security vulnerabilities. Instead, 
 
 ## Baseline HTTP Security
 
-- **Helmet** (`@fastify/helmet`) with a strict default CSP (`default-src 'self'`, `object-src 'none'`); relaxed only for the Swagger UI route, never globally.
+- **Helmet** (`@fastify/helmet`) with a strict default CSP (`default-src 'self'`, `object-src 'none'`); relaxed only for the Swagger UI route, never globally. `Cross-Origin-Resource-Policy` is set to `cross-origin` (Helmet's default is `same-origin`) so that allow-listed cross-origin clients can load API resources — e.g. evidence images via `<img>` — in no-CORS mode. That header is enforced by browsers independently of CORS, so the default would silently block those loads regardless of the `CORS_ORIGIN` allow-list.
 - **CORS**: explicit allow-listed origins (`CORS_ORIGIN`), credentials only for those origins — never a wildcard with credentials enabled.
 - **Rate limiting**: Redis-backed (`@fastify/rate-limit`), so limits hold across horizontally scaled API instances rather than resetting per-process.
 - **Input validation**: every route's request body/params/query validated by a Zod schema (`fastify-type-provider-zod`) before handler code runs — rejected requests never reach application logic.
