@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import type { EscrowContractReader, EscrowRepository } from '../domain/index.js';
 
 export interface SyncEscrowFromEventDeps {
@@ -28,7 +29,7 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
     }
 
     const eventName = event.topic[0];
-    const chainDeliveryId = parseDeliveryId(event.topic[1]);
+    const chainDeliveryId = parseBigIntId(event.topic[1]);
     if (chainDeliveryId === null) return;
 
     const payload = Array.isArray(event.payload) ? event.payload : [];
@@ -93,19 +94,6 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
         return;
     }
   };
-}
-
-function parseDeliveryId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }
 
 function parseAmount(value: unknown): bigint | null {

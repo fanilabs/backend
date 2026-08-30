@@ -1,8 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
 import type { EvidenceWithVerification, GetDisputeResult } from '../application/index.js';
-import type { UserRole } from '../domain/index.js';
 import type {
   createBuildDisputeTransactionsUseCases,
   createDownloadEvidenceUseCase,
@@ -56,18 +54,6 @@ function serializeDispute(result: GetDisputeResult) {
     senderShareBps: result.dispute.senderShareBps,
     evidence: result.evidence.map(serializeEvidence),
   };
-}
-
-function requireUser(request: { user?: { id: string; role: UserRole } }): {
-  id: string;
-  role: UserRole;
-} {
-  if (!request.user) {
-    // Unreachable in practice — both routes below attach `authenticate` as
-    // a preHandler, which throws before a handler body ever runs.
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user;
 }
 
 export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRoutesConfig): FastifyPluginAsyncZod {

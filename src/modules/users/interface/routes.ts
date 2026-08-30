@@ -1,6 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
 import type { WalletAddressRecord } from '../domain/index.js';
 import type {
   createConfirmWalletLinkUseCase,
@@ -37,17 +36,6 @@ function serializeWallet(wallet: WalletAddressRecord) {
   };
 }
 
-function requireUserId(request: { user?: { id: string } }): string {
-  if (!request.user) {
-    // Unreachable in practice — every route below attaches `authenticate`
-    // as a preHandler, which throws before a handler body ever runs. This
-    // exists so `request.user.id` is never accessed through a non-null
-    // assertion further down.
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user.id;
-}
-
 export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZod {
   return async function usersRoutes(app) {
     app.get(
@@ -57,7 +45,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
         schema: { security: [{ bearerAuth: [] }], response: { 200: profileResponseSchema } },
       },
       async (request, reply) => {
-        const profile = await useCases.getMyProfile({ userId: requireUserId(request) });
+        const profile = await useCases.getMyProfile({ userId: requireUser(request).id });
         void reply.status(200).send(
           ok({
             ...profile,
@@ -79,7 +67,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
         schema: { security: [{ bearerAuth: [] }], response: { 200: listWalletsResponseSchema } },
       },
       async (request, reply) => {
-        const wallets = await useCases.listWallets({ userId: requireUserId(request) });
+        const wallets = await useCases.listWallets({ userId: requireUser(request).id });
         void reply.status(200).send(ok(wallets.map(serializeWallet)));
       },
     );
@@ -96,7 +84,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const result = await useCases.requestWalletLinkChallenge({
-          userId: requireUserId(request),
+          userId: requireUser(request).id,
           address: request.body.address,
         });
         void reply.status(200).send(ok(result));
@@ -115,7 +103,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const wallet = await useCases.confirmWalletLink({
-          userId: requireUserId(request),
+          userId: requireUser(request).id,
           ...request.body,
         });
         void reply.status(200).send(ok(serializeWallet(wallet)));
@@ -134,7 +122,7 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         await useCases.unlinkWallet({
-          userId: requireUserId(request),
+          userId: requireUser(request).id,
           walletId: request.params.id,
         });
         void reply.status(200).send(ok({}));

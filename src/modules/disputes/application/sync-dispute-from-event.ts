@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import type { DisputeEscrowStateReader, DisputeRepository } from '../domain/index.js';
 
 export interface SyncDisputeFromEventDeps {
@@ -120,7 +121,7 @@ async function handleEscrowEvent(
   // not the tuple-wrapped DeliveryId dispute_resolution_contract uses —
   // verified against escrow_contract/lib.rs (same convention the `escrow`
   // module's own handler relies on).
-  const chainDeliveryId = parseBareDeliveryId(event.topic[1]);
+  const chainDeliveryId = parseBigIntId(event.topic[1]);
   if (chainDeliveryId === null) return;
 
   if (event.topic[0] === 'delivery_disputed') {
@@ -250,18 +251,5 @@ function parseTupleWrappedDeliveryId(value: unknown): bigint | null {
     return null;
   }
   if (!Array.isArray(parsed) || parsed.length !== 1) return null;
-  return parseBareDeliveryId(parsed[0]);
-}
-
-function parseBareDeliveryId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
+  return parseBigIntId(parsed[0]);
 }

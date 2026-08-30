@@ -1,6 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok, requireRole } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireRole, requireUser } from '../../../shared/http/index.js';
 import type { AdminUser, AuditLogEntry, DisputeReviewItem } from '../domain/index.js';
 import type {
   createListAuditLogUseCase,
@@ -49,15 +48,6 @@ function serializeAuditLogEntry(entry: AuditLogEntry) {
   };
 }
 
-function requireUserId(request: { user?: { id: string } }): string {
-  if (!request.user) {
-    // Unreachable in practice — every route below attaches `authenticate`
-    // as a preHandler, which throws before a handler body ever runs.
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user.id;
-}
-
 const adminOnly = [authenticate, requireRole('ADMIN')];
 
 export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZod {
@@ -92,7 +82,7 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const user = await useCases.updateUserRole({
-          actorId: requireUserId(request),
+          actorId: requireUser(request).id,
           userId: request.params.id,
           role: request.body.role,
         });

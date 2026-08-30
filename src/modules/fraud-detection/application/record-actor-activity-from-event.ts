@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress } from '../../../shared/events/index.js';
 import type { ActorActivityRepository, RecordActivityInput } from '../domain/index.js';
 
 export interface RecordActorActivityFromEventDeps {
@@ -71,8 +72,4 @@ function resolveActivity(event: BlockchainEventEnvelope): RecordActivityInput | 
     default:
       return null;
   }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

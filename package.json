@@ -17,7 +17,7 @@
     "start": "node dist/server.js",
     "start:worker": "node dist/workers/index.js",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
+    "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "audit": "pnpm audit --audit-level=high",
     "format": "prettier --write .",
