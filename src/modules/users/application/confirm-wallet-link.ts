@@ -62,11 +62,30 @@ export function createConfirmWalletLinkUseCase(deps: ConfirmWalletLinkDeps) {
     }
 
     const currentWallets = await deps.walletAddressRepository.findByUserId(input.userId);
-    return deps.walletAddressRepository.create({
+    const base = {
       userId: input.userId,
       address: input.address,
-      isPrimary: currentWallets.length === 0,
       verifiedAt: new Date(),
-    });
+    };
+
+    if (currentWallets.length > 0) {
+      return deps.walletAddressRepository.create({ ...base, isPrimary: false });
+    }
+
+    // First wallet for this user — it should become primary. But two
+    // concurrent confirmations can both reach here having each seen zero
+    // wallets; the DB's partial unique index
+    // (`wallet_addresses_user_id_primary_key`) lets only one row be
+    // is_primary = true. If we lose that race, link this wallet as
+    // non-primary rather than failing the request — "first wallet wins".
+    try {
+      return await deps.walletAddressRepository.create({ ...base, isPrimary: true });
+    } catch (error) {
+      const now = await deps.walletAddressRepository.findByUserId(input.userId);
+      if (now.some((wallet) => wallet.isPrimary)) {
+        return deps.walletAddressRepository.create({ ...base, isPrimary: false });
+      }
+      throw error;
+    }
   };
 }

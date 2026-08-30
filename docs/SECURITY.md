@@ -65,16 +65,13 @@ Dependabot (`.github/dependabot.yml`) tracks npm, Docker base images, and GitHub
 
 Dependabot only proposes upgrades — it does not fail a build for a known-vulnerable dependency that hasn't been upgraded yet. To close that gap, the `audit` job in `.github/workflows/ci.yml` runs `pnpm audit --audit-level=high` on every PR and on `main`; a `high` or `critical` advisory anywhere in the dependency tree (direct or transitive) fails CI. Run it locally with `pnpm audit`.
 
-## Automated Security Tooling (GitHub-native)
+**Accepted exceptions:** none currently at or above the `high` CI threshold. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
 
-Both of these are GitHub-native, free for this public repository, and enabled under **Settings → Code security**:
+**Known residual advisories below the `high` threshold** (do not fail CI, recorded here for visibility):
 
-- **Dependabot security updates** — distinct from the weekly version-update schedule in `.github/dependabot.yml` above. This feature opens targeted PRs specifically for dependencies with a published security advisory, including some transitive ones that a routine version bump would not surface, and does so as soon as the advisory lands rather than on the weekly cadence.
-- **Secret scanning** — scans commits and pushes for known credential formats (e.g. a real `.env` value, a JWT signing secret, a database connection string with embedded credentials — the class of value `.env.example` deliberately keeps as placeholders) and alerts the maintainers so an exposed credential can be rotated immediately.
+- `GHSA-w5hq-g745-h8pq` — `uuid` <11.1.1, missing buffer bounds check in v3/v5/v6 when a `buf` argument is supplied. Reached only via `autocannon > hyperid > uuid`; `autocannon` is a dev-only load-testing tool (`pnpm load-test`), never bundled or run in production, and this project never passes a `buf` argument. No override is applied because `hyperid` has not published a release depending on a patched `uuid`.
 
-These complement, and do not replace, the boot-time secret validation and log redaction described under **Secrets** and the `pnpm audit` CI gate above.
-
-**Accepted exceptions:** none currently. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
+The `pnpm.overrides` block in `package.json` pins forward-patched versions of `tar`, `handlebars`, `vite`, `esbuild`, `nanoid`, `js-yaml`, and `fast-uri` — all pulled in transitively through build/lint/test tooling (`bcrypt`'s native-build toolchain, `eslint-plugin-boundaries`, the Vitest/Vite stack) — to clear the `critical`/`high` advisories those chains carried.
 
 ## Reporting Timeline & Disclosure
 
