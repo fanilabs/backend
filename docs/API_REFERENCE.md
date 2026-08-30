@@ -6,7 +6,7 @@ The live, authoritative reference is generated from the same Zod schemas that va
 
 - All routes are versioned under `/api/v1` except `/health*` and `/api-docs`.
 - Success responses: `{ "data": ..., "meta"?: {...} }`.
-- Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... } }` — see `src/shared/errors` for the full code list.
+- Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... }, "requestId": "<fastify request id>" }` — see `src/shared/errors` for the full code list. The top-level `requestId` lets a user reporting a 500 be correlated to the matching `req.id` in the server's request log line.
 - Mutating endpoints that reflect on-chain state (deliveries, escrow, disputes, fleet) return a **pending transaction record**, not a synchronously-updated resource — the underlying resource only reaches its new state once the blockchain indexer confirms the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
 
