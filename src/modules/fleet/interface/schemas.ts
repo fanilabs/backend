@@ -1,6 +1,10 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
-const chainFleetId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainFleetId = chainId;
 const fleetDriverStatus = z.enum(['PENDING', 'ACTIVE']);
 
 const fleetDriverDto = z.object({
@@ -48,8 +52,6 @@ export const payoutAddressParamsSchema = z.object({ chainFleetId, driverAddress:
 export const payoutAddressResponseSchema = z.object({
   data: z.object({ payoutAddress: z.string() }),
 });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const registerFleetBodySchema = z.object({
   ownerAddress: stellarAddress,
