@@ -98,6 +98,34 @@ export function handleError(
       void reply.status(404).send(body);
       return;
     }
+    if (error.code === 'P2003') {
+      const body: ErrorResponseBody = {
+        error: {
+          code: 'RELATED_RESOURCE_MISSING',
+          message: 'A related resource required by this operation does not exist',
+          details: error.meta,
+        },
+      };
+      void reply.status(409).send(body);
+      return;
+    }
+    if (error.code === 'P2034') {
+      const body: ErrorResponseBody = {
+        error: {
+          code: 'WRITE_CONFLICT',
+          message: 'The write conflicted with a concurrent transaction and may be retried',
+        },
+      };
+      void reply.status(409).send(body);
+      return;
+    }
+    if (error.code === 'P1001' || error.code === 'P1002') {
+      const body: ErrorResponseBody = {
+        error: { code: 'DATABASE_UNAVAILABLE', message: 'The database is currently unreachable' },
+      };
+      void reply.status(503).send(body);
+      return;
+    }
   }
 
   const fastifyError = error as FastifyError;

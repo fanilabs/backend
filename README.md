@@ -37,9 +37,19 @@ cp .env.example .env
 pnpm install
 make db-up              # Postgres + Redis via Docker
 pnpm prisma:migrate
+pnpm seed                # optional — populates demo data for every read endpoint
 pnpm dev                # API on http://localhost:3000
 pnpm dev:worker          # in a second terminal, if you're touching background jobs
 ```
+
+`pnpm seed` (also `make seed`) creates a development-only `ADMIN` account
+(`admin@fanilab.dev` / `DevAdmin123!`) and `CUSTOMER` account
+(`customer@fanilab.dev` / `DevCustomer123!`), each with a linked wallet, plus
+sample deliveries, escrows, disputes, a fleet with drivers, driver profiles,
+notifications, and audit log entries covering every status value so every
+`GET` endpoint returns real data without a live Soroban deployment. It's
+idempotent (safe to re-run) and refuses to run when `NODE_ENV=production`.
+See [`docs/DATABASE.md`](./docs/DATABASE.md) for exactly what it creates.
 
 API docs are served at `http://localhost:3000/api-docs` once the server is running.
 
@@ -50,7 +60,18 @@ cp .env.example .env
 make docker-up
 ```
 
-Brings up `api`, `worker`, `postgres`, and `redis`. See the [`Makefile`](./Makefile) for all shortcuts (`make help`).
+Brings up `postgres`, `redis`, a one-shot `migrate` service that applies Prisma
+migrations, then `api` and `worker` (both wait for `migrate` to complete
+successfully before starting). A clean `docker compose down -v && make
+docker-up` produces a stack that serves `GET /api/v1/deliveries` with no
+manual migration step. Re-run migrations against a running stack with `make
+docker-migrate`. See the [`Makefile`](./Makefile) for all shortcuts (`make
+help`).
+
+`migrate` is a local/dev convenience only — it does not change the production
+release process (see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) § Release
+Process), and the `api`/`worker` images still never migrate on boot
+themselves.
 
 ### Common tasks
 

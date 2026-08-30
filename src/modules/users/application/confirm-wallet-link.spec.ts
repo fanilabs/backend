@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createConfirmWalletLinkUseCase } from './confirm-wallet-link.js';
+import type { WalletAddressRecord, WalletAddressRepository } from '../domain/index.js';
 import {
   InvalidWalletChallengeError,
   InvalidWalletSignatureError,
@@ -63,6 +64,81 @@ describe('confirmWalletLink', () => {
     });
 
     expect(wallet.isPrimary).toBe(false);
+  });
+
+  it('links as non-primary when a concurrent confirmation already won the primary slot', async () => {
+    // Repository whose `create` enforces the DB's partial unique index:
+    // a second is_primary = true row for the same user is rejected.
+    const rows = new Map<string, WalletAddressRecord>();
+    let pretendNoWalletsOnce = false;
+    const walletAddressRepository: WalletAddressRepository = {
+      async findById(id) {
+        return rows.get(id) ?? null;
+      },
+      async findByAddress(address) {
+        return [...rows.values()].find((r) => r.address === address) ?? null;
+      },
+      async findByUserId(userId) {
+        // Simulate the race: the use case's first look-up sees zero wallets
+        // (as does the concurrent confirmation), so it tries is_primary =
+        // true; the retry look-up after the constraint violation sees the
+        // row the winner already committed.
+        if (pretendNoWalletsOnce) {
+          pretendNoWalletsOnce = false;
+          return [];
+        }
+        return [...rows.values()].filter((r) => r.userId === userId);
+      },
+      async create(input) {
+        if (
+          input.isPrimary &&
+          [...rows.values()].some((r) => r.userId === input.userId && r.isPrimary)
+        ) {
+          throw new Error('duplicate key value violates unique constraint');
+        }
+        const record: WalletAddressRecord = {
+          id: randomUUID(),
+          userId: input.userId,
+          address: input.address,
+          isPrimary: input.isPrimary,
+          verifiedAt: input.verifiedAt,
+          createdAt: new Date(),
+        };
+        rows.set(record.id, record);
+        return record;
+      },
+      async remove(id) {
+        rows.delete(id);
+      },
+    };
+    const challengeService = createFakeChallengeService();
+    const confirmWalletLink = createConfirmWalletLinkUseCase({
+      walletAddressRepository,
+      challengeService,
+      signatureVerifier: createFakeSignatureVerifier(),
+    });
+
+    const userId = randomUUID();
+    // The concurrent confirmation that raced us and won the primary slot.
+    await walletAddressRepository.create({
+      userId,
+      address: 'GWINNER...',
+      isPrimary: true,
+      verifiedAt: new Date(),
+    });
+
+    const address = 'GLOSER...';
+    const challenge = challengeService.issuedFor(userId, address, Date.now() + 60_000);
+    pretendNoWalletsOnce = true;
+    const wallet = await confirmWalletLink({
+      userId,
+      address,
+      challenge,
+      signature: `valid-signature-for:${challenge}`,
+    });
+
+    expect(wallet.isPrimary).toBe(false);
+    expect(await walletAddressRepository.findByUserId(userId)).toHaveLength(2);
   });
 
   it('is idempotent when re-confirming the same user’s already-linked wallet', async () => {

@@ -1,8 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
 import type { EvidenceWithVerification, GetDisputeResult } from '../application/index.js';
-import type { UserRole } from '../domain/index.js';
 import type {
   createBuildDisputeTransactionsUseCases,
   createDownloadEvidenceUseCase,
@@ -58,18 +56,6 @@ function serializeDispute(result: GetDisputeResult) {
   };
 }
 
-function requireUser(request: { user?: { id: string; role: UserRole } }): {
-  id: string;
-  role: UserRole;
-} {
-  if (!request.user) {
-    // Unreachable in practice — both routes below attach `authenticate` as
-    // a preHandler, which throws before a handler body ever runs.
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user;
-}
-
 export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRoutesConfig): FastifyPluginAsyncZod {
   const uploadEvidenceBodySchemaWithLimit = createUploadEvidenceBodySchema(config.evidenceMaxBytes);
   return async function disputeRoutes(app) {
@@ -89,6 +75,7 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           params: disputeIdParamsSchema,
           body: uploadEvidenceBodySchemaWithLimit,
           response: { 200: uploadEvidenceResponseSchema },
@@ -108,7 +95,10 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
 
     app.get(
       '/disputes/evidence/:evidenceId/download',
-      { preHandler: authenticate, schema: { params: evidenceIdParamsSchema } },
+      {
+        preHandler: authenticate,
+        schema: { security: [{ bearerAuth: [] }], params: evidenceIdParamsSchema },
+      },
       async (request, reply) => {
         const user = requireUser(request);
         const { contentType, bytes } = await useCases.downloadEvidence({
@@ -137,7 +127,11 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       '/transactions/build/raise-dispute',
       {
         preHandler: authenticate,
-        schema: { body: raiseDisputeBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: raiseDisputeBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildRaiseDisputeTransaction({
@@ -153,6 +147,7 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: addEvidenceHashBodySchema,
           response: { 200: transactionResponseSchema },
         },
@@ -170,7 +165,11 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       '/transactions/build/resolve-dispute-refund-sender',
       {
         preHandler: authenticate,
-        schema: { body: resolveDisputeBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: resolveDisputeBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope =
@@ -186,7 +185,11 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       '/transactions/build/resolve-dispute-pay-driver',
       {
         preHandler: authenticate,
-        schema: { body: resolveDisputeBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: resolveDisputeBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope =
@@ -203,6 +206,7 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: resolveDisputeSplitFundsBodySchema,
           response: { 200: transactionResponseSchema },
         },

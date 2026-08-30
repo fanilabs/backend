@@ -18,6 +18,11 @@ export default fp(async function docsPlugin(app: FastifyInstance) {
         version: '0.1.0',
       },
       servers: [{ url: '/api/v1' }],
+      components: {
+        securitySchemes: {
+          bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        },
+      },
     },
     transform: jsonSchemaTransform,
   });

@@ -23,6 +23,8 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 
 `actor_activities` is also not a read model of on-chain state — it's a durable, append-only log the `fraud-detection` module writes to itself (one row per relevant blockchain event, see `EVENT_INDEXER.md`), never mutated afterward. Deliberately not a pre-computed risk-score table: rule thresholds are evaluated fresh against this log on every `GET /fraud-detection/actors/:address` call rather than maintaining incrementally-updated derived state that could drift — see `src/modules/fraud-detection/domain/ports.ts`'s `ActorActivityRepository` header comment.
 
+**Retention**: rows are kept for `FRAUD_ACTIVITY_RETENTION_DAYS` (default 30 — comfortably above the widest current rule window, 24h, to leave room for future longer-window rules and for forensic/manual review) before a scheduled BullMQ job (`fraud-activity-cleanup` queue, `src/modules/fraud-detection/infrastructure/cleanup-queue.ts`) deletes them, running once a day in the worker process. Deletion is batched (1,000 rows per iteration, `ActorActivityRepository.deleteOlderThan`) so it never holds a long lock over the whole matching range. Because the retention window is always wider than every rule window, this never affects a live assessment — only rows already outside every rule's lookback are ever eligible for deletion.
+
 ## Blockchain Indexer Tables
 
 `blockchain_checkpoints` (one row per `(contractName, network)`) and `blockchain_events` (append-only raw event log, unique on `(contractName, network, rpcEventId)` — the Soroban RPC's own globally-unique event id) are the durability layer described in `ARCHITECTURE.md` §6. `blockchain_events` is intentionally kept even after a module has processed an event — it's the replay/audit source if a module's read-model logic needs to be rebuilt.
@@ -36,6 +38,31 @@ pnpm prisma:studio           # browse data locally
 ```
 
 Migrations are committed to `prisma/migrations/` and reviewed like any other code change — no migration is squashed or edited after merge to `main`.
+
+## Seed Data
+
+`pnpm seed` (`prisma/seed.ts`, also `make seed`, and wired as Prisma's own
+`prisma.seed` hook) populates a small, coherent local dataset covering every
+read model:
+
+- An `ADMIN` and a `CUSTOMER` user, each with one linked `WalletAddress`.
+  Development-only credentials, printed to stdout when the script runs —
+  see `README.md` § Local development.
+- Six `deliveries`, one per `DeliveryStatus` value.
+- Four `escrows`, one per `EscrowStatus` value, linked to a subset of the
+  seeded deliveries.
+- Four additional deliveries dedicated to disputes, one per `DisputeStatus`
+  value, plus one `Evidence` row on the `OPEN` dispute.
+- One `Fleet` (owned by the seeded admin) with two `FleetDriver` rows, one
+  per `FleetDriverStatus` value.
+- Three `DriverProfile` rows, one per `DriverTier` value.
+- Three `Notification` rows, one per `NotificationStatus` value.
+- Two `AuditLog` rows.
+
+The script upserts on each table's natural unique key (email, wallet
+address, `chainDeliveryId`, `chainFleetId`, etc.) or a fixed seed id, so
+running it more than once does not create duplicate rows. It refuses to run
+when `NODE_ENV=production`.
 
 ## Money/Amounts
 

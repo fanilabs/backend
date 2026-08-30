@@ -1,6 +1,11 @@
 import { randomUUID } from 'node:crypto';
 import type { BlockchainEventEnvelope } from '../../../../shared/events/index.js';
-import type { ActorActivityCategory, ActorActivityRepository } from '../../domain/index.js';
+import type { ActorActivityCategory, ActorActivityRepository, Clock } from '../../domain/index.js';
+
+/** A `Clock` fixed to a given instant, for deterministic window tests. */
+export function createFixedClock(at: Date): Clock {
+  return { now: () => Promise.resolve(at) };
+}
 
 export function createInMemoryActorActivityRepository(): ActorActivityRepository & {
   seed(address: string, category: ActorActivityCategory, occurredAt: Date): void;
@@ -22,6 +27,16 @@ export function createInMemoryActorActivityRepository(): ActorActivityRepository
       return rows.filter(
         (row) => row.address === address && row.category === category && row.occurredAt >= since,
       ).length;
+    },
+    async deleteOlderThan(olderThan) {
+      let removed = 0;
+      for (let i = rows.length - 1; i >= 0; i -= 1) {
+        if (rows[i].occurredAt < olderThan) {
+          rows.splice(i, 1);
+          removed += 1;
+        }
+      }
+      return removed;
     },
   };
 }

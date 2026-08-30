@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
+import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
-/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
-const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
-const chainFleetId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainFleetId = chainId;
 const fleetDriverStatus = z.enum(['PENDING', 'ACTIVE']);
 
 const fleetDriverDto = z.object({
@@ -26,14 +28,30 @@ const fleetDto = z.object({
 });
 
 export const fleetIdParamsSchema = z.object({ chainFleetId });
+
+/**
+ * `includeRemoved` defaults to `false` so `GET /fleets/:chainFleetId`
+ * returns current members only — the `removedAt === null` filter
+ * `FleetDriver`'s own doc comment says every caller must otherwise
+ * reimplement. `z.coerce.boolean()` isn't used here: it treats *any*
+ * non-empty query string (including the literal `"false"`) as `true`, which
+ * would make `?includeRemoved=false` a no-op — this explicit `enum` +
+ * `transform` avoids that trap.
+ */
+export const getFleetQuerySchema = z.object({
+  includeRemoved: z
+    .enum(['true', 'false'])
+    .optional()
+    .default('false')
+    .transform((value) => value === 'true'),
+  driverLimit: z.coerce.number().int().positive().max(500).optional().default(100),
+});
 export const getFleetResponseSchema = z.object({ data: fleetDto });
 
 export const payoutAddressParamsSchema = z.object({ chainFleetId, driverAddress: stellarAddress });
 export const payoutAddressResponseSchema = z.object({
   data: z.object({ payoutAddress: z.string() }),
 });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const registerFleetBodySchema = z.object({
   ownerAddress: stellarAddress,

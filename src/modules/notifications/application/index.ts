@@ -11,6 +11,7 @@ export {
   createListNotificationsUseCase,
   type ListNotificationsDeps,
   type ListNotificationsInput,
+  type ListNotificationsResult,
 } from './list-notifications.js';
 export {
   createGetNotificationUseCase,

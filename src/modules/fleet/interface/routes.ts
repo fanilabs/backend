@@ -10,6 +10,7 @@ import {
   acceptFleetInviteBodySchema,
   addDriverToFleetBodySchema,
   fleetIdParamsSchema,
+  getFleetQuerySchema,
   getFleetResponseSchema,
   payoutAddressParamsSchema,
   payoutAddressResponseSchema,
@@ -53,10 +54,18 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
   return async function fleetRoutes(app) {
     app.get(
       '/fleets/:chainFleetId',
-      { schema: { params: fleetIdParamsSchema, response: { 200: getFleetResponseSchema } } },
+      {
+        schema: {
+          params: fleetIdParamsSchema,
+          querystring: getFleetQuerySchema,
+          response: { 200: getFleetResponseSchema },
+        },
+      },
       async (request, reply) => {
         const fleet = await useCases.getFleet({
           chainFleetId: BigInt(request.params.chainFleetId),
+          includeRemoved: request.query.includeRemoved,
+          driverLimit: request.query.driverLimit,
         });
         void reply.status(200).send(ok(serializeFleet(fleet)));
       },
@@ -83,7 +92,11 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       '/transactions/build/register-fleet',
       {
         preHandler: authenticate,
-        schema: { body: registerFleetBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: registerFleetBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildRegisterFleetTransaction(
@@ -98,6 +111,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: updateFleetTreasuryBodySchema,
           response: { 200: transactionResponseSchema },
         },
@@ -115,7 +129,11 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       '/transactions/build/add-driver-to-fleet',
       {
         preHandler: authenticate,
-        schema: { body: addDriverToFleetBodySchema, response: { 200: transactionResponseSchema } },
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: addDriverToFleetBodySchema,
+          response: { 200: transactionResponseSchema },
+        },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildAddDriverToFleetTransaction({
@@ -131,6 +149,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: acceptFleetInviteBodySchema,
           response: { 200: transactionResponseSchema },
         },
@@ -149,6 +168,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
       {
         preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           body: removeDriverFromFleetBodySchema,
           response: { 200: transactionResponseSchema },
         },

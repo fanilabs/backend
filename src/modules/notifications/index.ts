@@ -1,6 +1,7 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { PrismaClient } from '@prisma/client';
 import type { Worker } from 'bullmq';
+import { getConfig } from '../../shared/config/index.js';
 import {
   createDispatchNotificationsFromEventUseCase,
   createGetNotificationUseCase,
@@ -8,11 +9,12 @@ import {
   createSendNotificationUseCase,
 } from './application/index.js';
 import {
-  createLoggerNotificationSender,
   createNotificationJobScheduler,
   createNotificationsWorker,
+  createPrismaDeliveryPartyLookup,
   createPrismaNotificationRepository,
   createPrismaUserContactLookup,
+  selectNotificationSender,
   subscribeNotificationsEventDispatch,
 } from './infrastructure/index.js';
 import { createNotificationsRoutes } from './interface/routes.js';
@@ -31,11 +33,13 @@ import { createNotificationsRoutes } from './interface/routes.js';
 export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const notificationRepository = createPrismaNotificationRepository(prisma);
   const userContactLookup = createPrismaUserContactLookup(prisma);
+  const deliveryPartyLookup = createPrismaDeliveryPartyLookup(prisma);
   const jobScheduler = createNotificationJobScheduler();
 
   const dispatchNotificationsFromEvent = createDispatchNotificationsFromEventUseCase({
     notificationRepository,
     userContactLookup,
+    deliveryPartyLookup,
     jobScheduler,
   });
   subscribeNotificationsEventDispatch(dispatchNotificationsFromEvent);
@@ -59,7 +63,8 @@ export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAs
 export function createNotificationsBackgroundWorker(prisma: PrismaClient): Worker {
   const notificationRepository = createPrismaNotificationRepository(prisma);
   const userContactLookup = createPrismaUserContactLookup(prisma);
-  const sender = createLoggerNotificationSender();
+  const config = getConfig();
+  const sender = selectNotificationSender(config.NODE_ENV, config.NOTIFICATION_PROVIDER);
 
   const sendNotification = createSendNotificationUseCase({
     notificationRepository,

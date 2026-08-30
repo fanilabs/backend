@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import type { DeliveryContractReader, DeliveryRepository } from '../domain/index.js';
 
 export interface SyncDeliveryFromEventDeps {
@@ -29,7 +30,7 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
 
     switch (topic) {
       case 'delivery_created': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         if (chainDeliveryId === null) return;
         const record = await deps.contractReader.getDelivery(chainDeliveryId);
         await deps.deliveryRepository.create(record);
@@ -37,7 +38,7 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
       }
 
       case 'driver_assigned': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         const driverAddress = parseAddress(payload[1]);
         if (chainDeliveryId === null || driverAddress === null) return;
         await deps.deliveryRepository.updateStatus(chainDeliveryId, {
@@ -48,7 +49,7 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
       }
 
       case 'DeliveryInTransit': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         if (chainDeliveryId === null) return;
         await deps.deliveryRepository.updateStatus(chainDeliveryId, {
           status: 'IN_TRANSIT',
@@ -58,7 +59,7 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
       }
 
       case 'delivery_confirmed': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         if (chainDeliveryId === null) return;
         // The on-chain event carries no timestamp of its own — the
         // indexer's ledger-close time is the best available on-chain
@@ -71,14 +72,14 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
       }
 
       case 'delivery_cancelled': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         if (chainDeliveryId === null) return;
         await deps.deliveryRepository.updateStatus(chainDeliveryId, { status: 'CANCELLED' });
         return;
       }
 
       case 'delivery_disputed': {
-        const chainDeliveryId = parseDeliveryId(payload[0]);
+        const chainDeliveryId = parseBigIntId(payload[0]);
         if (chainDeliveryId === null) return;
         await deps.deliveryRepository.updateStatus(chainDeliveryId, { status: 'DISPUTED' });
         return;
@@ -91,17 +92,4 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
         return;
     }
   };
-}
-
-function parseDeliveryId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import type { FleetRepository } from '../domain/index.js';
 
 export interface SyncFleetFromEventDeps {
@@ -28,7 +29,7 @@ export function createSyncFleetFromEventUseCase(deps: SyncFleetFromEventDeps) {
 
     const eventName = event.topic[0];
     const payload = Array.isArray(event.payload) ? event.payload : [];
-    const chainFleetId = parseFleetId(payload[0]);
+    const chainFleetId = parseBigIntId(payload[0]);
     if (chainFleetId === null) return;
 
     switch (eventName) {
@@ -75,17 +76,4 @@ export function createSyncFleetFromEventUseCase(deps: SyncFleetFromEventDeps) {
         return;
     }
   };
-}
-
-function parseFleetId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

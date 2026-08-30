@@ -91,6 +91,11 @@ enum DriverTier {
   @@map("driver_tier")
 }
 
+// SMS/PUSH kept for forward compatibility only — as of #103 the only
+// producer (`dispatchNotificationsFromEvent`) and the only sender
+// (`NotificationSender`) are both EMAIL-only, and the API's response schema
+// was narrowed to the `EMAIL` literal to match. Widen the schema alongside
+// a real multi-channel `NotificationSender` implementation, not before.
 enum NotificationChannel {
   EMAIL
   SMS
@@ -156,6 +161,11 @@ model WalletAddress {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // At most one is_primary = true row per user is enforced by the partial
+  // unique index `wallet_addresses_user_id_primary_key` (migration
+  // 20260830120000_wallet_address_single_primary). Prisma's schema DSL
+  // can't express a partial (filtered) unique index, so it exists only in
+  // that migration — do not "resolve drift" by dropping it.
   @@map("wallet_addresses")
 }
 
@@ -218,6 +228,10 @@ model Escrow {
 
   delivery Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
 
+  /// Backs `analytics.getGmvByToken`'s `groupBy` on exactly this predicate
+  /// (`status = 'RELEASED'`, grouped by `token`) — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([status, token])
   @@map("escrows")
 }
 
@@ -315,6 +329,9 @@ model DriverProfile {
   registeredAt              DateTime   @map("registered_at")
   updatedAt                 DateTime   @updatedAt @map("updated_at")
 
+  /// Backs `analytics.getDriverTierCounts`'s `groupBy` on `tier` — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([tier])
   @@map("driver_profiles")
 }
 
@@ -409,6 +426,7 @@ model Notification {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
@@ -426,5 +444,6 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorId])
+  @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
 }

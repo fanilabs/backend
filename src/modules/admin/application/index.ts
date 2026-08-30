@@ -8,4 +8,5 @@ export {
   createListAuditLogUseCase,
   type ListAuditLogDeps,
   type ListAuditLogInput,
+  type ListAuditLogResult,
 } from './list-audit-log.js';

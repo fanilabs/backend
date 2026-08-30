@@ -2,7 +2,26 @@
 
 ## Reporting a Vulnerability
 
-Please do not open a public GitHub issue for security vulnerabilities. Instead, email the maintainers (see the FaniLab organization contact in the smart contract repository's `SECURITY.md`) with a description, reproduction steps, and impact assessment. We aim to acknowledge reports within 5 business days.
+Please do not open a public GitHub issue for security vulnerabilities.
+
+**Report privately from this repository:**
+<https://github.com/fanilabs/backend/security/advisories/new> — or click
+**Report a vulnerability** under this repository's **Security** tab. GitHub's
+private vulnerability reporting is enabled for this repo, so this form is a
+direct, self-contained channel to the maintainers: no email address to guess,
+no other repository to locate first. The report, the discussion, and fix
+coordination all stay private until a patch ships.
+
+Please include a description, reproduction steps, and an impact assessment. We
+aim to acknowledge reports within 5 business days.
+
+The FaniLab organization contact in the smart contract repository's
+`SECURITY.md` remains valid as supplementary context, but the advisory form
+above is sufficient on its own and is the preferred route.
+
+`CODE_OF_CONDUCT.md`'s Enforcement section points here for conduct reports as
+well — use the same **Report a vulnerability** form; it reaches the same
+maintainers and stays private.
 
 ## Custody Model
 
@@ -10,8 +29,8 @@ Please do not open a public GitHub issue for security vulnerabilities. Instead, 
 
 ## Baseline HTTP Security
 
-- **Helmet** (`@fastify/helmet`) with a strict default CSP (`default-src 'self'`, `object-src 'none'`); relaxed only for the Swagger UI route, never globally. `Cross-Origin-Resource-Policy` is set to `cross-origin` (Helmet's default is `same-origin`) so that allow-listed cross-origin clients can load API resources — e.g. evidence images via `<img>` — in no-CORS mode. That header is enforced by browsers independently of CORS, so the default would silently block those loads regardless of the `CORS_ORIGIN` allow-list.
-- **CORS**: explicit allow-listed origins (`CORS_ORIGIN`), credentials only for those origins — never a wildcard with credentials enabled.
+- **Helmet** (`@fastify/helmet`) with a strict default CSP (`default-src 'self'`, `object-src 'none'`); relaxed only for the Swagger UI route, never globally.
+- **CORS**: explicit allow-listed origins (`CORS_ORIGIN`), credentials only for those origins — never a wildcard with credentials enabled. Enforced at boot, not just by convention: `src/shared/config/env.ts` parses `CORS_ORIGIN` into an array, rejects `*` outright, and rejects any entry that isn't a well-formed `scheme://host[:port]` origin (no path, no trailing slash, no empty segments from a stray comma) — a misconfigured value fails startup with a clear error instead of silently never matching at request time.
 - **Rate limiting**: Redis-backed (`@fastify/rate-limit`), so limits hold across horizontally scaled API instances rather than resetting per-process.
 - **Input validation**: every route's request body/params/query validated by a Zod schema (`fastify-type-provider-zod`) before handler code runs — rejected requests never reach application logic.
 - **SQL injection**: Prisma's parameterized queries throughout; no raw string-interpolated SQL. The one `$queryRaw` usage (`src/shared/http/routes/health.ts`) is a static, parameter-free `SELECT 1`.
@@ -20,7 +39,8 @@ Please do not open a public GitHub issue for security vulnerabilities. Instead, 
 
 - All secrets (`JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, `DATABASE_URL`, `CONTRACT_DEPLOYER_KEY`-equivalents if ever needed) are read from environment variables, validated at boot (`src/shared/config/env.ts`) — the process refuses to start with a missing or too-short secret rather than falling back to an insecure default.
 - `.env` is git-ignored; `.env.example` documents every variable without real values.
-- Logs redact `authorization`/`cookie` headers and any field named `password`, `passwordHash`, `token`, `accessToken`, `refreshToken` (`src/shared/logger/index.ts`) — this is enforced at the logger level, not left to call-site discipline.
+- Logs redact `authorization`/`cookie` headers and any field named `password`, `passwordHash`, `token`, `accessToken`, `refreshToken` — both as a bare top-level key and one level nested (`src/shared/logger/index.ts`'s `redactConfig`) — this is enforced at the logger level, not left to call-site discipline. The bare-key paths were added after finding that Pino's `'*.token'`-style wildcard only matches a key nested one level under the merge object, not a top-level one — the exact shape `createLoggerMailer` logs (`{ to, token }`) went unredacted before this fix; see `src/shared/logger/redact.spec.ts` for the regression test.
+- The `logger`-backed `Mailer`/`NotificationSender` dev-defaults are refused at boot when `NODE_ENV=production` (`MAIL_PROVIDER`/`NOTIFICATION_PROVIDER` in `src/shared/config/env.ts`, enforced in `select-mailer.ts`/`select-notification-sender.ts`) — a production deployment with no real provider configured fails loudly instead of silently sending no mail.
 
 ## Authentication & Authorization
 
@@ -42,6 +62,16 @@ From `PHASE_1_DOMAIN_ANALYSIS.md` §3: `escrow_contract.freeze_funds` has no `re
 ## Dependency Management
 
 Dependabot (`.github/dependabot.yml`) tracks npm, Docker base images, and GitHub Actions weekly; major version bumps require manual review rather than auto-merge.
+
+Dependabot only proposes upgrades — it does not fail a build for a known-vulnerable dependency that hasn't been upgraded yet. To close that gap, the `audit` job in `.github/workflows/ci.yml` runs `pnpm audit --audit-level=high` on every PR and on `main`; a `high` or `critical` advisory anywhere in the dependency tree (direct or transitive) fails CI. Run it locally with `pnpm audit`.
+
+**Accepted exceptions:** none currently at or above the `high` CI threshold. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
+
+**Known residual advisories below the `high` threshold** (do not fail CI, recorded here for visibility):
+
+- `GHSA-w5hq-g745-h8pq` — `uuid` <11.1.1, missing buffer bounds check in v3/v5/v6 when a `buf` argument is supplied. Reached only via `autocannon > hyperid > uuid`; `autocannon` is a dev-only load-testing tool (`pnpm load-test`), never bundled or run in production, and this project never passes a `buf` argument. No override is applied because `hyperid` has not published a release depending on a patched `uuid`.
+
+The `pnpm.overrides` block in `package.json` pins forward-patched versions of `tar`, `handlebars`, `vite`, `esbuild`, `nanoid`, `js-yaml`, and `fast-uri` — all pulled in transitively through build/lint/test tooling (`bcrypt`'s native-build toolchain, `eslint-plugin-boundaries`, the Vitest/Vite stack) — to clear the `critical`/`high` advisories those chains carried.
 
 ## Reporting Timeline & Disclosure
 

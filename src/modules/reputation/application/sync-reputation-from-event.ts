@@ -1,12 +1,13 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress } from '../../../shared/events/index.js';
 import { logger } from '../../../shared/logger/index.js';
 import type {
   DriverProfileRepository,
   DriverProfileUpsertFields,
-  DriverTier,
   LegacyDriverProfileReader,
   ReputationContractReader,
 } from '../domain/index.js';
+import { tierFromScore } from '../domain/index.js';
 
 const log = logger.child({ module: 'sync-reputation-from-event' });
 
@@ -36,9 +37,12 @@ export interface SyncReputationFromEventDeps {
  * creates, only for driver reputation.
  *
  * `tier` has no on-chain event or field of its own — `get_driver_tier` is a
- * pure function of `reputationScore` (Bronze <50, Silver 50–74, Gold ≥75,
- * verified directly against the contract source), so it's recomputed here
- * rather than fetched via yet another RPC call.
+ * pure function of `reputationScore`, so it's recomputed here via
+ * `tierFromScore` rather than fetched via yet another RPC call. The
+ * threshold numbers themselves live in one named place —
+ * `../domain/tier-thresholds.ts`'s `DRIVER_TIER_THRESHOLDS` — rather than
+ * as inline literals here, specifically so a future contract-threshold
+ * change is a one-file, reviewed edit instead of a silent drift risk.
  */
 export function createSyncReputationFromEventUseCase(deps: SyncReputationFromEventDeps) {
   return async function syncReputationFromEvent(event: BlockchainEventEnvelope): Promise<void> {
@@ -91,14 +95,4 @@ async function refreshDriverProfile(
   }
 
   await deps.driverProfileRepository.upsert(address, fields);
-}
-
-function tierFromScore(score: number): DriverTier {
-  if (score >= 75) return 'GOLD';
-  if (score >= 50) return 'SILVER';
-  return 'BRONZE';
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

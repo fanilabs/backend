@@ -37,7 +37,10 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
   });
 
   await app.register(cors, {
-    origin: config.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+    // CORS_ORIGIN is already validated and parsed into a non-empty array of
+    // well-formed origins by src/shared/config/env.ts — no further parsing
+    // needed here.
+    origin: config.CORS_ORIGIN,
     credentials: true,
   });
 

@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
+import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
-/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
-const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
-const chainDeliveryId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainDeliveryId = chainId;
 const evidenceHash = z.string().regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
 
@@ -29,7 +31,12 @@ const disputeDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
   status: disputeStatus,
-  raisedBy: z.string(),
+  // Tightened to the same Stellar-address shape every request schema
+  // already enforces — raisedBy is used as an authorisation subject
+  // (downloadEvidence's raiser check), so a malformed value stored by a
+  // future bug should fail loudly here at the API boundary rather than
+  // being served as if it were a real address.
+  raisedBy: stellarAddress,
   raisedAt: z.string().datetime(),
   resolvedBy: z.string().nullable(),
   resolvedAt: z.string().datetime().nullable(),
@@ -39,8 +46,6 @@ const disputeDto = z.object({
 
 export const disputeIdParamsSchema = z.object({ chainDeliveryId });
 export const getDisputeResponseSchema = z.object({ data: disputeDto });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const raiseDisputeBodySchema = z.object({
   callerAddress: stellarAddress,

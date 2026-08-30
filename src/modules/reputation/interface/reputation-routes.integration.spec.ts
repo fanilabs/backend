@@ -4,6 +4,7 @@ import { Keypair } from '@stellar/stellar-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../../app.js';
 import { disconnectPrisma } from '../../../shared/database/index.js';
+import { signAccessToken } from '../../../shared/jwt/index.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
 
 const dbAvailable = await isDatabaseAvailable();
@@ -168,5 +169,26 @@ describe.skipIf(!dbAvailable)('reputation routes (integration)', () => {
     });
 
     expect([200, 502]).toContain(response.statusCode);
+  });
+
+  // docs/API_REFERENCE.md: with IDENTITY_REPUTATION_CONTRACT_ID unset (its
+  // .env.example default, and the default in this test process), the build
+  // endpoints must return 502 BLOCKCHAIN_ERROR naming the missing variable —
+  // the createUnconfiguredContractClient() fallback in ../index.ts — rather
+  // than a generic failure. Fails if that fallback wiring is removed.
+  it('returns 502 BLOCKCHAIN_ERROR from a build endpoint when the contract id is unconfigured', async () => {
+    const token = signAccessToken({ sub: randomUUID(), role: 'ADMIN' });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/register-driver',
+      headers: { authorization: `Bearer ${token}` },
+      payload: { driverAddress: Keypair.random().publicKey() },
+    });
+
+    expect(response.statusCode).toBe(502);
+    const body = response.json<ErrorBody>();
+    expect(body.error.code).toBe('BLOCKCHAIN_ERROR');
+    expect(body.error.message).toContain('IDENTITY_REPUTATION_CONTRACT_ID');
   });
 });

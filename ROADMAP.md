@@ -134,7 +134,7 @@ Not part of the original task-brief phase gate (§5's Phases 1–5 are) — this
 
 ## 9. Future Enhancements (explicitly out of scope for v1)
 
-- Multi-currency settlement/payout — blocked on the smart-contract `settlement_contract` actually being implemented (currently a stub, Phase 1 §8).
+- Multi-currency settlement/payout — blocked on the smart-contract `settlement_contract` actually being implemented (currently a stub, Phase 1 §8). `SETTLEMENT_CONTRACT_ID` was removed from `src/shared/config/env.ts` and `.env.example` for the same reason (no consuming module to read it) and returns alongside this work.
 - Real-time push (WebSocket/SSE) delivery-tracking layer, mirroring SwiftChain's Socket.IO approach — v1 relies on REST polling + indexed read models; real-time is a natural v1.x addition once the core indexer is proven stable.
 - Distributed event bus (Redis Streams or similar) if/when the indexer needs to scale beyond one instance.
 - ML-based fraud detection, beyond the v1 rule-based heuristics.

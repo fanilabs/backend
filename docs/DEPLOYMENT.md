@@ -37,14 +37,47 @@ All configuration is environment variables, validated at boot by `src/shared/con
 
 Contract IDs (`ESCROW_CONTRACT_ID`, etc.) and network settings (`STELLAR_NETWORK`, `SOROBAN_RPC_URL`, `STELLAR_NETWORK_PASSPHRASE`) must match the actual deployed `FaniLab-SmartContract` instance for the target environment — cross-check against that repository's deployment output before promoting to a new network.
 
+`MAIL_PROVIDER`/`NOTIFICATION_PROVIDER` default to `logger` — a genuinely functional dev/test default that logs mail instead of sending it (see `docs/AUTHENTICATION.md` § Dev email delivery). Booting with `NODE_ENV=production` while either is left at `logger` fails at startup with a clear error; a real provider must be wired into `select-mailer.ts`/`select-notification-sender.ts` before a production deployment.
+
 ## Health Checks
 
-- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`).
+- `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`). **Point your orchestrator's readiness probe at this endpoint.**
 - `GET /health/indexer` — indexer lag — see [`EVENT_INDEXER.md`](./EVENT_INDEXER.md).
-- `GET /health/queue` — BullMQ queue job counts/failures — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
+- `GET /health/queue` — an **alerting signal, not a readiness probe**. Reports BullMQ queue job counts, including `failed` (all-time failure history, retained for up to 7 days) and `failedRecent` (failures within the last 15 minutes). Returns `200` with `status: 'degraded'` when there is failure history, and only returns `503`/`status: 'unavailable'` when the queue backend is unreachable or a queue looks stalled (backlog with nothing active). Do not wire an orchestrator's readiness/liveness check to this endpoint — see [`OBSERVABILITY.md`](./OBSERVABILITY.md).
 - `GET /metrics` — Prometheus scrape endpoint for whatever monitoring stack the deployment environment runs (Phase 6 — see [`OBSERVABILITY.md`](./OBSERVABILITY.md)); point network policy, not app-level auth, at restricting who can reach it.
 
 Point your orchestrator's readiness probe at `/health`; a `503` means don't route traffic yet, not that the process should be killed — Postgres/Redis blips are often transient.
+
+`docker-compose.yml` wires this in directly so the reference topology isn't just documentation:
+
+- **`api`** — Docker `HEALTHCHECK` (also declared in `Dockerfile`) polls `GET /health` every 10s; `docker compose ps` only reports `api` as `healthy` once it returns `200`. `restart: unless-stopped` restarts the container if the process dies or is OOM-killed.
+- **`worker`** — has no HTTP surface, so liveness is a heartbeat file (`/var/lib/fanilab/heartbeat/worker.heartbeat`) touched every 15s by the process itself (`src/workers/index.ts`); the healthcheck fails once that file is more than 45s stale, which catches an event-loop-blocked or hung process, not just a crashed one. `restart: unless-stopped` applies the same as `api`.
+- The `observability` profile's `prometheus`/`grafana` services `depends_on: api: condition: service_healthy`, so they don't start scraping/rendering against an API that isn't listening yet.
+
+## Evidence Storage
+
+Dispute evidence (`src/modules/disputes/infrastructure/local-evidence-storage.ts`)
+is written to `EVIDENCE_STORAGE_DIR`. The `api`/`worker` images create that
+directory as `/var/lib/fanilab/evidence`, owned by the non-root `node` user
+the containers run as (`Dockerfile`), and `docker-compose.yml` points
+`EVIDENCE_STORAGE_DIR` at that same absolute path — the config default
+(`./storage/evidence`) is relative to the process working directory and is a
+development-only convenience, not something to rely on in a deployed
+environment. `createDisputesModule` checks the directory is writable at boot
+and fails fast with a clear error if it is not, rather than surfacing as a
+generic 500 on the first evidence upload.
+
+`docker-compose.yml` persists that directory with a named volume,
+**`evidence-data`**, mounted into the `api` service at
+`/var/lib/fanilab/evidence` — without it, evidence files lived in the
+container's writable layer and were silently destroyed by
+`docker compose down` or any image rebuild, while the corresponding
+`Evidence` rows (with their `storageUrl` and content hash) survived in
+Postgres. Back this volume up on the same schedule as `postgres-data`;
+losing it without a backup means the evidence rows point at files that no
+longer exist. A missing file on read now maps to a domain
+`EvidenceNotFoundError` (`local-evidence-storage.ts`), so a genuinely lost
+file returns a standard `404` response instead of an unmapped `500`.
 
 ## Rollback
 
@@ -61,7 +94,7 @@ Because migrations are a separate, explicit step from image deployment, rolling 
 
 1. **No `.dockerignore`** — `COPY . .` in the Dockerfile's `build` stage pulled in whatever was on the host running `docker build`, most importantly a host-local `node_modules`, clobbering the `deps` stage's own container-built one. Invisible in a clean CI checkout (nothing to pull in); real for any local build on a machine that had already run `pnpm install`.
 2. **The `api`/`worker` final stages' Prisma client copy didn't work under pnpm.** The previous approach copied `node_modules/.prisma` from the `build` stage — a path that only exists under npm/yarn's flat `node_modules` layout. Under pnpm's default isolated layout there is no top-level `node_modules/.prisma` at all; the generated client lives nested inside `node_modules/.pnpm/@prisma+client@.../node_modules/.prisma`, and that path's exact suffix depends on which peer/dev dependencies are present in *that stage's own* install — not reliably predictable or portable across a `--prod`-only install. Fixed by installing fully (so `prisma generate`'s postinstall hook has what it needs) and pruning devDependencies afterward, rather than copying a generated artifact cross-stage.
-3. **`bcrypt` (and Prisma's own engine download) silently failed to build in a clean install.** Modern pnpm blocks "unsafe" native postinstall build scripts by default unless explicitly approved; a truly fresh install (Docker, CI, a new contributor's first `pnpm install`) hit this, while this repository's own working sandbox had them already approved from before that pnpm default existed — masking the gap entirely until a clean-room build exposed it. Fixed with a `pnpm.onlyBuiltDependencies` allowlist in `package.json`, the durable, version-controlled fix (not just a Docker-specific workaround).
+3. **`bcrypt` (and Prisma's own engine download) silently failed to build in a clean install.** Modern pnpm blocks "unsafe" native postinstall build scripts by default unless explicitly approved; a truly fresh install (Docker, CI, a new contributor's first `pnpm install`) hit this, while this repository's own working sandbox had them already approved from before that pnpm default existed — masking the gap entirely until a clean-room build exposed it. Fixed with a native-build-script allowlist, the durable, version-controlled fix (not just a Docker-specific workaround). This allowlist originally lived in `package.json`'s `pnpm.onlyBuiltDependencies`; it now lives **solely** in `pnpm-workspace.yaml`'s `allowBuilds` (pnpm's replacement mechanism, added in v10.26.0). The `package.json` copy was removed because `onlyBuiltDependencies` is dropped entirely in pnpm v11 — keeping it alongside `allowBuilds` meant a future `packageManager` bump past v11 could silently disable the allowlist and re-introduce this exact regression, with two copies also inviting "which one is real" drift.
 4. **`node:20-slim` has no OpenSSL OS package** — Prisma's query engine binary is dynamically linked against `libssl` and failed at container *runtime* (`Prisma cannot find the required libssl system library`) even though `prisma generate` succeeded at build time. Fixed with `apt-get install openssl` in the base stage, exactly what Prisma's own generate-time warning already recommends for this situation.
 
 All four are now fixed and the full stack (plus the optional `observability` profile, see `OBSERVABILITY.md`) was verified booting, serving traffic, and — for Prometheus/Grafana — actually rendering real scraped data, not just "the containers started."

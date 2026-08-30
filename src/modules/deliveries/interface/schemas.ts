@@ -1,8 +1,10 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
+import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
-/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
-const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
-const chainDeliveryId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainDeliveryId = chainId;
 const cargoCategory = z.enum(['DOCUMENTS', 'ELECTRONICS', 'PERISHABLES', 'CLOTHING', 'GENERAL']);
 const deliveryStatus = z.enum([
   'PENDING',
@@ -40,8 +42,6 @@ export const listDeliveriesResponseSchema = z.object({ data: z.array(deliveryDto
 
 export const deliveryIdParamsSchema = z.object({ chainDeliveryId });
 export const getDeliveryResponseSchema = z.object({ data: deliveryDto });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const createDeliveryBodySchema = z.object({
   senderAddress: stellarAddress,
