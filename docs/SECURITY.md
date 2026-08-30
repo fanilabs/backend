@@ -2,7 +2,26 @@
 
 ## Reporting a Vulnerability
 
-Please do not open a public GitHub issue for security vulnerabilities. Instead, email the maintainers (see the FaniLab organization contact in the smart contract repository's `SECURITY.md`) with a description, reproduction steps, and impact assessment. We aim to acknowledge reports within 5 business days.
+Please do not open a public GitHub issue for security vulnerabilities.
+
+**Report privately from this repository:**
+<https://github.com/fanilabs/backend/security/advisories/new> — or click
+**Report a vulnerability** under this repository's **Security** tab. GitHub's
+private vulnerability reporting is enabled for this repo, so this form is a
+direct, self-contained channel to the maintainers: no email address to guess,
+no other repository to locate first. The report, the discussion, and fix
+coordination all stay private until a patch ships.
+
+Please include a description, reproduction steps, and an impact assessment. We
+aim to acknowledge reports within 5 business days.
+
+The FaniLab organization contact in the smart contract repository's
+`SECURITY.md` remains valid as supplementary context, but the advisory form
+above is sufficient on its own and is the preferred route.
+
+`CODE_OF_CONDUCT.md`'s Enforcement section points here for conduct reports as
+well — use the same **Report a vulnerability** form; it reaches the same
+maintainers and stays private.
 
 ## Custody Model
 
