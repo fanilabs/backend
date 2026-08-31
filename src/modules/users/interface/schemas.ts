@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { stellarAddress } from '../../../shared/validation/stellar-address.js';
+
+/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
+const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
 
 const walletDto = z.object({
   id: z.string().uuid(),

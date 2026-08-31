@@ -7,20 +7,6 @@ import { getPrismaClient, disconnectPrisma } from '../shared/database/index.js';
 import { disconnectRedis } from '../shared/cache/index.js';
 import { disconnectQueueConnection, closeAllQueues } from '../shared/queue/index.js';
 import { createIndexerBackgroundWorker, scheduleIndexer } from '../modules/indexer/index.js';
-import { createDeliveriesModule } from '../modules/deliveries/index.js';
-import { createEscrowModule } from '../modules/escrow/index.js';
-import { createFleetModule } from '../modules/fleet/index.js';
-import { createDisputesModule } from '../modules/disputes/index.js';
-import { createReputationModule } from '../modules/reputation/index.js';
-import {
-  createNotificationsBackgroundWorker,
-  createNotificationsModule,
-} from '../modules/notifications/index.js';
-import {
-  createFraudDetectionCleanupBackgroundWorker,
-  createFraudDetectionModule,
-  scheduleFraudDetectionCleanup,
-} from '../modules/fraud-detection/index.js';
 
 const log = logger.child({ process: 'worker' });
 
@@ -53,42 +39,12 @@ async function writeHeartbeat(): Promise<void> {
  */
 const registerWorkers: Array<() => Worker> = [
   () => createIndexerBackgroundWorker(getPrismaClient()),
-  () => createNotificationsBackgroundWorker(getPrismaClient()),
-  () => createFraudDetectionCleanupBackgroundWorker(getPrismaClient()),
-];
-
-/**
- * Every module that reacts to blockchain events (`subscribeXEventSync` /
- * `subscribeNotificationsEventDispatch`, wired as a side effect inside each
- * `createXModule` factory) must have that factory called from *this*
- * process, not just `app.ts`'s. The indexer's poll job — the only thing
- * that ever calls `publishBlockchainEvent` — runs here, in the worker
- * process (`createIndexerBackgroundWorker` above); the in-process event bus
- * it publishes to (`shared/events`) is a plain `EventEmitter`, invisible
- * across the `api`/`worker` process boundary `docker-compose.yml` actually
- * deploys. `app.ts` also constructs every module (for its HTTP routes,
- * which *does* need to run there), which harmlessly wires a second,
- * never-triggered subscription in that process — redundant, not wrong,
- * since the API process never publishes anything. The returned Fastify
- * plugins are intentionally discarded here; this process has no HTTP server.
- */
-const wireModuleEventSubscriptions: Array<() => void> = [
-  () => void createDeliveriesModule(getPrismaClient()),
-  () => void createEscrowModule(getPrismaClient()),
-  () => void createFleetModule(getPrismaClient()),
-  () => void createDisputesModule(getPrismaClient()),
-  () => void createReputationModule(getPrismaClient()),
-  () => void createNotificationsModule(getPrismaClient()),
-  () => void createFraudDetectionModule(getPrismaClient()),
 ];
 
 async function main(): Promise<void> {
   // Repeatable job registration is idempotent (BullMQ upserts by
   // name+repeat+jobId) — safe to call on every worker-process start.
   await scheduleIndexer();
-  await scheduleFraudDetectionCleanup();
-
-  wireModuleEventSubscriptions.forEach((wire) => wire());
 
   const workers = registerWorkers.map((register) => register());
 

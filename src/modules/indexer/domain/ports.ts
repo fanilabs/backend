@@ -2,7 +2,6 @@ import type { Checkpoint, RawContractEvent, StoredEvent } from './entities.js';
 
 export interface CheckpointRepository {
   get(contractName: string, network: string): Promise<Checkpoint | null>;
-  getMany(contractNames: string[], network: string): Promise<(Checkpoint | null)[]>;
   advance(contractName: string, network: string, lastLedgerSeq: bigint): Promise<void>;
 }
 
@@ -14,8 +13,6 @@ export interface CheckpointRepository {
  */
 export interface EventStore {
   tryInsert(event: StoredEvent): Promise<boolean>;
-  markProcessed(rpcEventId: string): Promise<void>;
-  markFailed(rpcEventId: string, reason: string): Promise<void>;
 }
 
 export interface FetchEventsResult {
@@ -28,7 +25,6 @@ export interface FetchEventsResult {
 
 export interface EventSource {
   getLatestLedger(): Promise<number>;
-  getOldestRetainedLedger(): Promise<number>;
   fetchEvents(input: { contractId: string; startLedger: number }): Promise<FetchEventsResult>;
 }
 

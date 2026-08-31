@@ -4,11 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     setupFiles: ['./src/shared/testing/env.ts'],
-    // src-only: the end-to-end suite lives under tests/e2e/ and has its own
-    // config (`vitest.e2e.config.ts`) + `test:e2e` script, so it runs only
-    // on a schedule and on release branches (ROADMAP.md §10) — never as
-    // part of this fast per-PR run.
-    include: ['src/**/*.{spec,test}.ts'],
+    include: ['src/**/*.{spec,test}.ts', 'tests/**/*.{spec,test}.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

@@ -3,7 +3,7 @@ import type { PrismaClient } from '@prisma/client';
 import type { Worker } from 'bullmq';
 import { getConfig } from '../../shared/config/index.js';
 import { getSorobanClient } from '../../blockchain/soroban-client.js';
-import { createGetIndexerHealthUseCase, type ContractHealth } from './application/index.js';
+import { createGetIndexerHealthUseCase } from './application/index.js';
 import {
   createPrismaCheckpointRepository,
   createSorobanEventSource,
@@ -16,21 +16,16 @@ import {
 import { createIndexerHealthRoutes } from './interface/routes.js';
 
 /**
- * Indexer scope grows one module at a time (ROADMAP.md §5): all five
- * contracts with a consuming module — escrow, delivery, fleet,
- * dispute-resolution, and identity-reputation. `settlement_contract` is
- * deliberately never tracked here — it's an unimplemented stub with no
- * consuming module planned (PHASE_1_DOMAIN_ANALYSIS.md §8), not an
- * oversight.
+ * Minimal indexer scope for this phase (ROADMAP.md §5): escrow + delivery
+ * contracts only, enough to unblock the `deliveries` and `escrow` modules
+ * next. The remaining four contracts are added here when their consuming
+ * modules (fleet, disputes, reputation) are implemented — not before.
  */
 function getTrackedContracts(): TrackedContractConfig[] {
   const config = getConfig();
   return [
     { contractName: 'escrow', contractId: config.ESCROW_CONTRACT_ID },
     { contractName: 'delivery', contractId: config.DELIVERY_CONTRACT_ID },
-    { contractName: 'fleet', contractId: config.FLEET_MANAGEMENT_CONTRACT_ID },
-    { contractName: 'dispute-resolution', contractId: config.DISPUTE_RESOLUTION_CONTRACT_ID },
-    { contractName: 'identity-reputation', contractId: config.IDENTITY_REPUTATION_CONTRACT_ID },
   ];
 }
 
@@ -58,25 +53,4 @@ export async function scheduleIndexer(): Promise<void> {
  * actually runs the scheduled polls — see src/workers/index.ts. */
 export function createIndexerBackgroundWorker(prisma: PrismaClient): Worker {
   return createIndexerWorker(prisma);
-}
-
-/**
- * Same construction as `createIndexerHealthPlugin`, minus the HTTP route —
- * for `/metrics` (`src/shared/metrics`) to read per-contract lag into a
- * Prometheus gauge without duplicating `GetIndexerHealthResult`'s logic.
- */
-export async function getIndexerLagMetrics(prisma: PrismaClient): Promise<ContractHealth[]> {
-  const config = getConfig();
-  const getIndexerHealth = createGetIndexerHealthUseCase({
-    checkpointRepository: createPrismaCheckpointRepository(prisma),
-    eventSource: createSorobanEventSource(getSorobanClient()),
-  });
-
-  const result = await getIndexerHealth({
-    network: config.STELLAR_NETWORK,
-    trackedContracts: getTrackedContracts(),
-    lagAlertThreshold: config.INDEXER_LAG_ALERT_LEDGERS,
-  });
-
-  return result.contracts;
 }

@@ -4,4 +4,4 @@ export { default as metricsPlugin } from './plugins/metrics.js';
 export { default as healthRoutes } from './routes/health.js';
 export { createMetricsRoutes, type MetricsRoutesDeps } from './routes/metrics.js';
 export { ok, type SuccessResponse } from './response-envelope.js';
-export { authenticate, requireRole, requireUser } from './plugins/auth-guard.js';
+export { authenticate, requireRole } from './plugins/auth-guard.js';

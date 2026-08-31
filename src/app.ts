@@ -6,29 +6,12 @@ import {
 } from 'fastify-type-provider-zod';
 import { logger } from './shared/logger/index.js';
 import { handleError } from './shared/errors/index.js';
-import { getConfig } from './shared/config/index.js';
-import {
-  securityPlugin,
-  docsPlugin,
-  metricsPlugin,
-  healthRoutes,
-  createMetricsRoutes,
-} from './shared/http/index.js';
-import { indexerLagLedgers, queueJobsGauge } from './shared/metrics/index.js';
-import { getQueueHealth } from './shared/queue/index.js';
+import { securityPlugin, docsPlugin, healthRoutes } from './shared/http/index.js';
 import { getPrismaClient } from './shared/database/index.js';
 import { createAuthModule } from './modules/auth/index.js';
 import { createUsersModule } from './modules/users/index.js';
-import { createIndexerHealthPlugin, getIndexerLagMetrics } from './modules/indexer/index.js';
+import { createIndexerHealthPlugin } from './modules/indexer/index.js';
 import { createDeliveriesModule } from './modules/deliveries/index.js';
-import { createEscrowModule } from './modules/escrow/index.js';
-import { createFleetModule } from './modules/fleet/index.js';
-import { createDisputesModule } from './modules/disputes/index.js';
-import { createReputationModule } from './modules/reputation/index.js';
-import { createNotificationsModule } from './modules/notifications/index.js';
-import { createAnalyticsModule } from './modules/analytics/index.js';
-import { createFraudDetectionModule } from './modules/fraud-detection/index.js';
-import { createAdminModule } from './modules/admin/index.js';
 
 /**
  * Composes the Fastify instance with no side effects (no `listen()` call) so
@@ -40,7 +23,9 @@ import { createAdminModule } from './modules/admin/index.js';
  * per-instance Fastify flag.
  *
  * Module route registration is added here incrementally as each module
- * ships in Phase 5 — see ROADMAP.md §5 for what's left.
+ * ships in Phase 5 — deliveries/escrow/fleet/disputes/reputation/etc. are
+ * not registered yet, and intentionally so, rather than pre-wired ahead of
+ * their implementation.
  */
 export async function buildApp() {
   const config = getConfig();
@@ -95,6 +80,12 @@ export async function buildApp() {
   await app.register(createAnalyticsModule(prisma), { prefix: '/api/v1' });
   await app.register(createFraudDetectionModule(prisma), { prefix: '/api/v1' });
   await app.register(createAdminModule(prisma), { prefix: '/api/v1' });
+
+  const prisma = getPrismaClient();
+  await app.register(createAuthModule(prisma), { prefix: '/api/v1' });
+  await app.register(createUsersModule(prisma), { prefix: '/api/v1' });
+  await app.register(createIndexerHealthPlugin(prisma));
+  await app.register(createDeliveriesModule(prisma), { prefix: '/api/v1' });
 
   return app;
 }

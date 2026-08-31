@@ -110,28 +110,8 @@ export function u64ToScVal(value: bigint | number): xdr.ScVal {
   return xdr.ScVal.scvU64(new xdr.Uint64(BigInt(value)));
 }
 
-/** `i128 = hi * 2^64 + lo` — the inverse of `combine128` above. `hi`/`lo`
- * are derived via bigint shift/mask, which correctly handles negative
- * values because JS bigints use arbitrary-precision two's-complement
- * semantics for `>>`/`&` (verified by round-trip tests against
- * `scValToNative`, including negative amounts). FaniLab escrow amounts are
- * always non-negative in practice, but the Rust type is signed (`i128`), so
- * this accepts any bigint rather than assuming non-negativity. */
-export function i128ToScVal(value: bigint): xdr.ScVal {
-  const mask64 = (1n << 64n) - 1n;
-  const lo = value & mask64;
-  const hi = value >> 64n;
-  return xdr.ScVal.scvI128(new xdr.Int128Parts({ hi: new xdr.Int64(hi), lo: new xdr.Uint64(lo) }));
-}
-
 export function boolToScVal(value: boolean): xdr.ScVal {
   return xdr.ScVal.scvBool(value);
-}
-
-/** Encodes a fixed-size byte array (e.g. `BytesN<32>`, used for
- * `dispute_resolution_contract.add_evidence_hash`) from a hex string. */
-export function bytesToScVal(hex: string): xdr.ScVal {
-  return xdr.ScVal.scvBytes(Buffer.from(hex, 'hex'));
 }
 
 export function stringToScVal(value: string): xdr.ScVal {

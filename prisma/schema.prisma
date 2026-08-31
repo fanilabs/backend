@@ -401,7 +401,6 @@ model BlockchainEvent {
   ledgerClosedAt DateTime @map("ledger_closed_at")
   ingestedAt    DateTime  @default(now()) @map("ingested_at")
   processedAt   DateTime? @map("processed_at")
-  processingError String? @map("processing_error")
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])

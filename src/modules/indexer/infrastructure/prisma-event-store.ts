@@ -41,23 +41,5 @@ export function createPrismaEventStore(prisma: PrismaClient): EventStore {
         throw error;
       }
     },
-
-    async markProcessed(rpcEventId) {
-      await prisma.blockchainEvent.updateMany({
-        where: { rpcEventId },
-        data: {
-          processedAt: new Date(),
-        },
-      });
-    },
-
-    async markFailed(rpcEventId, reason) {
-      await prisma.blockchainEvent.updateMany({
-        where: { rpcEventId },
-        data: {
-          processingError: reason,
-        },
-      });
-    },
   };
 }

@@ -60,37 +60,4 @@ describe.skipIf(!dbAvailable)('Prisma users repositories (integration)', () => {
     await walletAddressRepository.remove(created.id);
     expect(await walletAddressRepository.findById(created.id)).toBeNull();
   });
-
-  it('rejects a second primary wallet for the same user via the partial unique index', async () => {
-    const userId = await seedUser();
-    const addressA = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;
-    const addressB = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;
-
-    // Two concurrent confirmations for a brand-new user, both believing they
-    // are creating the first (primary) wallet.
-    const results = await Promise.allSettled([
-      walletAddressRepository.create({ userId, address: addressA, isPrimary: true, verifiedAt: new Date() }),
-      walletAddressRepository.create({ userId, address: addressB, isPrimary: true, verifiedAt: new Date() }),
-    ]);
-
-    const fulfilled = results.filter((r) => r.status === 'fulfilled');
-    const rejected = results.filter((r) => r.status === 'rejected');
-    expect(fulfilled).toHaveLength(1);
-    expect(rejected).toHaveLength(1);
-
-    // The loser can still be linked as a non-primary wallet.
-    const loserAddress = fulfilled[0]?.status === 'fulfilled' && fulfilled[0].value.address === addressA
-      ? addressB
-      : addressA;
-    await walletAddressRepository.create({
-      userId,
-      address: loserAddress,
-      isPrimary: false,
-      verifiedAt: new Date(),
-    });
-
-    const wallets = await walletAddressRepository.findByUserId(userId);
-    expect(wallets).toHaveLength(2);
-    expect(wallets.filter((w) => w.isPrimary)).toHaveLength(1);
-  });
 });

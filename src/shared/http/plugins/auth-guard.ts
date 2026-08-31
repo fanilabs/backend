@@ -45,18 +45,3 @@ export function requireRole(...roles: UserRole[]) {
     }
   };
 }
-
-/**
- * Narrows `request.user` (populated by {@link authenticate}) to a non-null
- * value inside a route handler body, so `request.user.id` is never read
- * through a non-null assertion. Unreachable in practice on any route that
- * lists `authenticate` in its `preHandler`s — that guard throws before the
- * handler runs — but kept as a defence-in-depth check on the authorization
- * surface every protected route shares.
- */
-export function requireUser(request: FastifyRequest): { id: string; role: UserRole } {
-  if (!request.user) {
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user;
-}

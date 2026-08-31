@@ -15,13 +15,3 @@ process.env.DATABASE_URL ??=
 process.env.REDIS_URL ??= 'redis://localhost:6379';
 process.env.JWT_ACCESS_SECRET ??= 'test-only-access-secret-not-for-production-use-0000';
 process.env.JWT_REFRESH_SECRET ??= 'test-only-refresh-secret-not-for-production-use-0000';
-// The rate limiter (src/shared/http/plugins/security.ts) is Redis-backed —
-// deliberately shared across API instances, which also means every
-// `*.integration.spec.ts` file's own `buildApp()` in one `pnpm test` run
-// shares the same counter against real Redis, not a fresh one per file.
-// The schema default (100/60s, src/shared/config/env.ts) is sized for a
-// single real client, not dozens of test files each making several
-// requests; left alone, the suite starts intermittently 429-ing its own
-// later requests as more integration tests accumulate, unrelated to
-// whatever that request was actually testing.
-process.env.RATE_LIMIT_MAX ??= '100000';

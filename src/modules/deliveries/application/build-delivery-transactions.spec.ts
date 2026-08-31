@@ -39,5 +39,9 @@ describe('buildDeliveryTransactions use cases', () => {
     await expect(
       useCases.buildCancelDeliveryTransaction({ senderAddress: 'GA', chainDeliveryId: 1n }),
     ).resolves.toBe('unsigned-xdr:cancel-delivery');
+
+    await expect(
+      useCases.buildRaiseDisputeTransaction({ callerAddress: 'GA', chainDeliveryId: 1n }),
+    ).resolves.toBe('unsigned-xdr:raise-dispute');
   });
 });

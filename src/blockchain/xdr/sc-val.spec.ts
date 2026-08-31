@@ -3,8 +3,6 @@ import { describe, expect, it } from 'vitest';
 import {
   addressToScVal,
   boolToScVal,
-  bytesToScVal,
-  i128ToScVal,
   namedStructToScVal,
   scValToNative,
   stringToScVal,
@@ -89,24 +87,9 @@ describe('native -> ScVal encoders', () => {
     expect(scValToNative(u64ToScVal(9007199254740993n))).toBe('9007199254740993');
   });
 
-  it('round-trips i128 values, including ones larger than 64 bits and negative ones', () => {
-    expect(scValToNative(i128ToScVal(500n))).toBe('500');
-    expect(scValToNative(i128ToScVal(2n ** 100n))).toBe((2n ** 100n).toString());
-    expect(scValToNative(i128ToScVal(-1n))).toBe('-1');
-    expect(scValToNative(i128ToScVal(-(2n ** 100n)))).toBe((-(2n ** 100n)).toString());
-  });
-
   it('round-trips a real Stellar address', () => {
     const keypair = Keypair.random();
     expect(scValToNative(addressToScVal(keypair.publicKey()))).toBe(keypair.publicKey());
-  });
-
-  it('encodes a 32-byte hash from hex (BytesN<32>, e.g. dispute evidence hashes)', () => {
-    const hex = 'a'.repeat(64); // 32 bytes
-    const scVal = bytesToScVal(hex);
-
-    expect(scVal.switch().name).toBe('scvBytes');
-    expect(scValToNative(scVal)).toBe(Buffer.from(hex, 'hex').toString('base64'));
   });
 
   it('encodes a tuple/newtype struct as a one-element Vec', () => {
@@ -147,28 +130,6 @@ describe('native -> ScVal encoders', () => {
       fragile: true,
       weight_grams: 500,
     });
-  });
-
-  it('sorts Map keys by byte order, not locale-dependent localeCompare', () => {
-    // This test verifies that key sorting uses byte order (UTF-8) comparison,
-    // not localeCompare which is locale/ICU-dependent. localeCompare may
-    // reorder keys inconsistently across environments or treat punctuation
-    // and case differently, breaking Soroban's canonical Map ordering requirement.
-    // Using mixed case which localeCompare handles differently from byte order:
-    // - Byte order: 'A' (0x41=65) < 'a' (0x61=97)
-    // - localeCompare in many locales: treats 'A' and 'a' as equivalent or reorders them
-    const scVal = namedStructToScVal({
-      ABigField: u32ToScVal(1),
-      aBigField: u32ToScVal(2),
-      aSmallField: u32ToScVal(3),
-    });
-
-    const map = scVal.map();
-    expect(map).not.toBeNull();
-    const keys = map?.map((entry) => scValToNative(entry.key()));
-
-    // Byte order: 'A' (65) < 'a' (97), so 'ABigField' < 'aBigField' < 'aSmallField'
-    expect(keys).toEqual(['ABigField', 'aBigField', 'aSmallField']);
   });
 
   it('builds a realistic nested DeliveryMetadata-shaped structure', () => {

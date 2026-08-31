@@ -39,15 +39,9 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
   ): Promise<PollContractEventsResult> {
     const checkpoint = await deps.checkpointRepository.get(input.contractName, input.network);
 
-    let startLedger = checkpoint
+    const startLedger = checkpoint
       ? Number(checkpoint.lastLedgerSeq) + 1
       : await deps.eventSource.getLatestLedger();
-
-    // Clamp to the oldest retained ledger if checkpoint is outside RPC window
-    const oldestRetainedLedger = await deps.eventSource.getOldestRetainedLedger();
-    if (startLedger < oldestRetainedLedger) {
-      startLedger = oldestRetainedLedger;
-    }
 
     const { events, latestLedgerSeen } = await deps.eventSource.fetchEvents({
       contractId: input.contractId,
@@ -70,7 +64,6 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
       const inserted = await deps.eventStore.tryInsert(stored);
       if (inserted) {
         eventsInserted += 1;
-        await deps.eventStore.markProcessed(event.rpcEventId);
         deps.eventPublisher.publish(stored);
       }
     }

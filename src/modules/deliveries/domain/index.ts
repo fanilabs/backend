@@ -11,5 +11,6 @@ export type {
   MarkInTransitTxInput,
   ConfirmDeliveryTxInput,
   CancelDeliveryTxInput,
+  RaiseDisputeTxInput,
 } from './ports.js';
 export { DeliveryNotFoundError } from './errors.js';

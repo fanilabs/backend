@@ -6,6 +6,7 @@ import type {
   DeliveryIdTxInput,
   DeliveryTransactionBuilder,
   MarkInTransitTxInput,
+  RaiseDisputeTxInput,
 } from '../domain/index.js';
 
 export interface BuildDeliveryTransactionsDeps {
@@ -13,10 +14,8 @@ export interface BuildDeliveryTransactionsDeps {
 }
 
 /**
- * Five thin delegations to the `DeliveryTransactionBuilder` port, one per
- * client-facing `delivery_contract` call reviewed in
- * PHASE_1_DOMAIN_ANALYSIS.md §4 (`raise_dispute` excluded — see that port's
- * header comment).
+ * Six thin delegations to the `DeliveryTransactionBuilder` port, one per
+ * `delivery_contract` call reviewed in PHASE_1_DOMAIN_ANALYSIS.md §4.
  * Grouped in one file rather than split like auth's use cases because each
  * is pure delegation with no branching business logic of its own — input
  * validation happens at the interface layer (Zod), and the actual encoding
@@ -38,6 +37,9 @@ export function createBuildDeliveryTransactionsUseCases(deps: BuildDeliveryTrans
 
     buildCancelDeliveryTransaction: (input: CancelDeliveryTxInput): Promise<string> =>
       deps.transactionBuilder.buildCancelDelivery(input),
+
+    buildRaiseDisputeTransaction: (input: RaiseDisputeTxInput): Promise<string> =>
+      deps.transactionBuilder.buildRaiseDispute(input),
   };
 }
 

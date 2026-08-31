@@ -1,7 +1,4 @@
 import { EventEmitter } from 'node:events';
-import type { Logger } from '../logger/index.js';
-
-export { parseAddress, parseBigIntId } from './parse.js';
 
 /**
  * Every durably-stored blockchain event, after decoding, in one shape —
@@ -41,25 +38,4 @@ export function onBlockchainEvent(handler: (event: BlockchainEventEnvelope) => v
   return () => {
     bus.off(CHANNEL, handler);
   };
-}
-
-/**
- * The six-line subscription boilerplate every module's
- * infrastructure/event-subscription.ts used to repeat: subscribe to the bus,
- * invoke the module's async handler, and catch+log the rejection.
- * `onBlockchainEvent`'s callback is synchronous, so the async handler's
- * rejection must be caught here rather than becoming an unhandled promise
- * rejection — one malformed/unexpected event must not crash the process or
- * block subsequent events (docs/EVENT_INDEXER.md's malformed-event handling).
- */
-export function subscribeBlockchainEventHandler(
-  handler: (event: BlockchainEventEnvelope) => Promise<unknown>,
-  log: Logger,
-  errorMessage: string,
-): () => void {
-  return onBlockchainEvent((event) => {
-    handler(event).catch((error: unknown) => {
-      log.error({ err: error, event }, errorMessage);
-    });
-  });
 }
