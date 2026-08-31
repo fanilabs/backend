@@ -11,6 +11,7 @@ export const QueueName = {
   BlockchainIndexer: 'blockchain-indexer',
   Notifications: 'notifications',
   ReputationReconciliation: 'reputation-reconciliation',
+  FraudActivityCleanup: 'fraud-activity-cleanup',
 } as const;
 
 export type QueueNameValue = (typeof QueueName)[keyof typeof QueueName];

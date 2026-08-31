@@ -51,8 +51,10 @@ Architecture diagrams, folder structure, module boundaries, database schema, eve
 Generated the folder hierarchy, tooling (TypeScript, ESLint flat config with `eslint-plugin-boundaries` enforcing the architecture dependency rule, Prettier, lint-staged/husky), configuration (Zod env schema, fail-fast at boot), a working shared kernel (logger, error hierarchy + Fastify error handler, Prisma client, Redis cache client, BullMQ queue registry, security/docs Fastify plugins, health route), a resilient Soroban RPC client (retry + circuit breaker, unit-tested), Docker + Docker Compose (API, worker, Postgres, Redis), CI/CD (lint/format/typecheck/build/test jobs with Postgres+Redis service containers; Dependabot; release workflow), the full documentation set (`README.md`, `API_REFERENCE.md`, `DATABASE.md`, `AUTHENTICATION.md`, `EVENT_INDEXER.md`, `SECURITY.md`, `DEPLOYMENT.md`, `OBSERVABILITY.md`, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`), issue/PR templates, `CODEOWNERS`, the full Prisma schema from `ARCHITECTURE.md` §8, empty module directories with the four-layer skeleton (`.gitkeep` only — no fake implementations), and a `Makefile` for common tasks.
 **DoD:** `pnpm install && pnpm build` succeeds; `pnpm lint`, `pnpm typecheck`, `pnpm test`, `pnpm format:check` all pass; the compiled server boots cleanly (verified via a direct `node dist/server.js` smoke test — listens successfully and logs structured, retried connection errors when Postgres/Redis aren't reachable, rather than crashing) — **all verified in this session.** `docker compose up` itself was not verified in this environment (Docker is not installed in the sandbox this scaffold was built in) — verify on first use in an environment with Docker before relying on it. Every module folder exists with its four layers and no other content (no TODOs, no fake implementations).
 
-### Phase 5 — Incremental Module Implementation
+### Phase 5 — Incremental Module Implementation ✅ Complete
 Strict one-module-at-a-time completion, in dependency order (per `ARCHITECTURE.md` §10): `shared`/`blockchain` foundations → `auth` → `users` → `indexer` (minimal: escrow + delivery events only, to unblock the next two) → `deliveries` → `escrow` → `fleet` → `disputes` → `reputation` → `notifications` → `analytics` → `fraud-detection` → `admin` → indexer completed for remaining event types.
+
+**DoD:** every module below shipped with the full DoD in the "Module status" table, CI green throughout, no duplicate/parallel implementations left behind. — **Met.**
 
 Each module, before moving to the next, must ship with:
 - Full implementation (domain/application/infrastructure/interface layers)
@@ -80,17 +82,17 @@ Each module, before moving to the next, must ship with:
 
 ## 6. Milestones & Deliverables
 
-| Milestone | Deliverable | Depends on |
-|---|---|---|
-| M1 | Phases 1–3 documents merged | — |
-| M2 | Working scaffold, CI green, Docker Compose up | M1 |
-| M3 | Auth + Users live (registration, login, JWT/refresh, wallet linking) | M2 |
-| M4 | Indexer live for escrow + delivery events; Deliveries + Escrow modules live (read + XDR-build endpoints) | M3 |
-| M5 | Fleet + Disputes + evidence upload live | M4 |
-| M6 | Reputation reconciliation + Notifications live | M5 |
-| M7 | Analytics + Fraud-detection v1 + Admin module live | M6 |
-| M8 | Full indexer coverage (all events, all contracts), security review pass, observability dashboards, load test pass | M7 |
-| M9 | v1.0.0 tagged release, deployment runbook validated on a real environment | M8 |
+| Milestone | Deliverable | Depends on | Status |
+|---|---|---|---|
+| M1 | Phases 1–3 documents merged | — | ✅ Met |
+| M2 | Working scaffold, CI green, Docker Compose up | M1 | ✅ Met |
+| M3 | Auth + Users live (registration, login, JWT/refresh, wallet linking) | M2 | ✅ Met |
+| M4 | Indexer live for escrow + delivery events; Deliveries + Escrow modules live (read + XDR-build endpoints) | M3 | ✅ Met |
+| M5 | Fleet + Disputes + evidence upload live | M4 | ✅ Met |
+| M6 | Reputation reconciliation + Notifications live | M5 | ✅ Met |
+| M7 | Analytics + Fraud-detection v1 + Admin module live | M6 | ✅ Met — Phase 5 complete as of this milestone |
+| M8 | Full indexer coverage (all events, all contracts, already true as of M6 — see `EVENT_INDEXER.md`'s "Current Scope"), security review pass, observability dashboards, load test pass | M7 | ✅ Met — Phase 6 |
+| M9 | v1.0.0 tagged release, deployment runbook validated on a real environment | M8 | ✅ Met — `v1.0.0` tagged, `docker compose up` validated end-to-end |
 
 ## 7. Risks & Assumptions
 
@@ -113,7 +115,7 @@ Each module, before moving to the next, must ship with:
 
 ## 9. Future Enhancements (explicitly out of scope for v1)
 
-- Multi-currency settlement/payout — blocked on the smart-contract `settlement_contract` actually being implemented (currently a stub, Phase 1 §8).
+- Multi-currency settlement/payout — blocked on the smart-contract `settlement_contract` actually being implemented (currently a stub, Phase 1 §8). `SETTLEMENT_CONTRACT_ID` was removed from `src/shared/config/env.ts` and `.env.example` for the same reason (no consuming module to read it) and returns alongside this work.
 - Real-time push (WebSocket/SSE) delivery-tracking layer, mirroring SwiftChain's Socket.IO approach — v1 relies on REST polling + indexed read models; real-time is a natural v1.x addition once the core indexer is proven stable.
 - Distributed event bus (Redis Streams or similar) if/when the indexer needs to scale beyond one instance.
 - ML-based fraud detection, beyond the v1 rule-based heuristics.
@@ -164,6 +166,7 @@ Each module, before moving to the next, must ship with:
 | 3 | Diagrams + schema + folder structure + API design a new contributor can build from |
 | 4 | Scaffold builds, tests, lints, and runs in Docker Compose with CI green, zero business logic |
 | 5 (per module) | Implementation + unit + integration + API tests + docs + examples + error handling + logging + validation, no duplicate implementations, CI green |
+| 6 | Security review pass, metrics endpoint + dashboards, load test, `docker compose up` verified for real, `v1.0.0` tagged |
 
 ---
 

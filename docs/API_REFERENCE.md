@@ -6,7 +6,7 @@ The live, authoritative reference is generated from the same Zod schemas that va
 
 - All routes are versioned under `/api/v1` except `/health*` and `/api-docs`.
 - Success responses: `{ "data": ..., "meta"?: {...} }`.
-- Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... } }` — see `src/shared/errors` for the full code list.
+- Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... }, "requestId": "<fastify request id>" }` — see `src/shared/errors` for the full code list. The top-level `requestId` lets a user reporting a 500 be correlated to the matching `req.id` in the server's request log line.
 - Mutating endpoints that reflect on-chain state (deliveries, escrow, disputes, fleet) return a **pending transaction record**, not a synchronously-updated resource — the underlying resource only reaches its new state once the blockchain indexer confirms the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
 
@@ -49,6 +49,18 @@ All `/api/v1/transactions/build/*` routes require authentication (anti-abuse —
 **Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
 
 Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
+
+## Prisma Error Mapping
+
+`handleError` (`src/shared/errors/error-handler.ts`) maps the following Prisma known-request-error codes to distinguishable HTTP responses. Any Prisma code not listed here still falls through to a masked `500 INTERNAL_ERROR`.
+
+| Prisma code | HTTP status | `error.code` | Notes |
+|---|---|---|---|
+| `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
+| `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
+| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | Foreign-key constraint violation; `details` includes `meta` (constraint name) |
+| `P2034` | 409 | `WRITE_CONFLICT` | Transaction write conflict / deadlock — safe to retry |
+| `P1001` / `P1002` | 503 | `DATABASE_UNAVAILABLE` | Database unreachable / connection timed out |
 
 ## Planned Endpoint Families
 

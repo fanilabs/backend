@@ -26,10 +26,21 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
         objectSrc: ["'none'"],
       },
     },
+    // Helmet's default is `same-origin`, which is enforced by browsers
+    // independently of CORS: it blocks allow-listed cross-origin clients
+    // from loading this API's responses at all via a no-CORS-mode request
+    // (e.g. displaying an uploaded evidence image with `<img src=...>`).
+    // Since CORS_ORIGIN already allow-lists the cooperating client origins,
+    // relax CORP to let those resources load — `same-origin` would silently
+    // break them regardless of the CORS configuration.
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   });
 
   await app.register(cors, {
-    origin: config.CORS_ORIGIN.split(',').map((origin) => origin.trim()),
+    // CORS_ORIGIN is already validated and parsed into a non-empty array of
+    // well-formed origins by src/shared/config/env.ts — no further parsing
+    // needed here.
+    origin: config.CORS_ORIGIN,
     credentials: true,
   });
 

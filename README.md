@@ -2,10 +2,10 @@
 
 Off-chain backend for the FaniLab logistics-escrow platform. It complements the [FaniLab Soroban smart contracts](../FaniLab-SmartContract) — identity, KYC, dispute evidence, notifications, analytics, fraud detection, and a blockchain event index — without ever custodying funds or duplicating the escrow/delivery/dispute business logic that lives on-chain.
 
-[![CI](https://github.com/fanilab/fanilab-backend/actions/workflows/ci.yml/badge.svg)](https://github.com/fanilab/fanilab-backend/actions/workflows/ci.yml)
+[![CI](https://github.com/fanilabs/backend/actions/workflows/ci.yml/badge.svg)](https://github.com/fanilabs/backend/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
-> **Status:** Phase 4 — repository scaffold. No business modules are implemented yet; see [`ROADMAP.md`](./ROADMAP.md) for what's built and what's next.
+> **Status:** `v1.0.0`. Phase 5 (all twelve modules) and Phase 6 (security review, observability, load test, real `docker compose up` validation) are both complete; see [`ROADMAP.md`](./ROADMAP.md) for the full history and what's next past v1.
 
 ## What this is
 
@@ -37,9 +37,19 @@ cp .env.example .env
 pnpm install
 make db-up              # Postgres + Redis via Docker
 pnpm prisma:migrate
+pnpm seed                # optional — populates demo data for every read endpoint
 pnpm dev                # API on http://localhost:3000
 pnpm dev:worker          # in a second terminal, if you're touching background jobs
 ```
+
+`pnpm seed` (also `make seed`) creates a development-only `ADMIN` account
+(`admin@fanilab.dev` / `DevAdmin123!`) and `CUSTOMER` account
+(`customer@fanilab.dev` / `DevCustomer123!`), each with a linked wallet, plus
+sample deliveries, escrows, disputes, a fleet with drivers, driver profiles,
+notifications, and audit log entries covering every status value so every
+`GET` endpoint returns real data without a live Soroban deployment. It's
+idempotent (safe to re-run) and refuses to run when `NODE_ENV=production`.
+See [`docs/DATABASE.md`](./docs/DATABASE.md) for exactly what it creates.
 
 API docs are served at `http://localhost:3000/api-docs` once the server is running.
 
@@ -50,7 +60,18 @@ cp .env.example .env
 make docker-up
 ```
 
-Brings up `api`, `worker`, `postgres`, and `redis`. See the [`Makefile`](./Makefile) for all shortcuts (`make help`).
+Brings up `postgres`, `redis`, a one-shot `migrate` service that applies Prisma
+migrations, then `api` and `worker` (both wait for `migrate` to complete
+successfully before starting). A clean `docker compose down -v && make
+docker-up` produces a stack that serves `GET /api/v1/deliveries` with no
+manual migration step. Re-run migrations against a running stack with `make
+docker-migrate`. See the [`Makefile`](./Makefile) for all shortcuts (`make
+help`).
+
+`migrate` is a local/dev convenience only — it does not change the production
+release process (see [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) § Release
+Process), and the `api`/`worker` images still never migrate on boot
+themselves.
 
 ### Common tasks
 

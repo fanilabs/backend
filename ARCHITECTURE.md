@@ -1,6 +1,6 @@
 # FaniLab Backend — Architecture
 
-**Status:** Phase 3 design output. No business logic is implemented yet — this document is the blueprint Phase 4 (scaffold) and Phase 5 (implementation) build against.
+**Status:** Originally the Phase 3 design output; the blueprint Phase 4 (scaffold) and Phase 5 (implementation) were built against. All twelve modules are now implemented (`v1.0.0`) — see `ROADMAP.md` for current status.
 
 This document assumes familiarity with [`PHASE_1_DOMAIN_ANALYSIS.md`](./PHASE_1_DOMAIN_ANALYSIS.md) (smart contract source of truth) and [`PHASE_2_REFERENCE_ANALYSIS.md`](./PHASE_2_REFERENCE_ANALYSIS.md) (reference-implementation lessons).
 
@@ -190,8 +190,7 @@ fanilab-backend/
 │   ├── EVENT_INDEXER.md
 │   ├── SECURITY.md
 │   ├── DEPLOYMENT.md
-│   ├── OBSERVABILITY.md
-│   └── adr/                          (Architecture Decision Records, mirroring the smart-contract repo's own ADR practice)
+│   └── OBSERVABILITY.md
 ├── tests/
 │   └── e2e/                          (cross-module flows; module-local unit/integration tests live inside each module)
 ├── .github/
@@ -223,6 +222,7 @@ Module-local tests live next to source (`*.spec.ts` colocated, per Phase 2 §5.6
 - **Event-shape adapter boundary**: the raw Soroban RPC → typed-event mapping is isolated behind one adapter interface per contract so a future SDK/event-API migration (Phase 1 §9 — SDK 27 deprecation warning already present in the contracts) only touches `blockchain/contracts/*`, not module domain logic.
 - **Dispatch**: after durable ingestion, the indexer publishes an internal domain event (in-process event emitter, not yet a distributed bus — documented as a v2 candidate if the system needs multi-instance indexer scaling) that module-local handlers (deliveries, escrow, disputes, reputation, fleet, notifications, fraud-detection) subscribe to.
 - **Lag monitoring**: `now_ledger - lastLedgerSeq` exposed on `/health/indexer` and to the metrics/observability layer, adopting the Phase 2 §3 "indexer lag as first-class health signal" lesson.
+- **Process boundary (Phase 5 correction)**: "in-process event emitter" is literal — it does not cross the `api`/`worker` container boundary §5's folder structure and `docker-compose.yml` actually deploy. The indexer's poll job (the only publisher) runs in the `worker` process, so every module's event-subscription wiring must also run there — `src/workers/index.ts` constructs each module (discarding the HTTP plugin it returns, since this process has no server) specifically for that side effect, alongside constructing them a second time in `app.ts` for their routes. See `src/workers/index.ts`'s own header comment for the full explanation.
 
 ```mermaid
 sequenceDiagram
@@ -435,6 +435,8 @@ flowchart LR
 ```
 
 No module reaches into another module's `infrastructure/` or `domain/` internals directly — cross-module reads go through the other module's public `application/` use-case interface, keeping the boundary enforceable by lint rule in Phase 4.
+
+**Phase 5 correction**: no module actually calls another module's `application/` use cases in the implementation — every "dependency" edge above that isn't `indexer` turned out to mean "consumes the same blockchain events via the shared bus," not a direct call, and stayed that way (verified: zero cross-module imports anywhere under `src/modules/*/{domain,application,infrastructure}`). `notifications` is no exception — `deliveries --> notifications` and `disputes --> notifications` above mean "notifications reacts to `delivery`/`dispute-resolution` contract events," not a call into those modules. `notifications` does have one real, deliberate exception to the module-isolation rule: it reads the shared `users`/`wallet_addresses` tables directly to resolve an on-chain address to an account's contact email, on the same precedent `auth` and `users` already set for the `users` table — see `notifications/domain/ports.ts`'s `UserContactLookup` header comment.
 
 ---
 

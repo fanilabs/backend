@@ -91,6 +91,11 @@ enum DriverTier {
   @@map("driver_tier")
 }
 
+// SMS/PUSH kept for forward compatibility only — as of #103 the only
+// producer (`dispatchNotificationsFromEvent`) and the only sender
+// (`NotificationSender`) are both EMAIL-only, and the API's response schema
+// was narrowed to the `EMAIL` literal to match. Widen the schema alongside
+// a real multi-channel `NotificationSender` implementation, not before.
 enum NotificationChannel {
   EMAIL
   SMS
@@ -156,6 +161,11 @@ model WalletAddress {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // At most one is_primary = true row per user is enforced by the partial
+  // unique index `wallet_addresses_user_id_primary_key` (migration
+  // 20260830120000_wallet_address_single_primary). Prisma's schema DSL
+  // can't express a partial (filtered) unique index, so it exists only in
+  // that migration — do not "resolve drift" by dropping it.
   @@map("wallet_addresses")
 }
 
@@ -194,19 +204,34 @@ model Delivery {
 model Escrow {
   id              String       @id @default(uuid())
   chainDeliveryId BigInt       @unique @map("chain_delivery_id")
+  /// escrow_contract's own EscrowRecord carries its own sender/recipient/
+  /// driver, independent of delivery_contract's record — create_escrow's
+  /// caller supplies these directly, so they are not assumed to always
+  /// match the related Delivery row (PHASE_1_DOMAIN_ANALYSIS.md §3).
+  senderAddress    String    @map("sender_address")
+  recipientAddress String    @map("recipient_address")
+  driverAddress    String    @map("driver_address")
   token           String
-  amount          Decimal      @db.Decimal(38, 0)
-  platformFee     Decimal?     @map("platform_fee") @db.Decimal(38, 0)
+  /// Decimal(39, 0): i128::MAX (170141183460469231731687303715884105727) has
+  /// 39 digits — Decimal(38, 0) tops out at 38 nines, one digit short of the
+  /// full i128 range, so it must be 39 here to store any valid i128 exactly.
+  amount          Decimal      @db.Decimal(39, 0)
+  platformFee     Decimal?     @map("platform_fee") @db.Decimal(39, 0)
   status          EscrowStatus @default(LOCKED)
   disputedBy      String?      @map("disputed_by")
   disputedAt      DateTime?    @map("disputed_at")
   releasedAt      DateTime?    @map("released_at")
   refundedAt      DateTime?    @map("refunded_at")
+  createdAtChain  DateTime     @map("created_at_chain")
   createdAt       DateTime     @default(now()) @map("created_at")
   updatedAt       DateTime     @updatedAt @map("updated_at")
 
   delivery Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
 
+  /// Backs `analytics.getGmvByToken`'s `groupBy` on exactly this predicate
+  /// (`status = 'RELEASED'`, grouped by `token`) — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([status, token])
   @@map("escrows")
 }
 
@@ -304,7 +329,43 @@ model DriverProfile {
   registeredAt              DateTime   @map("registered_at")
   updatedAt                 DateTime   @updatedAt @map("updated_at")
 
+  /// Backs `analytics.getDriverTierCounts`'s `groupBy` on `tier` — see
+  /// `src/modules/analytics/infrastructure/prisma-analytics-reader.ts`.
+  @@index([tier])
   @@map("driver_profiles")
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Fraud detection (Phase 5 — rule-based velocity heuristics, ARCHITECTURE.md §4)
+// ─────────────────────────────────────────────────────────────────────────
+
+/// One category per blockchain event the fraud-detection module tracks —
+/// see src/modules/fraud-detection/application/record-actor-activity-from-event.ts
+/// for exactly which event/address pair backs each category and why.
+enum ActorActivityCategory {
+  DELIVERY_CREATED
+  ESCROW_RELEASED
+  DISPUTE_RAISED
+
+  @@map("actor_activity_category")
+}
+
+/// Durable, append-only per-actor activity log — never mutated, only
+/// inserted into (by dispatchActorActivityFromEvent) and counted from (by
+/// assessActor). Deliberately not a pre-computed "risk score" table: v1
+/// rule thresholds recompute a live count on every read rather than
+/// maintaining incrementally-updated derived state that could drift, same
+/// "recompute from source of truth" posture `reputation` already applies
+/// to its own on-chain scoring formula.
+model ActorActivity {
+  id         String                @id @default(uuid())
+  address    String
+  category   ActorActivityCategory
+  occurredAt DateTime              @map("occurred_at")
+  createdAt  DateTime              @default(now()) @map("created_at")
+
+  @@index([address, category, occurredAt])
+  @@map("actor_activities")
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -364,6 +425,7 @@ model Notification {
 
   @@index([userId])
   @@index([status])
+  @@index([userId, createdAt(sort: Desc)])
   @@map("notifications")
 }
 
@@ -381,5 +443,6 @@ model AuditLog {
 
   @@index([entityType, entityId])
   @@index([actorId])
+  @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
 }

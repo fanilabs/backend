@@ -22,6 +22,9 @@ pnpm-debug.log*
 prisma/dev.db
 prisma/dev.db-journal
 
+# Local dispute evidence storage (EVIDENCE_STORAGE_DIR default)
+storage/evidence/
+
 # Editor / OS
 .vscode/*
 !.vscode/settings.json

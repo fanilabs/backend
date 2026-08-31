@@ -1,0 +1,45 @@
+# Real, previously-undiscovered bug found in Phase 6 (ROADMAP.md): without
+# this file, `COPY . .` in the Dockerfile's `build` stage pulls in whatever
+# happens to be on the host running `docker build` — most importantly a
+# host-local `node_modules`, which clobbers the `deps` stage's own
+# carefully-installed one (built for the container's platform/pnpm layout,
+# not the host's) and breaks the later `COPY --from=build
+# /app/node_modules/.prisma` step in a way that only reproduces when the
+# host happens to already have `node_modules` present — invisible in CI
+# (a clean checkout has none) but real for any local `docker build`.
+
+# Dependencies (deps/prod-deps stages install these fresh, per-platform)
+node_modules/
+
+# Build output (the build stage produces its own)
+dist/
+*.tsbuildinfo
+
+# Environment — real secrets must never enter a build context/image layer;
+# docker-compose.yml injects .env via `env_file` at container *runtime*
+.env
+.env.*
+!.env.example
+
+# Version control / CI / editor — irrelevant to the image, and .git in
+# particular can be large and changes on every commit, busting layer cache
+.git/
+.github/
+
+# Testing / coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# Local dispute evidence storage (EVIDENCE_STORAGE_DIR default) — runtime
+# data, never something to bake into an image
+storage/evidence/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

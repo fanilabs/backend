@@ -102,5 +102,13 @@ export default tseslint.config(
       '@typescript-eslint/no-explicit-any': 'off',
     },
   },
+  {
+    // Standalone CLI tools (scripts/load-test.ts, ...), not application
+    // code reachable from src/ — console output is the actual point.
+    files: ['scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
   prettier,
 );
