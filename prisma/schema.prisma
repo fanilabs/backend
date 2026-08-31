@@ -194,10 +194,17 @@ model Delivery {
   escrow  Escrow?
   dispute Dispute?
 
+  /// Backs `deliveryRepository.list`'s filter-and-sort shape
+  /// (`where: { …, status? }`, `orderBy: { createdAtChain: 'desc' }` in
+  /// `src/modules/deliveries/infrastructure/prisma-delivery-repository.ts`)
+  /// so the planner can satisfy the predicate and the sort from one index
+  /// instead of sorting matched rows. `status` alone is covered by this
+  /// composite's leading column, so the former single-column
+  /// `@@index([status])` was dropped rather than kept for both.
   @@index([senderAddress])
   @@index([recipientAddress])
   @@index([driverAddress])
-  @@index([status])
+  @@index([status, createdAtChain(sort: Desc)])
   @@map("deliveries")
 }
 
