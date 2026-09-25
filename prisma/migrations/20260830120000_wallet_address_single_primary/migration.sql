@@ -15,3 +15,13 @@
 CREATE UNIQUE INDEX "wallet_addresses_user_id_primary_key"
   ON "wallet_addresses" ("user_id")
   WHERE "is_primary";
+
+-- Track modification time on wallet addresses (issue #183).
+--
+-- `WalletAddress` had no `updatedAt` field, so auditability and any
+-- modification-time-based cache invalidation were impossible. The column is
+-- added with a default so existing rows are backfilled to the migration time
+-- rather than failing the NOT NULL constraint; Prisma's `@updatedAt` keeps it
+-- current on every subsequent write.
+ALTER TABLE "wallet_addresses"
+  ADD COLUMN "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP;
