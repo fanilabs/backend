@@ -166,7 +166,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/remove-driver-from-fleet',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: removeDriverFromFleetBodySchema,
