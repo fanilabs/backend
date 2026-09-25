@@ -19,9 +19,22 @@ export interface ListAuditLogResult {
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
 
-/** Same `before`-cursor keyset pagination as `notifications`' identically
- * shaped list endpoint — see #101; the two were flagged together since
- * both capped at `MAX_LIMIT` with no way to reach older rows. */
+/**
+ * Creates the use case for listing admin audit log entries.
+ *
+ * The returned function fetches a page of audit log entries from the injected
+ * repository using `before`-cursor keyset pagination (same shape as the
+ * `notifications` list endpoint — see #101). The requested `limit` is clamped
+ * to `MAX_LIMIT` (200) and defaults to `DEFAULT_LIMIT` (50) when omitted.
+ *
+ * @param deps - Use case dependencies; requires an `auditLogRepository` used
+ *   to read the audit log entries.
+ * @returns An async function that accepts an optional {@link ListAuditLogInput}
+ *   (`limit` and ISO `before` cursor) and resolves to a
+ *   {@link ListAuditLogResult} containing the page `items`, the `nextCursor`
+ *   for the following page (or `null` when there are no more rows), and the
+ *   effective `limit` that was applied.
+ */
 export function createListAuditLogUseCase(deps: ListAuditLogDeps) {
   return async function listAuditLog(input: ListAuditLogInput = {}): Promise<ListAuditLogResult> {
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
