@@ -10,12 +10,16 @@ const chainDeliveryId = chainId;
 const amount = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
 const escrowStatus = z.enum(['LOCKED', 'RELEASED', 'REFUNDED', 'PAUSED']);
 
+// Stellar StrKey ed25519 public keys are 56 characters; cap address strings
+// to a safe bound to reject oversized payloads before they reach the DB.
+const address = z.string().max(56, 'Address must be at most 56 characters');
+
 const escrowDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
-  senderAddress: z.string(),
-  recipientAddress: z.string(),
-  driverAddress: z.string(),
+  senderAddress: address,
+  recipientAddress: address,
+  driverAddress: address,
   token: z.string(),
   amount: z.string(),
   platformFee: z.string().nullable(),
