@@ -31,7 +31,7 @@ export const requestChallengeResponseSchema = z.object({
 export const confirmWalletBodySchema = z.object({
   address: stellarAddress,
   challenge: z.string().min(1),
-  signature: z.string().min(1),
+  signature: z.string().min(1).max(512),
 });
 export const walletResponseSchema = z.object({ data: walletDto });
 
