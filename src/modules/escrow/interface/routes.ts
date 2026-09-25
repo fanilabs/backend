@@ -54,7 +54,7 @@ export function createEscrowRoutes(useCases: EscrowUseCases): FastifyPluginAsync
     app.post(
       '/transactions/build/create-escrow',
       {
-        preHandler: authenticate,
+        onRequest: authenticate,
         schema: {
           security: [{ bearerAuth: [] }],
           body: createEscrowBodySchema,

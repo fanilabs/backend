@@ -1,5 +1,6 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
 import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
+import { ContractName } from '../../../shared/events/contract-names.js';
 import type { EscrowContractReader, EscrowRepository } from '../domain/index.js';
 
 export interface SyncEscrowFromEventDeps {
@@ -24,7 +25,7 @@ export interface SyncEscrowFromEventDeps {
  */
 export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) {
   return async function syncEscrowFromEvent(event: BlockchainEventEnvelope): Promise<void> {
-    if (event.contractName !== 'escrow') {
+    if (event.contractName !== ContractName.Escrow) {
       return;
     }
 
