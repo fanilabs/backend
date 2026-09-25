@@ -3,6 +3,9 @@ import { z } from 'zod';
 /** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
 const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
 
+/** Maximum length for a challenge string (bounded to prevent oversized payloads). */
+const MAX_CHALLENGE_LENGTH = 512;
+
 const walletDto = z.object({
   id: z.string().uuid(),
   address: z.string(),
@@ -30,7 +33,7 @@ export const requestChallengeResponseSchema = z.object({
 
 export const confirmWalletBodySchema = z.object({
   address: stellarAddress,
-  challenge: z.string().min(1),
+  challenge: z.string().min(1).max(MAX_CHALLENGE_LENGTH),
   signature: z.string().min(1),
 });
 export const walletResponseSchema = z.object({ data: walletDto });
