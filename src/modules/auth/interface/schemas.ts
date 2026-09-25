@@ -17,6 +17,10 @@ const password = z
 // safe upper bound that still rejects oversized payloads.
 const token = z.string().max(2048);
 
+// Opaque tokens (refresh, email verification, password reset) are bounded to
+// the same safe upper limit to reject oversized payloads.
+const opaqueToken = z.string().min(1).max(2048);
+
 export const registerBodySchema = z.object({
   email,
   password,
@@ -43,18 +47,18 @@ export const loginResponseSchema = z.object({
 });
 
 export const refreshBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: opaqueToken,
 });
 export const refreshResponseSchema = z.object({
   data: z.object({ accessToken: token, refreshToken: token }),
 });
 
 export const logoutBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: opaqueToken,
 });
 
 export const verifyEmailBodySchema = z.object({
-  token: z.string().min(1),
+  token: opaqueToken,
 });
 
 export const requestPasswordResetBodySchema = z.object({
@@ -62,7 +66,7 @@ export const requestPasswordResetBodySchema = z.object({
 });
 
 export const resetPasswordBodySchema = z.object({
-  token: z.string().min(1),
+  token: opaqueToken,
   newPassword: password,
 });
 
