@@ -52,7 +52,11 @@ export function createUsersRoutes(useCases: UsersUseCases): FastifyPluginAsyncZo
   return async function usersRoutes(app) {
     app.get(
       '/users/me',
-      { preHandler: authenticate, schema: { response: { 200: profileResponseSchema } } },
+      {
+        onRequest: [authenticate],
+        preHandler: authenticate,
+        schema: { response: { 200: profileResponseSchema } },
+      },
       async (request, reply) => {
         const profile = await useCases.getMyProfile({ userId: requireUserId(request) });
         void reply.status(200).send(
