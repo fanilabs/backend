@@ -22,7 +22,7 @@ const evidenceDto = z.object({
   id: z.string().uuid(),
   hash: z.string(),
   contentType: z.string(),
-  uploadedBy: z.string(),
+  uploadedBy: z.string().max(255),
   createdAt: z.string().datetime(),
   confirmedOnChain: z.boolean(),
 });
