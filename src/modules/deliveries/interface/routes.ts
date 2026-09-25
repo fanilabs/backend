@@ -50,6 +50,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
     app.get(
       '/deliveries',
       {
+        preHandler: authenticate,
         schema: {
           querystring: listDeliveriesQuerySchema,
           response: { 200: listDeliveriesResponseSchema },

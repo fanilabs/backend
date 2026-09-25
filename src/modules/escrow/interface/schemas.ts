@@ -4,7 +4,7 @@ import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
-const chainDeliveryId = chainId;
+const chainDeliveryId = chainId.max(128, 'chainDeliveryId must be at most 128 characters');
 // Module-specific: a token amount that happens to share the digit-string
 // shape of `chainId` but is a distinct concept — kept local by design.
 const amount = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
@@ -12,7 +12,7 @@ const escrowStatus = z.enum(['LOCKED', 'RELEASED', 'REFUNDED', 'PAUSED']);
 
 const escrowDto = z.object({
   id: z.string().uuid(),
-  chainDeliveryId: z.string(),
+  chainDeliveryId: z.string().max(128, 'chainDeliveryId must be at most 128 characters'),
   senderAddress: z.string(),
   recipientAddress: z.string(),
   driverAddress: z.string(),

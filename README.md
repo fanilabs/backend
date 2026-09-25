@@ -112,3 +112,8 @@ See [`CONTRIBUTING.md`](./CONTRIBUTING.md) and [`CODE_OF_CONDUCT.md`](./CODE_OF_
 ## License
 
 [MIT](./LICENSE)
+
+## Handsoff notes
+
+<!-- handsoff-issue-190 -->
+- #190: Missing authentication on POST /transactions/build/resolve-dispute-refund-sender
