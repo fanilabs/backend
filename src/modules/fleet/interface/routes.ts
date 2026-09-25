@@ -55,7 +55,9 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.get(
       '/fleets/:chainFleetId',
       {
+        preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           params: fleetIdParamsSchema,
           querystring: getFleetQuerySchema,
           response: { 200: getFleetResponseSchema },

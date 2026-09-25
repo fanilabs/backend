@@ -7,6 +7,14 @@ export { transactionResponseSchema } from '../../../shared/validation/transactio
 const chainFleetId = chainId;
 const fleetDriverStatus = z.enum(['PENDING', 'ACTIVE']);
 
+/**
+ * Upper bound for blockchain address strings. Stellar addresses are 56
+ * characters, but a generous bound keeps other chain formats valid while
+ * still rejecting oversized payloads that could exhaust resources or
+ * overflow database columns.
+ */
+const MAX_ADDRESS_LENGTH = 128;
+
 const fleetDriverDto = z.object({
   id: z.string().uuid(),
   driverAddress: z.string(),
@@ -20,7 +28,7 @@ const fleetDto = z.object({
   id: z.string().uuid(),
   chainFleetId: z.string(),
   ownerAddress: z.string(),
-  treasuryAddress: z.string(),
+  treasuryAddress: z.string().max(MAX_ADDRESS_LENGTH),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   drivers: z.array(fleetDriverDto),
