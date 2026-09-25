@@ -59,9 +59,29 @@ const RULES: RuleDefinition[] = [
   },
 ];
 
-/** Evaluates every rule fresh against `ActorActivity` on every call — no
- * persisted "verdict" to go stale, same rationale as `record-actor-
- * activity-from-event.ts`'s header comment. */
+/**
+ * Builds the "assess actor" use case: given an actor's address, it evaluates
+ * every fraud rule in {@link RULES} against that actor's recorded activity and
+ * returns a fresh {@link ActorAssessment} verdict.
+ *
+ * Each rule counts the actor's `ActorActivity` entries of a given category
+ * within a rolling time window (measured against `deps.clock`, defaulting to
+ * `systemClock`) and marks the rule as triggered when that count exceeds the
+ * rule's threshold. The actor is flagged when any rule triggers. Nothing is
+ * persisted — every call re-evaluates from scratch, so a verdict can never go
+ * stale (same rationale as `record-actor-activity-from-event.ts`).
+ *
+ * @param deps - Dependencies for the use case:
+ *   - `activityRepository`: source of the actor's recorded activity, queried
+ *     per rule via `countSince(address, category, since)`.
+ *   - `clock` (optional): time base for the rule windows; defaults to
+ *     `systemClock` when omitted.
+ * @returns An async `assessActor` function that takes an {@link AssessActorInput}
+ *   (`{ address }`) and resolves to an {@link ActorAssessment} containing the
+ *   assessed `address`, a `flagged` boolean, and the per-rule `signals`
+ *   (each with its `ruleType`, `category`, `windowHours`, `threshold`, observed
+ *   `count`, and `triggered` flag).
+ */
 export function createAssessActorUseCase(deps: AssessActorDeps) {
   const clock = deps.clock ?? systemClock;
 
