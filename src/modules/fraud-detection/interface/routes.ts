@@ -17,7 +17,8 @@ export function createFraudDetectionRoutes(
     app.get(
       '/fraud-detection/actors/:address',
       {
-        preHandler: [authenticate, requireRole('ADMIN')],
+        onRequest: [authenticate],
+        preHandler: [requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',

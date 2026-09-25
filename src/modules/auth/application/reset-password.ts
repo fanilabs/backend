@@ -18,6 +18,25 @@ export interface ResetPasswordInput {
   newPassword: string;
 }
 
+/**
+ * Creates the reset-password use case.
+ *
+ * The returned function completes a password reset for a user who presents a
+ * valid reset token: it resolves the token's subject, verifies the token
+ * against the user's current password hash, stores the new password hash, and
+ * revokes all of the user's existing refresh tokens.
+ *
+ * @param deps - Collaborators required by the use case:
+ *   - `userRepository`: looks up the user and persists the new password hash.
+ *   - `passwordHasher`: hashes the new password before it is stored.
+ *   - `tokenService`: peeks the token subject and verifies the reset token.
+ *   - `refreshTokenRepository`: revokes every refresh token for the user.
+ * @returns An async function that accepts a {@link ResetPasswordInput}
+ *   (`token` and `newPassword`) and resolves once the password has been
+ *   updated and all sessions invalidated. It rejects with
+ *   {@link InvalidPasswordResetTokenError} when the token is missing, unknown,
+ *   or no longer matches the user's current password hash.
+ */
 export function createResetPasswordUseCase(deps: ResetPasswordDeps) {
   return async function resetPassword(input: ResetPasswordInput): Promise<void> {
     const claimedUserId = deps.tokenService.peekPasswordResetSubject(input.token);

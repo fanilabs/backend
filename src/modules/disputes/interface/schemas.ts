@@ -18,6 +18,17 @@ const allowedEvidenceContentTypes = [
 ] as const;
 const allowedEvidenceContentType = z.enum(allowedEvidenceContentTypes);
 
+/**
+ * Upper bound on the base64-encoded evidence payload accepted by the API.
+ * 10 MiB of raw bytes expands to ~13.98 MiB when base64-encoded (4/3
+ * overhead), so 14 MiB is the largest base64 string that can still decode
+ * to a payload within the intended 10 MiB limit. Bounding the string here
+ * prevents clients from sending arbitrarily large bodies that would exhaust
+ * memory or overflow the evidence storage column before the decoded-size
+ * check ever runs.
+ */
+const MAX_BASE64_CONTENT_LENGTH = 14 * 1024 * 1024;
+
 const evidenceDto = z.object({
   id: z.string().uuid(),
   hash: z.string(),
@@ -83,6 +94,7 @@ export function createUploadEvidenceBodySchema(maxBytes: number) {
     base64Content: z
       .string()
       .min(1)
+      .max(MAX_BASE64_CONTENT_LENGTH)
       .refine(
         (base64) => {
           const decodedLength = Math.ceil((base64.length * 3) / 4);
@@ -98,7 +110,7 @@ export function createUploadEvidenceBodySchema(maxBytes: number) {
 export const uploadEvidenceBodySchema = z.object({
   uploadedBy: stellarAddress,
   contentType: allowedEvidenceContentType,
-  base64Content: z.string().min(1),
+  base64Content: z.string().min(1).max(MAX_BASE64_CONTENT_LENGTH),
 });
 
 export const uploadEvidenceResponseSchema = z.object({
