@@ -3,7 +3,7 @@ import { z } from 'zod';
 const contractHealthSchema = z.object({
   contractName: z.string(),
   configured: z.boolean(),
-  lastLedgerSeq: z.string().nullable(),
+  lastLedgerSeq: z.string().max(20).nullable(),
   lagLedgers: z.number().nullable(),
   healthy: z.boolean(),
 });
