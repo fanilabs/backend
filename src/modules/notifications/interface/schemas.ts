@@ -22,7 +22,7 @@ const notificationStatus = z.enum(['PENDING', 'SENT', 'FAILED']);
 const notificationDto = z.object({
   id: z.string().uuid(),
   channel: notificationChannel,
-  type: z.string(),
+  type: z.string().max(100),
   payload: z.record(z.unknown()),
   status: notificationStatus,
   sentAt: z.string().datetime().nullable(),
