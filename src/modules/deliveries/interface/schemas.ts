@@ -13,6 +13,13 @@ const deliveryStatus = z.enum([
   'CANCELLED',
 ]);
 
+/**
+ * Maximum length for a base64-encoded XDR envelope. Soroban transaction
+ * envelopes are well under this bound; the limit guards against oversized
+ * payloads causing resource exhaustion or DB string truncation.
+ */
+const MAX_XDR_LENGTH = 100_000;
+
 const deliveryDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
@@ -41,7 +48,9 @@ export const listDeliveriesResponseSchema = z.object({ data: z.array(deliveryDto
 export const deliveryIdParamsSchema = z.object({ chainDeliveryId });
 export const getDeliveryResponseSchema = z.object({ data: deliveryDto });
 
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
+export const transactionResponseSchema = z.object({
+  data: z.object({ xdr: z.string().max(MAX_XDR_LENGTH) }),
+});
 
 export const createDeliveryBodySchema = z.object({
   senderAddress: stellarAddress,
