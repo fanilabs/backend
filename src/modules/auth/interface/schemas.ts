@@ -13,6 +13,11 @@ const password = z
     message: 'Password must be at most 72 bytes long',
   });
 
+// Role names are short, enum-like identifiers (e.g. "user", "admin").
+// Bound the length so oversized payloads are rejected with a 400 instead of
+// exhausting resources or hitting database string truncation errors.
+const role = z.string().max(64);
+
 export const registerBodySchema = z.object({
   email,
   password,
@@ -32,7 +37,7 @@ export const loginResponseSchema = z.object({
     user: z.object({
       id: z.string().uuid(),
       email: z.string(),
-      role: z.string(),
+      role,
       emailVerifiedAt: z.string().datetime().nullable(),
     }),
   }),

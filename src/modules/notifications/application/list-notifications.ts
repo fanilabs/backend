@@ -25,13 +25,28 @@ export interface ListNotificationsResult {
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
 
-/** Always scoped to the requesting user (`interface/routes.ts` passes
+/**
+ * Builds the use case that lists a user's notifications, newest first.
+ *
+ * Always scoped to the requesting user (`interface/routes.ts` passes
  * `request.user.id`, never a caller-supplied id) — there is no notion of
  * an admin reading another user's notifications in this v1 slice.
  *
  * Paginated via an opaque `before` cursor (the previous page's oldest
  * `createdAt`) rather than `skip`/offset, so results stay stable even as
- * new notifications are dispatched between page fetches — see #96/#101. */
+ * new notifications are dispatched between page fetches — see #96/#101.
+ *
+ * @param deps - Injected dependencies for the use case.
+ * @param deps.notificationRepository - Repository used to read notifications
+ *   for the given user, applying the limit, optional status filter, and
+ *   optional `before` cursor.
+ * @returns An async `listNotifications` function that accepts a
+ *   {@link ListNotificationsInput} (`userId`, optional `status`, optional
+ *   `limit`, optional `before` cursor) and resolves to a
+ *   {@link ListNotificationsResult} containing the page of `items`, the
+ *   `nextCursor` to fetch the next page (or `null` when the last page has
+ *   been reached), and the effective `limit` that was applied.
+ */
 export function createListNotificationsUseCase(deps: ListNotificationsDeps) {
   return async function listNotifications(
     input: ListNotificationsInput,

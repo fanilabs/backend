@@ -200,6 +200,7 @@ CREATE TABLE "blockchain_events" (
     "ledger_closed_at" TIMESTAMP(3) NOT NULL,
     "ingested_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "processed_at" TIMESTAMP(3),
+    "updated_at" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "blockchain_events_pkey" PRIMARY KEY ("id")
 );
@@ -263,31 +264,19 @@ CREATE INDEX "deliveries_driver_address_idx" ON "deliveries"("driver_address");
 CREATE INDEX "deliveries_status_idx" ON "deliveries"("status");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "escrows_chain_delivery_id_key" ON "escrows"("chain_delivery_id");
+CREATE UNIQUE INDEX "blockchain_events_rpc_event_id_key" ON "blockchain_events"("rpc_event_id");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "disputes_chain_delivery_id_key" ON "disputes"("chain_delivery_id");
+CREATE INDEX "blockchain_events_contract_name_network_idx" ON "blockchain_events"("contract_name", "network");
 
 -- CreateIndex
-CREATE INDEX "evidence_dispute_id_idx" ON "evidence"("dispute_id");
+CREATE INDEX "blockchain_events_ledger_seq_idx" ON "blockchain_events"("ledger_seq");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "fleets_chain_fleet_id_key" ON "fleets"("chain_fleet_id");
-
--- CreateIndex
-CREATE UNIQUE INDEX "fleet_drivers_fleet_id_driver_address_key" ON "fleet_drivers"("fleet_id", "driver_address");
-
--- CreateIndex
-CREATE UNIQUE INDEX "driver_profiles_address_key" ON "driver_profiles"("address");
+CREATE INDEX "blockchain_events_processed_at_idx" ON "blockchain_events"("processed_at");
 
 -- CreateIndex
 CREATE UNIQUE INDEX "blockchain_checkpoints_contract_name_network_key" ON "blockchain_checkpoints"("contract_name", "network");
-
--- CreateIndex
-CREATE INDEX "blockchain_events_contract_name_ledger_seq_idx" ON "blockchain_events"("contract_name", "ledger_seq");
-
--- CreateIndex
-CREATE UNIQUE INDEX "blockchain_events_contract_name_network_rpc_event_id_key" ON "blockchain_events"("contract_name", "network", "rpc_event_id");
 
 -- CreateIndex
 CREATE INDEX "notifications_user_id_idx" ON "notifications"("user_id");
@@ -296,22 +285,16 @@ CREATE INDEX "notifications_user_id_idx" ON "notifications"("user_id");
 CREATE INDEX "notifications_status_idx" ON "notifications"("status");
 
 -- CreateIndex
-CREATE INDEX "audit_logs_entity_type_entity_id_idx" ON "audit_logs"("entity_type", "entity_id");
+CREATE INDEX "audit_logs_actor_id_idx" ON "audit_logs"("actor_id");
 
 -- CreateIndex
-CREATE INDEX "audit_logs_actor_id_idx" ON "audit_logs"("actor_id");
+CREATE INDEX "audit_logs_entity_type_entity_id_idx" ON "audit_logs"("entity_type", "entity_id");
 
 -- AddForeignKey
 ALTER TABLE "refresh_tokens" ADD CONSTRAINT "refresh_tokens_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "wallet_addresses" ADD CONSTRAINT "wallet_addresses_user_id_fkey" FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "escrows" ADD CONSTRAINT "escrows_chain_delivery_id_fkey" FOREIGN KEY ("chain_delivery_id") REFERENCES "deliveries"("chain_delivery_id") ON DELETE RESTRICT ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "disputes" ADD CONSTRAINT "disputes_chain_delivery_id_fkey" FOREIGN KEY ("chain_delivery_id") REFERENCES "deliveries"("chain_delivery_id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "evidence" ADD CONSTRAINT "evidence_dispute_id_fkey" FOREIGN KEY ("dispute_id") REFERENCES "disputes"("id") ON DELETE CASCADE ON UPDATE CASCADE;
