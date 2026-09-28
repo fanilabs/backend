@@ -9,6 +9,7 @@ function toDomain(record: PrismaEvidence): Evidence {
     storageUrl: record.storageUrl,
     contentType: record.contentType,
     uploadedBy: record.uploadedBy,
+    uploadedByUserId: record.uploadedByUserId,
     createdAt: record.createdAt,
   };
 }
@@ -36,6 +37,7 @@ export function createPrismaEvidenceRepository(prisma: PrismaClient): EvidenceRe
           storageUrl: record.storageUrl,
           contentType: record.contentType,
           uploadedBy: record.uploadedBy,
+          uploadedByUserId: record.uploadedByUserId,
         },
       });
       return toDomain(created);

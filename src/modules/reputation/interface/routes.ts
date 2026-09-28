@@ -50,7 +50,7 @@ export function createReputationRoutes(useCases: ReputationUseCases): FastifyPlu
     app.post(
       '/transactions/build/register-driver',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: registerDriverBodySchema,

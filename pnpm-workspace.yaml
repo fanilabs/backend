@@ -1,3 +1,10 @@
+# Single source of truth for the native-build-script allowlist (packages
+# whose install-time postinstall/build scripts pnpm is permitted to run).
+# `allowBuilds` was added in pnpm v10.26.0 as the replacement for
+# package.json's `pnpm.onlyBuiltDependencies` (and its four siblings), all
+# of which pnpm removes in v11. The package.json copy was dropped once this
+# file existed so a future `packageManager` bump past v11 can't silently
+# disable the allowlist — see docs/DEPLOYMENT.md § Status, item 3.
 allowBuilds:
   '@prisma/client': true
   '@prisma/engines': true

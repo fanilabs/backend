@@ -2,7 +2,26 @@
 
 ## Reporting a Vulnerability
 
-Please do not open a public GitHub issue for security vulnerabilities. Instead, email the maintainers (see the FaniLab organization contact in the smart contract repository's `SECURITY.md`) with a description, reproduction steps, and impact assessment. We aim to acknowledge reports within 5 business days.
+Please do not open a public GitHub issue for security vulnerabilities.
+
+**Report privately from this repository:**
+<https://github.com/fanilabs/backend/security/advisories/new> — or click
+**Report a vulnerability** under this repository's **Security** tab. GitHub's
+private vulnerability reporting is enabled for this repo, so this form is a
+direct, self-contained channel to the maintainers: no email address to guess,
+no other repository to locate first. The report, the discussion, and fix
+coordination all stay private until a patch ships.
+
+Please include a description, reproduction steps, and an impact assessment. We
+aim to acknowledge reports within 5 business days.
+
+The FaniLab organization contact in the smart contract repository's
+`SECURITY.md` remains valid as supplementary context, but the advisory form
+above is sufficient on its own and is the preferred route.
+
+`CODE_OF_CONDUCT.md`'s Enforcement section points here for conduct reports as
+well — use the same **Report a vulnerability** form; it reaches the same
+maintainers and stays private.
 
 ## Custody Model
 
@@ -46,7 +65,13 @@ Dependabot (`.github/dependabot.yml`) tracks npm, Docker base images, and GitHub
 
 Dependabot only proposes upgrades — it does not fail a build for a known-vulnerable dependency that hasn't been upgraded yet. To close that gap, the `audit` job in `.github/workflows/ci.yml` runs `pnpm audit --audit-level=high` on every PR and on `main`; a `high` or `critical` advisory anywhere in the dependency tree (direct or transitive) fails CI. Run it locally with `pnpm audit`.
 
-**Accepted exceptions:** none currently. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
+**Accepted exceptions:** none currently at or above the `high` CI threshold. If an advisory has no available fix and must be temporarily tolerated, it must be listed here with the advisory id, the affected package, a rationale, and an owner — the audit threshold is never lowered globally to work around a single unfixable advisory.
+
+**Known residual advisories below the `high` threshold** (do not fail CI, recorded here for visibility):
+
+- `GHSA-w5hq-g745-h8pq` — `uuid` <11.1.1, missing buffer bounds check in v3/v5/v6 when a `buf` argument is supplied. Reached only via `autocannon > hyperid > uuid`; `autocannon` is a dev-only load-testing tool (`pnpm load-test`), never bundled or run in production, and this project never passes a `buf` argument. No override is applied because `hyperid` has not published a release depending on a patched `uuid`.
+
+The `pnpm.overrides` block in `package.json` pins forward-patched versions of `tar`, `handlebars`, `vite`, `esbuild`, `nanoid`, `js-yaml`, and `fast-uri` — all pulled in transitively through build/lint/test tooling (`bcrypt`'s native-build toolchain, `eslint-plugin-boundaries`, the Vitest/Vite stack) — to clear the `critical`/`high` advisories those chains carried.
 
 ## Reporting Timeline & Disclosure
 

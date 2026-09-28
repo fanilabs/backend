@@ -76,12 +76,18 @@ export interface NotificationEmailInput {
  * failure (unconfigured channel, SMTP error) rather than silently
  * pretending success — `sendNotification` maps a throw to `FAILED`.
  *
- * Per #103, the API's `notificationChannel` response schema was narrowed to
- * the single `EMAIL` literal to match — `NotificationChannel`'s database
- * enum keeps its three variants for forward compatibility, but nothing in
- * this module can produce or send `SMS`/`PUSH` today, so nothing advertises
- * them as possible. Widen this port (and the schema) together once a real
- * multi-channel sender exists.
+ * `NotificationChannel`'s database enum has three variants, and a
+ * persisted row (seed data or any other direct write) can genuinely be
+ * `SMS`/`PUSH` even though nothing in this module can produce or send one
+ * through the normal dispatch flow. `sendNotification` checks
+ * `notification.channel` explicitly before ever calling this port, so an
+ * `SMS`/`PUSH` row is marked `FAILED` up front rather than silently handed
+ * to this EMAIL-shaped sender — see that file's doc comment. Widen this
+ * port (add a channel-keyed sender registry) once a real multi-channel
+ * sender exists; the API response schema (`interface/schemas.ts`) already
+ * reflects the full three-variant enum since it must be able to represent
+ * whatever the database actually holds regardless of what can currently be
+ * sent.
  */
 export interface NotificationSender {
   send(input: NotificationEmailInput): Promise<void>;

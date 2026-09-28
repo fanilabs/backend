@@ -1,6 +1,8 @@
 import { z } from 'zod';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
 const driverTier = z.enum(['BRONZE', 'SILVER', 'GOLD']);
 
 const driverProfileDto = z.object({
@@ -16,8 +18,6 @@ const driverProfileDto = z.object({
 
 export const driverAddressParamsSchema = z.object({ address: stellarAddress });
 export const getDriverProfileResponseSchema = z.object({ data: driverProfileDto });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const registerDriverBodySchema = z.object({
   driverAddress: stellarAddress,

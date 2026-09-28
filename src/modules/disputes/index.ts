@@ -62,6 +62,28 @@ function createUnconfiguredEscrowStateReader(): DisputeEscrowStateReader {
   };
 }
 
+/**
+ * Fails fast at boot rather than on the first evidence upload — the
+ * historical bug here was a root-owned `/app/storage/evidence` that the
+ * `node` user couldn't `mkdir` into, which only surfaced as an unmapped 500
+ * on `POST /disputes/:id/evidence` the first time someone actually tried to
+ * upload something. Consistent with the fail-fast posture env.ts already
+ * applies to missing/invalid configuration (docs/DEPLOYMENT.md).
+ */
+function assertEvidenceStorageWritable(dir: string): void {
+  try {
+    mkdirSync(dir, { recursive: true });
+    accessSync(dir, constants.W_OK);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `EVIDENCE_STORAGE_DIR (${dir}) is not writable by the running process — dispute evidence ` +
+        `uploads would fail on first use. Fix directory ownership/permissions before starting ` +
+        `(see docs/DEPLOYMENT.md § Health Checks). Underlying error: ${reason}`,
+    );
+  }
+}
+
 export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const config = getConfig();
   assertEvidenceStorageWritable(config.EVIDENCE_STORAGE_DIR);
@@ -79,6 +101,7 @@ export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZo
   const syncDisputeFromEvent = createSyncDisputeFromEventUseCase({
     disputeRepository,
     escrowStateReader,
+    walletOwnershipRepository,
   });
   subscribeDisputeEventSync(syncDisputeFromEvent);
 
@@ -102,6 +125,7 @@ export function createDisputesModule(prisma: PrismaClient): FastifyPluginAsyncZo
     }),
     buildTransactions: createBuildDisputeTransactionsUseCases({
       transactionBuilder: contractClient,
+      disputeRepository,
     }),
   };
 

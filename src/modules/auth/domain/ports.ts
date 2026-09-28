@@ -55,7 +55,7 @@ export interface VerifiedRefreshToken {
  * automatically invalidated the moment the password actually changes.
  */
 export interface TokenService {
-  issueAccessToken(user: Pick<User, 'id' | 'role'>): string;
+  issueAccessToken(user: Pick<User, 'id' | 'role' | 'tokenVersion'>): string;
   issueRefreshToken(user: Pick<User, 'id'>): IssuedRefreshToken;
   verifyRefreshToken(token: string): VerifiedRefreshToken;
   /** Deterministic hash with no signature/expiry check — used for revocation

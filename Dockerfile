@@ -49,26 +49,6 @@ RUN pnpm install --frozen-lockfile
 # client generated during the full install above is untouched either way.
 RUN pnpm prune --prod --ignore-scripts
 
-# ── api: HTTP server image ───────────────────────────────────────────────────
-FROM base AS api
-ENV NODE_ENV=production
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=prod-deps /app/prisma ./prisma
-COPY --from=build /app/dist ./dist
-COPY package.json ./
-# Evidence upload writes here at runtime as the unprivileged `node` user —
-# created and owned up front since USER below switches away from root before
-# any request can trigger the mkdir this directory needs.
-RUN mkdir -p /var/lib/fanilab/evidence && chown -R node:node /var/lib/fanilab/evidence
-EXPOSE 3000
-USER node
-# Matches docs/DEPLOYMENT.md's instruction to point an orchestrator's
-# readiness probe at GET /health — this gives `docker compose`/Swarm/plain
-# `docker run` the same signal without one.
-HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
-CMD ["node", "dist/server.js"]
-
 # ── worker: BullMQ background-processing image ───────────────────────────────
 FROM base AS worker
 ENV NODE_ENV=production
@@ -80,9 +60,41 @@ COPY package.json ./
 # storage is also constructed in this process (see src/workers/index.ts).
 RUN mkdir -p /var/lib/fanilab/evidence /var/lib/fanilab/heartbeat \
     && chown -R node:node /var/lib/fanilab
+# Point at the directory just created/chowned above — the config default
+# (./storage/evidence) is a dev-only convenience and isn't writable by the
+# unprivileged `node` user here (see docs/DEPLOYMENT.md § Evidence Storage).
+# docker-compose.yml sets this too, but orchestrators that don't read that
+# file (e.g. Railway) need it baked into the image itself.
+ENV EVIDENCE_STORAGE_DIR=/var/lib/fanilab/evidence
 USER node
 # The worker has no HTTP surface, so liveness is a heartbeat file
 # (src/workers/index.ts) touched on every poll tick instead of an HTTP probe.
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
   CMD node -e "const fs=require('fs');try{const s=fs.statSync('/var/lib/fanilab/heartbeat/worker.heartbeat');process.exit(Date.now()-s.mtimeMs<45000?0:1)}catch(e){process.exit(1)}"
 CMD ["node", "dist/workers/index.js"]
+
+# ── api: HTTP server image ───────────────────────────────────────────────────
+FROM base AS api
+ENV NODE_ENV=production
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/prisma ./prisma
+COPY --from=build /app/dist ./dist
+COPY package.json ./
+# Evidence upload writes here at runtime as the unprivileged `node` user —
+# created and owned up front since USER below switches away from root before
+# any request can trigger the mkdir this directory needs.
+RUN mkdir -p /var/lib/fanilab/evidence && chown -R node:node /var/lib/fanilab/evidence
+# Point at the directory just created/chowned above — the config default
+# (./storage/evidence) is a dev-only convenience and isn't writable by the
+# unprivileged `node` user here (see docs/DEPLOYMENT.md § Evidence Storage).
+# docker-compose.yml sets this too, but orchestrators that don't read that
+# file (e.g. Railway) need it baked into the image itself.
+ENV EVIDENCE_STORAGE_DIR=/var/lib/fanilab/evidence
+EXPOSE 3000
+USER node
+# Matches docs/DEPLOYMENT.md's instruction to point an orchestrator's
+# readiness probe at GET /health — this gives `docker compose`/Swarm/plain
+# `docker run` the same signal without one.
+HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/server.js"]

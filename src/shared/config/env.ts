@@ -77,6 +77,13 @@ const baseEnvSchema = z.object({
 
   INDEXER_POLL_INTERVAL_MS: z.coerce.number().int().positive().default(5_000),
   INDEXER_LAG_ALERT_LEDGERS: z.coerce.number().int().positive().default(50),
+  /** Conservative floor for how many ledgers back a Soroban RPC's getEvents
+   * is guaranteed to still serve — used to clamp a stale checkpoint forward
+   * instead of requesting a startLedger that's already aged out (RPC error
+   * -32600 "startLedger must be within the ledger range"). Default matches
+   * the most restrictive commonly-deployed retention (~24h at ~5s/ledger);
+   * raise it if SOROBAN_RPC_URL points at a provider with a longer window. */
+  INDEXER_EVENT_RETENTION_LEDGERS: z.coerce.number().int().positive().default(17_280),
 
   /** Local-filesystem root for dispute evidence files — see
    * src/modules/disputes/infrastructure/local-evidence-storage.ts. The
@@ -92,6 +99,30 @@ const baseEnvSchema = z.object({
    * are ~33% larger than the decoded file, so the actual file limit is
    * approximately EVIDENCE_MAX_BYTES * 0.75. */
   EVIDENCE_MAX_BYTES: z.coerce.number().int().positive().default(10_485_760),
+
+  /** Selects the Mailer/NotificationSender adapter each composition root
+   * wires up (src/modules/auth/index.ts, src/modules/notifications/index.ts).
+   * `logger` is the development/test default — it logs instead of sending
+   * real mail and is deliberately refused when NODE_ENV=production (see
+   * select-mailer.ts / select-notification-sender.ts): a production
+   * deployment with no real provider configured should fail loudly at boot,
+   * not silently send no mail. No real provider is wired up yet — set this
+   * once one exists. */
+  MAIL_PROVIDER: z.enum(['logger']).default('logger'),
+  NOTIFICATION_PROVIDER: z.enum(['logger']).default('logger'),
+
+  /** How long `actor_activities` rows are kept before the scheduled cleanup
+   * job deletes them (src/modules/fraud-detection/infrastructure/cleanup-
+   * queue.ts). Default is well above the widest current rule window (24h,
+   * DISPUTE_RAISE_VELOCITY) to leave room for future longer-window rules
+   * and for forensic/manual review of recent flagged activity. */
+  FRAUD_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+
+  /** Short-TTL cache for the ADMIN-only analytics endpoints
+   * (src/modules/analytics/infrastructure/cached-analytics-reader.ts) —
+   * each admin dashboard refresh would otherwise re-run full-table
+   * count/groupBy queries on every request. */
+  ANALYTICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
 });
 
 /**

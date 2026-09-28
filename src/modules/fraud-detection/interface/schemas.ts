@@ -12,7 +12,7 @@ const actorActivityCategory = z.enum(['DELIVERY_CREATED', 'ESCROW_RELEASED', 'DI
 
 export const assessActorResponseSchema = z.object({
   data: z.object({
-    address: z.string(),
+    address: z.string().max(56),
     flagged: z.boolean(),
     signals: z.array(
       z.object({

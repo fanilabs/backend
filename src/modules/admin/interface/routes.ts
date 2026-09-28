@@ -1,6 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok, requireRole } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireRole, requireUser } from '../../../shared/http/index.js';
 import type { AdminUser, AuditLogEntry, DisputeReviewItem } from '../domain/index.js';
 import type {
   createListAuditLogUseCase,
@@ -10,6 +9,7 @@ import type {
 import {
   listAuditLogQuerySchema,
   listAuditLogResponseSchema,
+  listOpenDisputesQuerySchema,
   listOpenDisputesResponseSchema,
   updateUserRoleBodySchema,
   updateUserRoleResponseSchema,
@@ -49,15 +49,6 @@ function serializeAuditLogEntry(entry: AuditLogEntry) {
   };
 }
 
-function requireUserId(request: { user?: { id: string } }): string {
-  if (!request.user) {
-    // Unreachable in practice — every route below attaches `authenticate`
-    // as a preHandler, which throws before a handler body ever runs.
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user.id;
-}
-
 const adminOnly = [authenticate, requireRole('ADMIN')];
 
 export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZod {
@@ -65,23 +56,28 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
     app.get(
       '/admin/disputes',
       {
-        preHandler: adminOnly,
+        preHandler: [authenticate, requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',
+          querystring: listOpenDisputesQuerySchema,
           response: { 200: listOpenDisputesResponseSchema },
         },
       },
-      async (_request, reply) => {
-        const disputes = await useCases.listOpenDisputes();
-        void reply.status(200).send(ok(disputes.map(serializeDispute)));
+      async (request, reply) => {
+        const { limit: requestedLimit, after } = request.query;
+        const { items, nextCursor, limit } = await useCases.listOpenDisputes({
+          ...(requestedLimit !== undefined && { limit: requestedLimit }),
+          ...(after !== undefined && { after }),
+        });
+        void reply.status(200).send(ok(items.map(serializeDispute), { limit, nextCursor }));
       },
     );
 
     app.post(
       '/admin/users/:id/role',
       {
-        preHandler: adminOnly,
+        preHandler: [authenticate, requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',
@@ -92,7 +88,7 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const user = await useCases.updateUserRole({
-          actorId: requireUserId(request),
+          actorId: requireUser(request).id,
           userId: request.params.id,
           role: request.body.role,
         });
@@ -113,7 +109,11 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const { limit, before } = request.query;
-        const { items, nextCursor, limit: appliedLimit } = await useCases.listAuditLog({
+        const {
+          items,
+          nextCursor,
+          limit: appliedLimit,
+        } = await useCases.listAuditLog({
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
         });

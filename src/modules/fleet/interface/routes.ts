@@ -55,7 +55,9 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.get(
       '/fleets/:chainFleetId',
       {
+        preHandler: authenticate,
         schema: {
+          security: [{ bearerAuth: [] }],
           params: fleetIdParamsSchema,
           querystring: getFleetQuerySchema,
           response: { 200: getFleetResponseSchema },
@@ -91,7 +93,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/register-fleet',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: registerFleetBodySchema,
@@ -128,7 +130,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/add-driver-to-fleet',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: addDriverToFleetBodySchema,
@@ -147,7 +149,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/accept-fleet-invite',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: acceptFleetInviteBodySchema,
@@ -166,7 +168,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/remove-driver-from-fleet',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: removeDriverFromFleetBodySchema,

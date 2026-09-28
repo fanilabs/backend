@@ -47,6 +47,24 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
 
     if (notification.status === 'SENT') return;
 
+    // The persisted `NotificationChannel` enum has three variants, but
+    // `deps.sender` is always the single, EMAIL-shaped adapter wired at
+    // module composition (`notifications/index.ts`) — nothing in this
+    // codebase can actually deliver SMS/PUSH today (see `NotificationSender`'s
+    // doc comment). Sending an SMS/PUSH row through the email sender would
+    // silently deliver it to the wrong channel (or the wrong recipient
+    // field entirely); no retry could ever fix this, so it's marked FAILED
+    // immediately rather than going through the isFinalAttempt-gated path
+    // below, which exists for genuinely transient failures.
+    if (notification.channel !== 'EMAIL') {
+      await deps.notificationRepository.markFailed(notification.id);
+      log.error(
+        { notificationId: notification.id, channel: notification.channel },
+        'Notification channel has no configured sender — marking failed without attempting delivery',
+      );
+      return;
+    }
+
     const isFinalAttempt = input.isFinalAttempt ?? true;
 
     const contact = await deps.userContactLookup.findByUserId(notification.userId);

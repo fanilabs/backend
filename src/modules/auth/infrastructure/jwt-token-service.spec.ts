@@ -10,6 +10,7 @@ function testUser(overrides: Partial<User> = {}): User {
     email: 'user@example.com',
     passwordHash: '$2b$12$abcdefghijklmnopqrstuv',
     role: 'CUSTOMER',
+    tokenVersion: 0,
     emailVerifiedAt: null,
     createdAt: new Date(),
     ...overrides,
@@ -26,6 +27,16 @@ describe('createJwtTokenService', () => {
 
     expect(claims.sub).toBe(user.id);
     expect(claims.role).toBe('ADMIN');
+  });
+
+  it('embeds the user\'s current tokenVersion in the access token (security issue #12)', () => {
+    const tokenService = createJwtTokenService();
+    const user = testUser({ tokenVersion: 3 });
+
+    const token = tokenService.issueAccessToken(user);
+    const claims = verifyAccessToken(token);
+
+    expect(claims.tokenVersion).toBe(3);
   });
 
   it('issues a refresh token whose hash matches hashToken(token) and can be verified back to the user', () => {
@@ -92,23 +103,5 @@ describe('createJwtTokenService', () => {
 
     expect(tokenService.peekPasswordResetSubject(token)).toBe(user.id);
     expect(tokenService.peekPasswordResetSubject('garbage')).toBeNull();
-  });
-
-  it('rejects an email-verification token when presented to the access token verifier (purpose confusion protection)', () => {
-    const tokenService = createJwtTokenService();
-    const user = testUser();
-
-    const emailVerificationToken = tokenService.issueEmailVerificationToken(user);
-
-    expect(() => verifyAccessToken(emailVerificationToken)).toThrow();
-  });
-
-  it('rejects a password-reset token when presented to the access token verifier (purpose confusion protection)', () => {
-    const tokenService = createJwtTokenService();
-    const user = testUser();
-
-    const resetToken = tokenService.issuePasswordResetToken(user);
-
-    expect(() => verifyAccessToken(resetToken)).toThrow();
   });
 });

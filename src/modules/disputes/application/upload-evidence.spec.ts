@@ -99,4 +99,24 @@ describe('uploadEvidence', () => {
     expect(result.evidence.disputeId).toBe(dispute.id);
     expect(result.evidence.storageUrl).toContain(dispute.id);
   });
+
+  it('records the requester\'s account id as uploadedByUserId (wallet-relink evidence authorization)', async () => {
+    const { disputeRepository, walletOwnershipRepository, evidenceRepository, uploadEvidence } =
+      setup();
+    disputeRepository.seed(buildDispute({ chainDeliveryId: 1n, status: 'OPEN' }));
+    walletOwnershipRepository.seed('user-1', 'GSENDER');
+
+    const result = await uploadEvidence({
+      chainDeliveryId: 1n,
+      contentType: 'application/pdf',
+      uploadedBy: 'GSENDER',
+      bytes: Buffer.from('evidence-file-contents'),
+      requesterId: 'user-1',
+    });
+
+    expect(result.evidence.uploadedByUserId).toBe('user-1');
+    expect((await evidenceRepository.findById(result.evidence.id))?.uploadedByUserId).toBe(
+      'user-1',
+    );
+  });
 });

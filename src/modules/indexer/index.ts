@@ -23,7 +23,7 @@ import { createIndexerHealthRoutes } from './interface/routes.js';
  * consuming module planned (PHASE_1_DOMAIN_ANALYSIS.md §8), not an
  * oversight.
  */
-function getTrackedContracts(): TrackedContractConfig[] {
+export function getTrackedContracts(): TrackedContractConfig[] {
   const config = getConfig();
   return [
     { contractName: 'escrow', contractId: config.ESCROW_CONTRACT_ID },

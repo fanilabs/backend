@@ -44,6 +44,7 @@ export function createInMemoryUserRepository(): UserRepository & { seed(user: Us
         email: input.email,
         passwordHash: input.passwordHash,
         role: input.role,
+        tokenVersion: 0,
         emailVerifiedAt: null,
         createdAt: new Date(),
       };
@@ -138,7 +139,11 @@ function decodeFakeToken(token: string): { kind: string; payload: Record<string,
 export function createFakeTokenService(): TokenService {
   return {
     issueAccessToken(user) {
-      return encodeFakeToken('access', { sub: user.id, role: user.role });
+      return encodeFakeToken('access', {
+        sub: user.id,
+        role: user.role,
+        tokenVersion: user.tokenVersion,
+      });
     },
     issueRefreshToken(user): IssuedRefreshToken {
       const token = encodeFakeToken('refresh', { sub: user.id, jti: randomUUID() });
@@ -224,6 +229,7 @@ export function buildUser(overrides: Partial<User> = {}): User {
     email: 'user@example.com',
     passwordHash: 'hashed:password123',
     role: 'CUSTOMER' as UserRole,
+    tokenVersion: 0,
     emailVerifiedAt: null,
     createdAt: new Date(),
     ...overrides,

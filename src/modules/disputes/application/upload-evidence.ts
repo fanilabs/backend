@@ -84,6 +84,10 @@ export function createUploadEvidenceUseCase(deps: UploadEvidenceDeps) {
       storageUrl,
       contentType: input.contentType,
       uploadedBy: input.uploadedBy,
+      // Captured once, here, at upload time — the stable identity
+      // `downloadEvidence` authorizes against, immune to the `uploadedBy`
+      // *address* later changing hands via wallet relinking.
+      uploadedByUserId: input.requesterId,
     });
 
     return { evidence };

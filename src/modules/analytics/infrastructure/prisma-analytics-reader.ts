@@ -1,4 +1,5 @@
 import type { PrismaClient } from '@prisma/client';
+import { decimalToBigInt } from '../../../shared/database/index.js';
 import type { AnalyticsReader } from '../domain/index.js';
 
 /**
@@ -18,10 +19,7 @@ export function createPrismaAnalyticsReader(prisma: PrismaClient): AnalyticsRead
       });
       return grouped.map((row) => ({
         token: row.token,
-        // See src/modules/escrow/infrastructure/prisma-escrow-repository.ts's
-        // comment: Decimal.toString() switches to exponential notation past
-        // 21 digits, which BigInt() can't parse — .toFixed() can't.
-        releasedAmount: BigInt(row._sum.amount?.toFixed() ?? '0'),
+        releasedAmount: row._sum.amount === null ? 0n : decimalToBigInt(row._sum.amount),
         releasedCount: row._count._all,
       }));
     },

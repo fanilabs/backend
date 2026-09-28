@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress } from '../../../shared/events/index.js';
 import { logger } from '../../../shared/logger/index.js';
 import type {
   DriverProfileRepository,
@@ -94,8 +95,4 @@ async function refreshDriverProfile(
   }
 
   await deps.driverProfileRepository.upsert(address, fields);
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

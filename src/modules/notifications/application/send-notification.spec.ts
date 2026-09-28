@@ -66,6 +66,30 @@ describe('sendNotification', () => {
     expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
   });
 
+  it('marks FAILED without touching the email sender for a persisted SMS row (issue #12)', async () => {
+    const { notificationRepository, userContactLookup, sender, sendNotification } = setup();
+    const notification = buildNotification({ userId: 'user-1', channel: 'SMS' });
+    notificationRepository.seed(notification);
+    userContactLookup.seedUserId('user-1', { userId: 'user-1', email: 'driver@example.com' });
+
+    await sendNotification({ notificationId: notification.id });
+
+    expect(sender.sent).toHaveLength(0);
+    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+  });
+
+  it('marks FAILED without touching the email sender for a persisted PUSH row', async () => {
+    const { notificationRepository, userContactLookup, sender, sendNotification } = setup();
+    const notification = buildNotification({ userId: 'user-1', channel: 'PUSH' });
+    notificationRepository.seed(notification);
+    userContactLookup.seedUserId('user-1', { userId: 'user-1', email: 'driver@example.com' });
+
+    await sendNotification({ notificationId: notification.id });
+
+    expect(sender.sent).toHaveLength(0);
+    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+  });
+
   it('marks FAILED and rethrows when the sender itself fails', async () => {
     const { notificationRepository, userContactLookup, sender, sendNotification } = setup();
     const notification = buildNotification({ userId: 'user-1' });

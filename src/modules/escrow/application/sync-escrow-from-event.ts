@@ -1,4 +1,6 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
+import { ContractName } from '../../../shared/events/contract-names.js';
 import type { EscrowContractReader, EscrowRepository } from '../domain/index.js';
 
 export interface SyncEscrowFromEventDeps {
@@ -23,12 +25,12 @@ export interface SyncEscrowFromEventDeps {
  */
 export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) {
   return async function syncEscrowFromEvent(event: BlockchainEventEnvelope): Promise<void> {
-    if (event.contractName !== 'escrow') {
+    if (event.contractName !== ContractName.Escrow) {
       return;
     }
 
     const eventName = event.topic[0];
-    const chainDeliveryId = parseDeliveryId(event.topic[1]);
+    const chainDeliveryId = parseBigIntId(event.topic[1]);
     if (chainDeliveryId === null) return;
 
     const payload = Array.isArray(event.payload) ? event.payload : [];
@@ -83,6 +85,13 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
             status: 'REFUNDED',
             refundedAt: event.closedAt,
           });
+        } else if (record.status === 'LOCKED') {
+          // A split dispute resolution can legitimately leave the escrow
+          // LOCKED rather than terminal (backend issue #38) — the prior
+          // code only modeled the RELEASED/REFUNDED branches and silently
+          // no-op'd here, leaving the read model stuck on the stale PAUSED
+          // status from the original delivery_disputed event.
+          await deps.escrowRepository.updateStatus(chainDeliveryId, { status: 'LOCKED' });
         }
         return;
       }
@@ -93,19 +102,6 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
         return;
     }
   };
-}
-
-function parseDeliveryId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }
 
 function parseAmount(value: unknown): bigint | null {

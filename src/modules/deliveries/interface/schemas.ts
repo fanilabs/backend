@@ -1,5 +1,7 @@
 import { z } from 'zod';
-import { stellarAddress } from '../../../shared/validation/stellar-address.js';
+
+/** Stellar (Soroban) public key: 'G' + 55 base32 characters. */
+const stellarAddress = z.string().regex(/^G[A-Z2-7]{55}$/, 'Not a valid Stellar public key');
 const chainDeliveryId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
 const cargoCategory = z.enum(['DOCUMENTS', 'ELECTRONICS', 'PERISHABLES', 'CLOTHING', 'GENERAL']);
 const deliveryStatus = z.enum([
@@ -11,15 +13,22 @@ const deliveryStatus = z.enum([
   'CANCELLED',
 ]);
 
+/**
+ * Maximum length for a base64-encoded XDR envelope. Soroban transaction
+ * envelopes are well under this bound; the limit guards against oversized
+ * payloads causing resource exhaustion or DB string truncation.
+ */
+const MAX_XDR_LENGTH = 100_000;
+
 const deliveryDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
   senderAddress: z.string(),
   recipientAddress: z.string(),
-  driverAddress: z.string().nullable(),
+  driverAddress: z.string().max(256).nullable(),
   status: deliveryStatus,
-  origin: z.string(),
-  destination: z.string(),
+  origin: z.string().max(256),
+  destination: z.string().max(256),
   cargoCategory,
   weightGrams: z.number().int(),
   fragile: z.boolean(),
@@ -39,7 +48,9 @@ export const listDeliveriesResponseSchema = z.object({ data: z.array(deliveryDto
 export const deliveryIdParamsSchema = z.object({ chainDeliveryId });
 export const getDeliveryResponseSchema = z.object({ data: deliveryDto });
 
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
+export const transactionResponseSchema = z.object({
+  data: z.object({ xdr: z.string().max(MAX_XDR_LENGTH) }),
+});
 
 export const createDeliveryBodySchema = z.object({
   senderAddress: stellarAddress,
@@ -70,5 +81,10 @@ export const confirmDeliveryBodySchema = z.object({
 
 export const cancelDeliveryBodySchema = z.object({
   senderAddress: stellarAddress,
+  chainDeliveryId,
+});
+
+export const raiseDisputeBodySchema = z.object({
+  callerAddress: stellarAddress,
   chainDeliveryId,
 });

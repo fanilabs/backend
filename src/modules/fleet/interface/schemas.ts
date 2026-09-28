@@ -1,7 +1,19 @@
 import { z } from 'zod';
+import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
-const chainFleetId = z.string().regex(/^\d+$/, 'Must be a non-negative integer string');
+
+export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
+
+const chainFleetId = chainId.max(20, 'Must be no more than 20 digits');
 const fleetDriverStatus = z.enum(['PENDING', 'ACTIVE']);
+
+/**
+ * Upper bound for blockchain address strings. Stellar addresses are 56
+ * characters, but a generous bound keeps other chain formats valid while
+ * still rejecting oversized payloads that could exhaust resources or
+ * overflow database columns.
+ */
+const MAX_ADDRESS_LENGTH = 128;
 
 const fleetDriverDto = z.object({
   id: z.string().uuid(),
@@ -15,8 +27,8 @@ const fleetDriverDto = z.object({
 const fleetDto = z.object({
   id: z.string().uuid(),
   chainFleetId: z.string(),
-  ownerAddress: z.string(),
-  treasuryAddress: z.string(),
+  ownerAddress: z.string().max(MAX_ADDRESS_LENGTH),
+  treasuryAddress: z.string().max(MAX_ADDRESS_LENGTH),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
   drivers: z.array(fleetDriverDto),
@@ -46,10 +58,8 @@ export const getFleetResponseSchema = z.object({ data: fleetDto });
 
 export const payoutAddressParamsSchema = z.object({ chainFleetId, driverAddress: stellarAddress });
 export const payoutAddressResponseSchema = z.object({
-  data: z.object({ payoutAddress: z.string() }),
+  data: z.object({ payoutAddress: z.string().max(MAX_ADDRESS_LENGTH) }),
 });
-
-export const transactionResponseSchema = z.object({ data: z.object({ xdr: z.string() }) });
 
 export const registerFleetBodySchema = z.object({
   ownerAddress: stellarAddress,

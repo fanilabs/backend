@@ -172,6 +172,22 @@ describe('syncEscrowFromEvent', () => {
     expect(stored?.status).toBe('LOCKED');
   });
 
+  it('dispute_resolved: replaying the same LOCKED-outcome event twice is idempotent', async () => {
+    const { escrowRepository, contractReader, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 1n, status: 'PAUSED' }));
+    contractReader.seed(1n, buildChainEscrowRecord({ chainDeliveryId: 1n, status: 'LOCKED' }));
+    const event = buildEscrowEvent({
+      topic: ['dispute_resolved', '1'],
+      payload: ['GADMIN', 'GADMIN'],
+    });
+
+    await syncEscrowFromEvent(event);
+    await syncEscrowFromEvent(event);
+
+    const stored = await escrowRepository.findByChainDeliveryId(1n);
+    expect(stored?.status).toBe('LOCKED');
+  });
+
   it('dispute_resolved: backfills platformFee when dispute resolves to RELEASED (issue #39)', async () => {
     const { escrowRepository, contractReader, syncEscrowFromEvent } = setup();
     escrowRepository.seed(buildEscrow({ chainDeliveryId: 2n, status: 'PAUSED', platformFee: null }));

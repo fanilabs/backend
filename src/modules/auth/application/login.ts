@@ -3,10 +3,9 @@ import type {
   RefreshTokenRepository,
   TokenService,
   UserRepository,
+  UserRole,
 } from '../domain/index.js';
 import { InvalidCredentialsError } from '../domain/index.js';
-
-const DUMMY_PASSWORD_HASH = '$2b$12$7c8JfTQ/c4AUhXcHq6p7J.hgBlJz4k1EqjEkDLFt6k5qqMOaV.tWy';
 
 export interface LoginDeps {
   userRepository: UserRepository;
@@ -23,9 +22,24 @@ export interface LoginInput {
 export interface LoginResult {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; email: string; role: string; emailVerifiedAt: Date | null };
+  user: { id: string; email: string; role: UserRole; emailVerifiedAt: Date | null };
 }
 
+/**
+ * Creates the login use case, which authenticates a user with email/password
+ * credentials and issues a fresh access/refresh token pair on success.
+ *
+ * @param deps - Collaborators required to authenticate and issue tokens:
+ *   - `userRepository`: looks up the user by email.
+ *   - `passwordHasher`: verifies the supplied password against the stored hash.
+ *   - `tokenService`: issues the access and refresh tokens.
+ *   - `refreshTokenRepository`: persists the hashed refresh token for later rotation/revocation.
+ * @returns An async `login` function that takes a {@link LoginInput} (email and
+ *   password) and resolves to a {@link LoginResult} containing the access token,
+ *   refresh token, and the authenticated user's public profile. Throws
+ *   {@link InvalidCredentialsError} when the email is unknown or the password
+ *   does not match (identical failure for both cases to prevent email enumeration).
+ */
 export function createLoginUseCase(deps: LoginDeps) {
   return async function login(input: LoginInput): Promise<LoginResult> {
     const email = input.email.trim().toLowerCase();
@@ -34,7 +48,6 @@ export function createLoginUseCase(deps: LoginDeps) {
     // Deliberately identical failure for "no such user" and "wrong password"
     // — distinguishing them lets an attacker enumerate registered emails.
     if (!user) {
-      await deps.passwordHasher.compare(input.password, DUMMY_PASSWORD_HASH);
       throw new InvalidCredentialsError();
     }
     const passwordMatches = await deps.passwordHasher.compare(input.password, user.passwordHash);

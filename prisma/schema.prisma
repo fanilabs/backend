@@ -121,15 +121,28 @@ model User {
   email           String    @unique
   passwordHash    String    @map("password_hash")
   role            UserRole  @default(CUSTOMER)
+  /// Bumped whenever this user's privileges must be invalidated immediately
+  /// rather than waiting out JWT_ACCESS_TTL — currently only on an admin
+  /// role change (security issue #12). Embedded in every access token at
+  /// issuance (`AccessTokenClaims.tokenVersion`); the shared HTTP auth guard
+  /// rejects any token whose embedded version doesn't match this column, so
+  /// an already-issued access token stops granting access the moment this
+  /// changes, not just on its next refresh. Existing tokens issued before
+  /// this column existed carry no `tokenVersion` claim at all and are
+  /// treated as version 0 (this column's default), so a routine deploy
+  /// doesn't force every signed-in user to re-authenticate.
+  tokenVersion    Int       @default(0) @map("token_version")
   emailVerifiedAt DateTime? @map("email_verified_at")
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  wallets       WalletAddress[]
-  refreshTokens RefreshToken[]
-  notifications Notification[]
-  auditLogs     AuditLog[]
-  ownedFleets   Fleet[]
+  wallets          WalletAddress[]
+  refreshTokens    RefreshToken[]
+  notifications    Notification[]
+  auditLogs        AuditLog[]
+  ownedFleets      Fleet[]
+  uploadedEvidence Evidence[]
+  raisedDisputes   Dispute[]
 
   @@map("users")
 }
@@ -141,6 +154,7 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -161,6 +175,11 @@ model WalletAddress {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  // At most one is_primary = true row per user is enforced by the partial
+  // unique index `wallet_addresses_user_id_primary_key` (migration
+  // 20260830120000_wallet_address_single_primary). Prisma's schema DSL
+  // can't express a partial (filtered) unique index, so it exists only in
+  // that migration — do not "resolve drift" by dropping it.
   @@map("wallet_addresses")
 }
 
@@ -220,7 +239,7 @@ model Escrow {
   amount          Decimal      @db.Decimal(39, 0)
   platformFee     Decimal?     @map("platform_fee") @db.Decimal(39, 0)
   status          EscrowStatus @default(LOCKED)
-  disputedBy      String?      @map("disputed_by")
+  disputedBy      String?      @map("disputed_by") @db.VarChar(56)
   disputedAt      DateTime?    @map("disputed_at")
   releasedAt      DateTime?    @map("released_at")
   refundedAt      DateTime?    @map("refunded_at")
@@ -248,6 +267,18 @@ model Dispute {
   status          DisputeStatus @default(OPEN)
   raisedBy        String        @map("raised_by")
   raisedAt        DateTime      @map("raised_at")
+  /// The backend account that owned the `raisedBy` *address* at the moment
+  /// this dispute was first observed (security: raiser wallet-relink
+  /// evidence authorization, follow-up to `Evidence.uploadedByUserId`) —
+  /// resolved once, in `sync-dispute-from-event.ts`'s `dispute_raised`/
+  /// `delivery_disputed` handlers, and never re-derived or overwritten on a
+  /// later replay/resolution event, so a wallet unlinked and relinked to a
+  /// different account long after the dispute was raised cannot change who
+  /// this column names. `null` when no account owned the address at that
+  /// moment, or for any dispute synced before this column existed — see
+  /// `downloadEvidence`'s doc comment for why that `null` case is *not*
+  /// treated as "fall back to current wallet ownership".
+  raisedByUserId  String?       @map("raised_by_user_id")
   resolvedBy      String?       @map("resolved_by")
   resolvedAt      DateTime?     @map("resolved_at")
   senderShareBps  Int?          @map("sender_share_bps")
@@ -256,7 +287,10 @@ model Dispute {
 
   delivery Delivery  @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
   evidence Evidence[]
+  raiser   User?     @relation(fields: [raisedByUserId], references: [id], onDelete: SetNull)
 
+  @@index([raisedByUserId])
+  @@index([status, raisedAt, chainDeliveryId])
   @@map("disputes")
 }
 
@@ -270,11 +304,23 @@ model Evidence {
   storageUrl   String   @map("storage_url")
   contentType  String   @map("content_type")
   uploadedBy   String   @map("uploaded_by")
+  /// The authenticated uploader's own account id, captured once at upload
+  /// time (security issue: wallet-relink evidence authorization) — the
+  /// stable identity `downloadEvidence` authorizes the uploader-access
+  /// branch against, instead of re-checking who currently owns the
+  /// `uploadedBy` *address*, which can silently change hands if the wallet
+  /// is later unlinked and relinked by a different account. Same
+  /// optional-actor-id shape as `AuditLog.actorId` (this column didn't
+  /// exist before this fix, so every row created earlier has it `null` —
+  /// see `downloadEvidence`'s doc comment for that legacy fallback).
+  uploadedByUserId String? @map("uploaded_by_user_id")
   createdAt    DateTime @default(now()) @map("created_at")
 
-  dispute Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  dispute  Dispute @relation(fields: [disputeId], references: [id], onDelete: Cascade)
+  uploader User?   @relation(fields: [uploadedByUserId], references: [id], onDelete: SetNull)
 
   @@index([disputeId])
+  @@index([uploadedByUserId])
   @@map("evidence")
 }
 
@@ -365,6 +411,7 @@ model ActorActivity {
   category   ActorActivityCategory
   occurredAt DateTime              @map("occurred_at")
   createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
 
   @@index([address, category, occurredAt])
   @@map("actor_activities")
@@ -376,7 +423,7 @@ model ActorActivity {
 
 model BlockchainCheckpoint {
   id            String   @id @default(uuid())
-  contractName  String   @map("contract_name")
+  contractName  String   @db.VarChar(255) @map("contract_name")
   network       String
   lastLedgerSeq BigInt   @default(0) @map("last_ledger_seq")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -387,7 +434,7 @@ model BlockchainCheckpoint {
 
 model BlockchainEvent {
   id           String    @id @default(uuid())
-  contractName String    @map("contract_name")
+  contractName String    @db.VarChar(255) @map("contract_name")
   network      String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
@@ -403,7 +450,6 @@ model BlockchainEvent {
   ledgerClosedAt DateTime @map("ledger_closed_at")
   ingestedAt    DateTime  @default(now()) @map("ingested_at")
   processedAt   DateTime? @map("processed_at")
-  processingError String? @map("processing_error")
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])
@@ -423,6 +469,7 @@ model Notification {
   status    NotificationStatus  @default(PENDING)
   sentAt    DateTime?           @map("sent_at")
   createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -436,7 +483,7 @@ model AuditLog {
   id         String   @id @default(uuid())
   actorId    String?  @map("actor_id")
   actorLabel String   @map("actor_label")
-  action     String
+  action     String   @db.VarChar(100)
   entityType String   @map("entity_type")
   entityId   String   @map("entity_id")
   metadata   Json?

@@ -8,6 +8,7 @@ import {
 import {
   createPrismaAuditLogRepository,
   createPrismaDisputeReviewReader,
+  createPrismaSessionRevoker,
   createPrismaUserRoleRepository,
 } from './infrastructure/index.js';
 import { createAdminRoutes } from './interface/routes.js';
@@ -20,10 +21,15 @@ export function createAdminModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const disputeReviewReader = createPrismaDisputeReviewReader(prisma);
   const userRoleRepository = createPrismaUserRoleRepository(prisma);
   const auditLogRepository = createPrismaAuditLogRepository(prisma);
+  const sessionRevoker = createPrismaSessionRevoker(prisma);
 
   const useCases = {
     listOpenDisputes: createListOpenDisputesUseCase({ disputeReviewReader }),
-    updateUserRole: createUpdateUserRoleUseCase({ userRoleRepository, auditLogRepository }),
+    updateUserRole: createUpdateUserRoleUseCase({
+      userRoleRepository,
+      auditLogRepository,
+      sessionRevoker,
+    }),
     listAuditLog: createListAuditLogUseCase({ auditLogRepository }),
   };
 

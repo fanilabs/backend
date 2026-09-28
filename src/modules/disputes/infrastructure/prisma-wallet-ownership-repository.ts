@@ -15,5 +15,17 @@ export function createPrismaWalletOwnershipRepository(
       });
       return wallet?.userId === userId;
     },
+
+    async findOwnerByAddress(address, asOf) {
+      // `address` is unique, but `findUnique` can't take an extra filter
+      // alongside a unique field — `findFirst` can. `verifiedAt: { lte: asOf }`
+      // naturally excludes a null `verifiedAt` too (SQL's `NULL <= x` is
+      // never true), which is the conservative behavior we want.
+      const wallet = await prisma.walletAddress.findFirst({
+        where: { address, verifiedAt: { lte: asOf } },
+        select: { userId: true },
+      });
+      return wallet?.userId ?? null;
+    },
   };
 }

@@ -70,7 +70,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
           // an unfiltered `include` returns every driver ever associated
           // with the fleet, unbounded by its churn history.
           drivers: {
-            where: includeRemoved ? undefined : { removedAt: null },
+            ...(!includeRemoved && { where: { removedAt: null } }),
             take: driverLimit,
             orderBy: { invitedAt: 'desc' },
           },

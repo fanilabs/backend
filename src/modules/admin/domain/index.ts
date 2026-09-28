@@ -10,6 +10,7 @@ export type {
   DisputeReviewReader,
   ListAuditLogFilter,
   RecordAuditLogInput,
+  SessionRevoker,
   UserRoleRepository,
 } from './ports.js';
 export {

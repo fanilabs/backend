@@ -1,9 +1,21 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
-import type { DisputeEscrowStateReader, DisputeRepository } from '../domain/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
+import type {
+  DisputeEscrowStateReader,
+  DisputeRepository,
+  WalletOwnershipRepository,
+} from '../domain/index.js';
 
 export interface SyncDisputeFromEventDeps {
   disputeRepository: DisputeRepository;
   escrowStateReader: DisputeEscrowStateReader;
+  /** Used exactly once per dispute, only from the `dispute_raised`/
+   * `delivery_disputed` handlers below, to resolve `raisedByUserId` at the
+   * moment a dispute is first observed — see `WalletOwnershipRepository.
+   * findOwnerByAddress`'s and `DisputeRepository.upsert`'s doc comments for
+   * why this is safe to resolve on every event (including replays) without
+   * re-checking whether the row already exists first. */
+  walletOwnershipRepository: WalletOwnershipRepository;
 }
 
 /**
@@ -45,6 +57,23 @@ export interface SyncDisputeFromEventDeps {
  * arrives as the JSON string `'["1"]'`, not a native array — `parseTupleWrappedDeliveryId`
  * below parses it accordingly. Getting this backwards would silently fail
  * every Layer B event lookup.
+ *
+ * Whichever of `dispute_raised`/`delivery_disputed` first creates the
+ * `Dispute` row also resolves `raisedByUserId` (security: raiser
+ * wallet-relink evidence authorization, follow-up to
+ * `Evidence.uploadedByUserId`) from that same event's address, via
+ * `WalletOwnershipRepository.findOwnerByAddress` — passed the *event's own*
+ * `closedAt`, never wall-clock "now". This is the only point in the whole
+ * system that ever sets it — see `DisputeRepository.upsert`'s doc comment
+ * for why the repository itself refuses to let a later event (replay, or
+ * resolution) reassign it once set. That alone isn't sufficient, though:
+ * the indexer resumes from a checkpoint after any downtime
+ * (`poll-contract-events.ts`), so a `dispute_raised` event can be processed
+ * for the *first* time long after it actually happened on-chain — if
+ * "current wallet owner" were resolved using wall-clock time at processing
+ * time rather than the event's own `closedAt`, a wallet relinked in that
+ * gap would wrongly resolve to the new owner on first creation, not just
+ * on a later replay. `findOwnerByAddress`'s `asOf` parameter closes that.
  */
 export function createSyncDisputeFromEventUseCase(deps: SyncDisputeFromEventDeps) {
   return async function syncDisputeFromEvent(event: BlockchainEventEnvelope): Promise<void> {
@@ -71,10 +100,15 @@ async function handleDisputeResolutionEvent(
     case 'dispute_raised': {
       const raisedBy = parseAddress(payload[0]);
       if (raisedBy === null) return;
+      const raisedByUserId = await deps.walletOwnershipRepository.findOwnerByAddress(
+        raisedBy,
+        event.closedAt,
+      );
       await deps.disputeRepository.upsert(chainDeliveryId, {
         status: 'OPEN',
         raisedBy,
         raisedAt: event.closedAt,
+        ...(raisedByUserId !== null && { raisedByUserId }),
       });
       return;
     }
@@ -87,7 +121,15 @@ async function handleDisputeResolutionEvent(
 
     case 'dispute_resolved_split': {
       const caller = parseAddress(payload[0]);
-      await upsertResolution(deps, chainDeliveryId, 'SPLIT', caller, event.closedAt);
+      // payload: (caller, delivery_id, sender_share_bps) — the only
+      // on-chain source for the confirmed split ratio (backend issue #40);
+      // `DisputeCase` itself has no such field (PHASE_1_DOMAIN_ANALYSIS.md
+      // §5). Malformed/out-of-range values are dropped rather than trusted,
+      // same posture as this file's other payload parsing.
+      const senderShareBps = parseSenderShareBps(payload[2]);
+      await upsertResolution(deps, chainDeliveryId, 'SPLIT', caller, event.closedAt, {
+        ...(senderShareBps !== null && { senderShareBps }),
+      });
       return;
     }
 
@@ -120,12 +162,17 @@ async function handleEscrowEvent(
   // not the tuple-wrapped DeliveryId dispute_resolution_contract uses —
   // verified against escrow_contract/lib.rs (same convention the `escrow`
   // module's own handler relies on).
-  const chainDeliveryId = parseBareDeliveryId(event.topic[1]);
+  const chainDeliveryId = parseBigIntId(event.topic[1]);
   if (chainDeliveryId === null) return;
 
   if (event.topic[0] === 'delivery_disputed') {
     const disputedBy = parseAddress(Array.isArray(event.payload) ? event.payload[0] : undefined);
     if (disputedBy === null) return;
+
+    const raisedByUserId = await deps.walletOwnershipRepository.findOwnerByAddress(
+      disputedBy,
+      event.closedAt,
+    );
 
     // A dispute row raised purely via Layer A (no dispute_resolution_contract
     // case ever created) should still exist and be visible — create it as
@@ -134,6 +181,7 @@ async function handleEscrowEvent(
       status: 'OPEN',
       raisedBy: disputedBy,
       raisedAt: event.closedAt,
+      ...(raisedByUserId !== null && { raisedByUserId }),
     });
     return;
   }
@@ -212,6 +260,7 @@ async function upsertResolution(
   status: 'RESOLVED_REFUND' | 'RESOLVED_PAYOUT' | 'SPLIT',
   resolvedBy: string | null,
   resolvedAt: Date,
+  extra: { senderShareBps?: number } = {},
 ): Promise<void> {
   const existing = await deps.disputeRepository.findByChainDeliveryId(chainDeliveryId);
 
@@ -236,7 +285,21 @@ async function upsertResolution(
     raisedAt: existing?.raisedAt ?? resolvedAt,
     ...(resolvedBy !== null && { resolvedBy }),
     resolvedAt,
+    ...extra,
   });
+}
+
+/** `sender_share_bps` is a `u32` on-chain, `≤ 10000` per
+ * `resolve_dispute_split_funds`'s own precondition
+ * (PHASE_1_DOMAIN_ANALYSIS.md §3) — a confirmed event is already validated
+ * by the contract, but this still drops anything malformed/out-of-range
+ * rather than trust it blindly, same posture as `parseAmount`/`parseAddress`
+ * elsewhere in this codebase. */
+function parseSenderShareBps(value: unknown): number | null {
+  if (typeof value !== 'number' && typeof value !== 'string') return null;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > 10_000) return null;
+  return parsed;
 }
 
 /** `topic[1]` for a tuple-wrapped `DeliveryId` arrives as the JSON string
@@ -250,18 +313,5 @@ function parseTupleWrappedDeliveryId(value: unknown): bigint | null {
     return null;
   }
   if (!Array.isArray(parsed) || parsed.length !== 1) return null;
-  return parseBareDeliveryId(parsed[0]);
-}
-
-function parseBareDeliveryId(value: unknown): bigint | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value);
-  } catch {
-    return null;
-  }
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
+  return parseBigIntId(parsed[0]);
 }

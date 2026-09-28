@@ -6,6 +6,7 @@ import { BlockchainError } from '../shared/errors/index.js';
 import { withRetry, CircuitBreaker } from './retry.js';
 
 const log = logger.child({ module: 'soroban-client' });
+const SOROBAN_RPC_TIMEOUT_MS = 30_000;
 
 /**
  * The one resilient entry point to Soroban RPC (ARCHITECTURE.md §4, adopted
@@ -19,6 +20,7 @@ export class SorobanClient {
   private readonly breaker: CircuitBreaker;
 
   constructor(rpcUrl: string = getConfig().SOROBAN_RPC_URL) {
+    rpc.AxiosClient.defaults.timeout = SOROBAN_RPC_TIMEOUT_MS;
     this.server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
     this.breaker = new CircuitBreaker();
   }
@@ -76,10 +78,27 @@ export class SorobanClient {
       log.error({ err: error, operation }, 'Soroban RPC call failed');
       throw new BlockchainError(`Soroban RPC call failed: ${operation}`, {
         operation,
-        cause: error instanceof Error ? error.message : String(error),
+        cause: rpcErrorMessage(error),
       });
     }
   }
+}
+
+/**
+ * The SDK's JSON-RPC transport throws `response.data.error` as-is for a
+ * well-formed RPC error response (see `postObject` in
+ * `@stellar/stellar-sdk/lib/rpc/jsonrpc.js`) — a plain `{ code, message }`
+ * object, not an `Error` instance. Falling back to `String(error)` for that
+ * shape loses the message (`"[object Object]"`), which matters because
+ * callers (e.g. the indexer) parse this message to recover from specific
+ * RPC errors like getEvents' -32600 out-of-range response.
+ */
+function rpcErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error) {
+    return String((error as { message: unknown }).message);
+  }
+  return String(error);
 }
 
 /**

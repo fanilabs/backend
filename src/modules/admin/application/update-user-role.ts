@@ -1,6 +1,7 @@
 import type {
   AdminUser,
   AuditLogRepository,
+  SessionRevoker,
   UserRole,
   UserRoleRepository,
 } from '../domain/index.js';
@@ -13,6 +14,7 @@ import {
 export interface UpdateUserRoleDeps {
   userRoleRepository: UserRoleRepository;
   auditLogRepository: AuditLogRepository;
+  sessionRevoker: SessionRevoker;
 }
 
 export interface UpdateUserRoleInput {
@@ -46,6 +48,12 @@ export function createUpdateUserRoleUseCase(deps: UpdateUserRoleDeps) {
     }
 
     await deps.userRoleRepository.updateRole(input.userId, input.role);
+
+    // Security issue #12: a role change must take effect immediately, not
+    // just for future logins/refreshes — see `SessionRevoker`'s doc comment
+    // for what this actually closes (stale refresh tokens *and* already-
+    // issued access tokens, via `users.token_version`).
+    await deps.sessionRevoker.revokeAllForUser(input.userId);
 
     const actor = await deps.userRoleRepository.findById(input.actorId);
     await deps.auditLogRepository.record({

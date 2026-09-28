@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+const MAX_CONTRACT_NAME_LENGTH = 255;
+
 const contractHealthSchema = z.object({
-  contractName: z.string(),
+  contractName: z.string().max(MAX_CONTRACT_NAME_LENGTH),
   configured: z.boolean(),
-  lastLedgerSeq: z.string().nullable(),
+  lastLedgerSeq: z.string().max(20).nullable(),
   lagLedgers: z.number().nullable(),
   healthy: z.boolean(),
 });

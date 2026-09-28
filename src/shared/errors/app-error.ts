@@ -59,3 +59,15 @@ export class InternalError extends AppError {
   readonly statusCode = 500;
   readonly code = 'INTERNAL_ERROR';
 }
+
+/**
+ * Canonical HTTP status/code pairs for the two hierarchy members whose
+ * responses are also produced by framework-level paths in `error-handler.ts`
+ * (Zod/Fastify validation errors, and the generic 500 fallback). The handler
+ * derives its literals from these constants so the class definitions and the
+ * handler branches cannot drift apart independently.
+ */
+export const VALIDATION_ERROR_STATUS = new ValidationError('').statusCode;
+export const VALIDATION_ERROR_CODE = new ValidationError('').code;
+export const INTERNAL_ERROR_STATUS = new InternalError('').statusCode;
+export const INTERNAL_ERROR_CODE = new InternalError('').code;

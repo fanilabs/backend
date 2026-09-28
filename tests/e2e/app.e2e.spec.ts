@@ -1,3 +1,4 @@
+import { Keypair } from '@stellar/stellar-sdk';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../src/app.js';
 import { disconnectPrisma } from '../../src/shared/database/index.js';
@@ -65,5 +66,44 @@ describe.skipIf(!dbAvailable)('composed application (end-to-end)', () => {
     const body = (await res.json()) as { status: string; queues: unknown[] };
     expect(['ok', 'degraded']).toContain(body.status);
     expect(Array.isArray(body.queues)).toBe(true);
+  });
+
+  /**
+   * Regression for a boot-blocking bug this `beforeAll` itself would have
+   * failed on: `deliveries` and `disputes` both used to register
+   * `POST /transactions/build/raise-dispute`, which made `buildApp()` throw
+   * `FST_ERR_DUPLICATED_ROUTE` (Fastify refuses two handlers for the same
+   * method+path) the instant both modules were composed together — i.e.
+   * always, in the real app. `deliveries`' registration was renamed to
+   * `raise-delivery-dispute` (see that route's own comment for why the two
+   * are legitimately different on-chain actions, not a true duplicate).
+   * Both endpoints must be independently reachable at distinct paths, and
+   * neither may 404 (a 404 here would mean the route silently vanished
+   * instead of being renamed) — 401 (unauthenticated) proves each is
+   * registered and wired to the auth guard.
+   */
+  it('registers both raise-dispute build endpoints at distinct paths, not colliding', async () => {
+    // A well-formed body (matching each route's own schema) so the request
+    // reaches the `authenticate` preHandler rather than being short-circuited
+    // by Fastify's earlier preValidation body-schema check — a 400 here
+    // wouldn't distinguish "route doesn't exist"/"routes collided" from
+    // "body was malformed", the actual thing this test needs to prove.
+    const payload = JSON.stringify({
+      callerAddress: Keypair.random().publicKey(),
+      chainDeliveryId: '1',
+    });
+
+    const disputesRes = await fetch(`${baseUrl}/api/v1/transactions/build/raise-dispute`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: payload,
+    });
+    const deliveriesRes = await fetch(
+      `${baseUrl}/api/v1/transactions/build/raise-delivery-dispute`,
+      { method: 'POST', headers: { 'content-type': 'application/json' }, body: payload },
+    );
+
+    expect(disputesRes.status).toBe(401);
+    expect(deliveriesRes.status).toBe(401);
   });
 });

@@ -85,5 +85,14 @@ export function createSorobanDeliveryContractClient(
         sourceAddress: input.senderAddress,
       });
     },
+
+    async buildRaiseDispute(input) {
+      return buildInvokeTransaction(client, {
+        contractId,
+        method: 'raise_dispute',
+        args: [addressToScVal(input.callerAddress), deliveryIdToScVal(input.chainDeliveryId)],
+        sourceAddress: input.callerAddress,
+      });
+    },
   };
 }

@@ -16,6 +16,7 @@ import {
   listDeliveriesQuerySchema,
   listDeliveriesResponseSchema,
   markInTransitBodySchema,
+  raiseDisputeBodySchema,
   transactionResponseSchema,
 } from './schemas.js';
 
@@ -49,6 +50,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
     app.get(
       '/deliveries',
       {
+        preHandler: authenticate,
         schema: {
           querystring: listDeliveriesQuerySchema,
           response: { 200: listDeliveriesResponseSchema },
@@ -81,11 +83,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/create-delivery',
       {
         preHandler: authenticate,
-        schema: {
-          security: [{ bearerAuth: [] }],
-          body: createDeliveryBodySchema,
-          response: { 200: transactionResponseSchema },
-        },
+        schema: { body: createDeliveryBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildCreateDeliveryTransaction({
@@ -100,11 +98,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/assign-driver',
       {
         preHandler: authenticate,
-        schema: {
-          security: [{ bearerAuth: [] }],
-          body: assignDriverBodySchema,
-          response: { 200: transactionResponseSchema },
-        },
+        schema: { body: assignDriverBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildAssignDriverTransaction({
@@ -119,11 +113,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/mark-in-transit',
       {
         preHandler: authenticate,
-        schema: {
-          security: [{ bearerAuth: [] }],
-          body: markInTransitBodySchema,
-          response: { 200: transactionResponseSchema },
-        },
+        schema: { body: markInTransitBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildMarkInTransitTransaction({
@@ -137,12 +127,8 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
     app.post(
       '/transactions/build/confirm-delivery',
       {
-        preHandler: authenticate,
-        schema: {
-          security: [{ bearerAuth: [] }],
-          body: confirmDeliveryBodySchema,
-          response: { 200: transactionResponseSchema },
-        },
+        onRequest: [authenticate],
+        schema: { body: confirmDeliveryBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildConfirmDeliveryTransaction({
@@ -157,14 +143,41 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
       '/transactions/build/cancel-delivery',
       {
         preHandler: authenticate,
-        schema: {
-          security: [{ bearerAuth: [] }],
-          body: cancelDeliveryBodySchema,
-          response: { 200: transactionResponseSchema },
-        },
+        schema: { body: cancelDeliveryBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
         const xdrEnvelope = await useCases.buildTransactions.buildCancelDeliveryTransaction({
+          ...request.body,
+          chainDeliveryId: BigInt(request.body.chainDeliveryId),
+        });
+        void reply.status(200).send(ok({ xdr: xdrEnvelope }));
+      },
+    );
+
+    // Deliberately `raise-delivery-dispute`, not `raise-dispute`: this builds
+    // an invocation of `delivery_contract.raise_dispute` (Layer A — pauses
+    // the delivery/escrow, cross-calling `escrow_contract.raise_dispute`;
+    // PHASE_1_DOMAIN_ANALYSIS.md §10's call graph), a genuinely different
+    // on-chain action from the `disputes` module's own
+    // `POST /transactions/build/raise-dispute`, which invokes
+    // `dispute_resolution_contract.raise_dispute` (Layer B — creates the
+    // richer arbitration `DisputeCase` with evidence support, and itself
+    // cross-calls this same `delivery_contract.raise_dispute` when
+    // applicable). The two routes collided under the identical path before
+    // this rename (`FST_ERR_DUPLICATED_ROUTE`, crashing `buildApp()`) — see
+    // `tests/e2e/app.e2e.spec.ts`'s regression test. `disputes` keeps the
+    // shorter, canonical path since it owns the complete dispute lifecycle
+    // (raise → evidence → resolve) as one cohesive, already-tested REST
+    // surface; this endpoint's request/response shape and behavior are
+    // otherwise completely unchanged.
+    app.post(
+      '/transactions/build/raise-delivery-dispute',
+      {
+        preHandler: authenticate,
+        schema: { body: raiseDisputeBodySchema, response: { 200: transactionResponseSchema } },
+      },
+      async (request, reply) => {
+        const xdrEnvelope = await useCases.buildTransactions.buildRaiseDisputeTransaction({
           ...request.body,
           chainDeliveryId: BigInt(request.body.chainDeliveryId),
         });

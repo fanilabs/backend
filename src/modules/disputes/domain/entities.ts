@@ -8,14 +8,23 @@ export interface Dispute {
   status: DisputeStatus;
   raisedBy: string;
   raisedAt: Date;
+  /** The account that owned the `raisedBy` *address* when this dispute was
+   * first observed, captured once and never re-derived — see
+   * `Dispute.raisedByUserId`'s doc comment (prisma/schema.prisma) and
+   * `downloadEvidence`'s for the security rationale (raiser wallet-relink
+   * evidence authorization). `null` if no account owned the address at
+   * that moment, or for any dispute synced before this field existed. */
+  raisedByUserId: string | null;
   resolvedBy: string | null;
   resolvedAt: Date | null;
-  /** Only ever known from a `resolve_dispute_split_funds` transaction's own
-   * input — `dispute_resolved_split`'s event payload is just `(caller,
-   * delivery_id)`, and `DisputeCase` itself has no such field either
-   * (PHASE_1_DOMAIN_ANALYSIS.md §5), so this backend has no on-chain source
-   * to sync it from and it stays `null` until a future contract revision
-   * exposes it. A documented gap, not a guess. */
+  /** Set from `dispute_resolved_split`'s own confirmed event payload
+   * (`(caller, delivery_id, sender_share_bps)`) once that event syncs —
+   * see `sync-dispute-from-event.ts`'s `dispute_resolved_split` case. May
+   * briefly hold a best-effort proposed value recorded at transaction-build
+   * time before that (`DisputeRepository.recordProposedSenderShareBps`,
+   * backend issue #40), and is `null` until either has happened.
+   * `DisputeCase` itself has no such field (PHASE_1_DOMAIN_ANALYSIS.md §5),
+   * so it is never available from a `get_dispute` read call. */
   senderShareBps: number | null;
 }
 
@@ -29,6 +38,11 @@ export interface Evidence {
   storageUrl: string;
   contentType: string;
   uploadedBy: string;
+  /** The authenticated uploader's account id, captured once at upload time
+   * — see `Evidence.uploadedByUserId`'s doc comment (prisma/schema.prisma)
+   * and `downloadEvidence`'s. `null` only for evidence uploaded before this
+   * field existed. */
+  uploadedByUserId: string | null;
   createdAt: Date;
 }
 

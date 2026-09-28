@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createUpdateUserRoleUseCase } from './update-user-role.js';
-import {
-  AdminUserNotFoundError,
-  CannotChangeOwnRoleError,
-  LastAdministratorError,
-} from '../domain/index.js';
+import { AdminUserNotFoundError } from '../domain/index.js';
 import {
   buildAdminUser,
   createInMemoryAuditLogRepository,

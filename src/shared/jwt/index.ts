@@ -5,6 +5,11 @@ import type { UserRole } from '@prisma/client';
 export interface AccessTokenClaims {
   sub: string;
   role: UserRole;
+  /** See `users.token_version` (prisma/schema.prisma) — absent on tokens
+   * issued before this claim existed, which `authenticate` (shared HTTP
+   * auth guard) treats as `0`, the column's default, so those pre-existing
+   * tokens keep working rather than being force-invalidated by a deploy. */
+  tokenVersion?: number;
 }
 
 export interface RefreshTokenClaims {

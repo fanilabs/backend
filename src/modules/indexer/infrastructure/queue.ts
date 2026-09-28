@@ -69,6 +69,7 @@ export function createIndexerWorker(prisma: PrismaClient): Worker {
     eventStore: createPrismaEventStore(prisma),
     eventSource: createSorobanEventSource(getSorobanClient()),
     eventPublisher: createInProcessEventBus(),
+    retentionWindowLedgers: getConfig().INDEXER_EVENT_RETENTION_LEDGERS,
   });
 
   return new Worker<PollJobData>(

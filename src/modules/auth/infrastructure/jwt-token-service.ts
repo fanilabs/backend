@@ -49,7 +49,7 @@ export function createJwtTokenService(): TokenService {
 
   return {
     issueAccessToken(user) {
-      return signAccessToken({ sub: user.id, role: user.role });
+      return signAccessToken({ sub: user.id, role: user.role, tokenVersion: user.tokenVersion });
     },
 
     issueRefreshToken(user): IssuedRefreshToken {

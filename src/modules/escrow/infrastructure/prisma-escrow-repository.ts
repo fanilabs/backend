@@ -1,4 +1,5 @@
 import type { Escrow as PrismaEscrow, PrismaClient } from '@prisma/client';
+import { decimalToBigInt } from '../../../shared/database/index.js';
 import type { Escrow, EscrowRepository } from '../domain/index.js';
 
 function toDomain(record: PrismaEscrow): Escrow {
@@ -9,12 +10,8 @@ function toDomain(record: PrismaEscrow): Escrow {
     recipientAddress: record.recipientAddress,
     driverAddress: record.driverAddress,
     token: record.token,
-    // Prisma's Decimal (decimal.js) switches to exponential notation past 21
-    // digits by default — `.toString()` on an i128::MAX-sized value (39
-    // digits) yields "1.7...e+38", which BigInt() can't parse. `.toFixed()`
-    // always returns a plain fixed-point string regardless of magnitude.
-    amount: BigInt(record.amount.toFixed()),
-    platformFee: record.platformFee === null ? null : BigInt(record.platformFee.toFixed()),
+    amount: decimalToBigInt(record.amount),
+    platformFee: record.platformFee === null ? null : decimalToBigInt(record.platformFee),
     status: record.status,
     disputedBy: record.disputedBy,
     disputedAt: record.disputedAt,

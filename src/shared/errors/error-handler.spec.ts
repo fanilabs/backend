@@ -4,20 +4,26 @@ import { handleError } from './error-handler.js';
 import { AppError } from './app-error.js';
 
 class BlockchainError extends AppError {
+  readonly statusCode = 502;
+  readonly code = 'BLOCKCHAIN_ERROR';
   constructor(message: string, details?: unknown) {
-    super('BLOCKCHAIN_ERROR', message, 502, details);
+    super(message, details);
   }
 }
 
 class InternalError extends AppError {
+  readonly statusCode = 500;
+  readonly code = 'INTERNAL_ERROR';
   constructor(message: string, details?: unknown) {
-    super('INTERNAL_ERROR', message, 500, details);
+    super(message, details);
   }
 }
 
 class ClientError extends AppError {
+  readonly statusCode = 400;
+  readonly code = 'BAD_REQUEST';
   constructor(message: string, details?: unknown) {
-    super('BAD_REQUEST', message, 400, details);
+    super(message, details);
   }
 }
 
@@ -32,6 +38,7 @@ describe('error-handler', () => {
 
   function createMockRequest(logFn: (level: string, arg: unknown, msg: string) => void): FastifyRequest {
     const mockRequest = {
+      id: 'req-123',
       log: {
         error: (arg: unknown, msg: string) => logFn('error', arg, msg),
         warn: (arg: unknown, msg: string) => logFn('warn', arg, msg),
@@ -60,6 +67,7 @@ describe('error-handler', () => {
     expect(sendArg.error.message).toBe('Soroban RPC call failed');
     expect(sendArg.error.code).toBe('BLOCKCHAIN_ERROR');
     expect(sendArg.error.details).toBeUndefined();
+    expect(sendArg.requestId).toBe('req-123');
 
     expect(logs.length).toBeGreaterThan(0);
     const errorLog = logs.find((log) => log.level === 'error');
@@ -151,5 +159,18 @@ describe('error-handler', () => {
     const sendArg = (reply.send as any).mock.calls[0]?.[0];
     expect(sendArg.error.message).toBe('An unexpected error occurred');
     expect(sendArg.error.code).toBe('INTERNAL_ERROR');
+    expect(sendArg.requestId).toBe('req-123');
+  });
+
+  it('includes the request id on 4xx validation responses', () => {
+    const reply = createMockReply();
+    const request = createMockRequest(() => {});
+
+    const error = new ClientError('Bad request', {});
+
+    handleError(error, request, reply);
+
+    const sendArg = (reply.send as any).mock.calls[0]?.[0];
+    expect(sendArg.requestId).toBe('req-123');
   });
 });

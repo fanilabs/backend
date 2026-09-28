@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import { logger } from '../../../shared/logger/index.js';
 import type {
   DeliveryParties,
@@ -256,13 +257,11 @@ async function resolveCandidates(
   }
 }
 
+/** Same numeric encoding as {@link parseBigIntId}, but notifications keys its
+ * read model by the decimal *string* form of the id. */
 function parseId(value: unknown): string | null {
-  if (typeof value !== 'string' && typeof value !== 'number') return null;
-  try {
-    return BigInt(value).toString();
-  } catch {
-    return null;
-  }
+  const parsed = parseBigIntId(value);
+  return parsed === null ? null : parsed.toString();
 }
 
 /** `dispute_resolution_contract`'s tuple-wrapped `DeliveryId` arrives as the
@@ -278,8 +277,4 @@ function parseTupleWrappedId(value: unknown): string | null {
   }
   if (!Array.isArray(parsed) || parsed.length !== 1) return null;
   return parseId(parsed[0]);
-}
-
-function parseAddress(value: unknown): string | null {
-  return typeof value === 'string' ? value : null;
 }

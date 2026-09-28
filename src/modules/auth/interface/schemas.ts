@@ -1,7 +1,30 @@
 import { z } from 'zod';
 
 const email = z.string().trim().toLowerCase().email();
-const password = z.string().min(8).max(72); // bcrypt silently truncates beyond 72 bytes
+const role = z.enum(['CUSTOMER', 'COURIER', 'FLEET_MANAGER', 'ADMIN']);
+// bcrypt truncates silently beyond 72 *bytes* (not characters — see the
+// bcrypt package README). Zod's `.max()` counts UTF-16 code units, so a
+// password with multi-byte UTF-8 characters (emoji, many non-Latin scripts)
+// can sit under a 72-character limit while still exceeding 72 bytes and
+// being silently truncated. Enforce the real byte boundary instead.
+const isWithinPasswordByteLimit = (value: string) => Buffer.byteLength(value, 'utf8') <= 72;
+const passwordByteLimitMessage = 'Password must be at most 72 bytes long';
+const password = z
+  .string()
+  .min(8)
+  .refine(isWithinPasswordByteLimit, { message: passwordByteLimitMessage });
+const loginPassword = z
+  .string()
+  .min(1)
+  .refine(isWithinPasswordByteLimit, { message: passwordByteLimitMessage });
+
+// JWTs are compact but can grow with additional claims; 2048 characters is a
+// safe upper bound that still rejects oversized payloads.
+const token = z.string().max(2048);
+
+// Opaque tokens (refresh, email verification, password reset) are bounded to
+// the same safe upper limit to reject oversized payloads.
+const opaqueToken = z.string().min(1).max(2048);
 
 export const registerBodySchema = z.object({
   email,
@@ -13,34 +36,34 @@ export const registerResponseSchema = z.object({
 
 export const loginBodySchema = z.object({
   email,
-  password: z.string().min(1),
+  password: loginPassword,
 });
 export const loginResponseSchema = z.object({
   data: z.object({
-    accessToken: z.string(),
-    refreshToken: z.string(),
+    accessToken: token,
+    refreshToken: token,
     user: z.object({
       id: z.string().uuid(),
       email: z.string(),
-      role: z.string(),
+      role,
       emailVerifiedAt: z.string().datetime().nullable(),
     }),
   }),
 });
 
 export const refreshBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: opaqueToken,
 });
 export const refreshResponseSchema = z.object({
-  data: z.object({ accessToken: z.string(), refreshToken: z.string() }),
+  data: z.object({ accessToken: token, refreshToken: token }),
 });
 
 export const logoutBodySchema = z.object({
-  refreshToken: z.string().min(1),
+  refreshToken: opaqueToken,
 });
 
 export const verifyEmailBodySchema = z.object({
-  token: z.string().min(1),
+  token: opaqueToken,
 });
 
 export const requestPasswordResetBodySchema = z.object({
@@ -48,7 +71,7 @@ export const requestPasswordResetBodySchema = z.object({
 });
 
 export const resetPasswordBodySchema = z.object({
-  token: z.string().min(1),
+  token: opaqueToken,
   newPassword: password,
 });
 

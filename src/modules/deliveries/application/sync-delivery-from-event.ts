@@ -1,4 +1,5 @@
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
+import { ContractName } from '../../../shared/events/contract-names.js';
 import type { DeliveryContractReader, DeliveryRepository } from '../domain/index.js';
 
 export interface SyncDeliveryFromEventDeps {
@@ -20,7 +21,7 @@ export interface SyncDeliveryFromEventDeps {
  */
 export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDeps) {
   return async function syncDeliveryFromEvent(event: BlockchainEventEnvelope): Promise<void> {
-    if (event.contractName !== 'delivery') {
+    if (event.contractName !== ContractName.Delivery) {
       return;
     }
 

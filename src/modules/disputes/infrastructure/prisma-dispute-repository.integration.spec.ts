@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createPrismaDisputeRepository } from './prisma-dispute-repository.js';
@@ -11,6 +12,7 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
   const disputeRepository = createPrismaDisputeRepository(prisma);
   const evidenceRepository = createPrismaEvidenceRepository(prisma);
   const createdChainIds: bigint[] = [];
+  const createdUserIds: string[] = [];
 
   afterAll(async () => {
     if (createdChainIds.length > 0) {
@@ -20,8 +22,22 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
       await prisma.dispute.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
       await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
     }
+    if (createdUserIds.length > 0) {
+      await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
+    }
     await prisma.$disconnect();
   });
+
+  // disputes.raised_by_user_id is a real FK into users.id — a non-existent
+  // id would fail with a foreign-key violation, not exercise the create-vs-
+  // update semantics this test actually cares about.
+  async function seedUser(): Promise<string> {
+    const user = await prisma.user.create({
+      data: { email: `dispute-raiser-test-${randomUUID()}@example.com`, passwordHash: 'hash' },
+    });
+    createdUserIds.push(user.id);
+    return user.id;
+  }
 
   // Dispute.chainDeliveryId is a foreign key into Delivery.chainDeliveryId
   // (same pattern as Escrow), so every test must seed the parent Delivery
@@ -92,6 +108,7 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
       storageUrl: `${dispute.id}/file-1`,
       contentType: 'image/png',
       uploadedBy: 'GRAISER',
+      uploadedByUserId: null,
     });
     await evidenceRepository.create({
       disputeId: dispute.id,
@@ -99,11 +116,46 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
       storageUrl: `${dispute.id}/file-2`,
       contentType: 'application/pdf',
       uploadedBy: 'GRAISER',
+      uploadedByUserId: null,
     });
 
     const evidence = await evidenceRepository.listByDisputeId(dispute.id);
     expect(evidence).toHaveLength(2);
     expect(evidence.map((e) => e.hash)).toEqual(['aa'.repeat(32), 'bb'.repeat(32)]);
+  });
+
+  it('upsert sets raisedByUserId only on creation and never reassigns it on a later update (B2.1: raiser wallet-relink evidence authorization)', async () => {
+    const chainDeliveryId = await nextChainId();
+    const raisedAt = new Date('2026-01-01T00:00:00Z');
+    const originalRaiserId = await seedUser();
+    const newOwnerId = await seedUser();
+
+    await disputeRepository.upsert(chainDeliveryId, {
+      status: 'OPEN',
+      raisedBy: 'GRAISER',
+      raisedAt,
+      raisedByUserId: originalRaiserId,
+    });
+    const created = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+    expect(created?.raisedByUserId).toBe(originalRaiserId);
+
+    // Simulates a replayed dispute_raised event (or any other later upsert)
+    // that resolves a *different* raisedByUserId — e.g. because the wallet
+    // was relinked to a new owner in the meantime. This must never reach
+    // the database: `createPrismaDisputeRepository.upsert` only ever
+    // includes `raisedByUserId` in the `create` branch of the Prisma
+    // `upsert`, never `update`, so this call's `raisedByUserId` is silently
+    // ignored on the conflict path — verified here against a real Postgres
+    // `INSERT ... ON CONFLICT DO UPDATE`, not just the in-memory test fake.
+    await disputeRepository.upsert(chainDeliveryId, {
+      status: 'OPEN',
+      raisedBy: 'GRAISER',
+      raisedAt,
+      raisedByUserId: newOwnerId,
+    });
+
+    const stillOriginal = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+    expect(stillOriginal?.raisedByUserId).toBe(originalRaiserId);
   });
 
   it('fails with foreign key violation when delivery does not exist (issue #37)', async () => {

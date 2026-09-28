@@ -7,6 +7,7 @@ function toDomain(record: PrismaUser): User {
     email: record.email,
     passwordHash: record.passwordHash,
     role: record.role,
+    tokenVersion: record.tokenVersion,
     emailVerifiedAt: record.emailVerifiedAt,
     createdAt: record.createdAt,
   };

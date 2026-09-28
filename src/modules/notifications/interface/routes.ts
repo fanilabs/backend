@@ -1,6 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok } from '../../../shared/http/index.js';
-import { UnauthorizedError } from '../../../shared/errors/index.js';
+import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
 import type { Notification } from '../domain/index.js';
 import type {
   createGetNotificationUseCase,
@@ -21,6 +20,14 @@ export interface NotificationsUseCases {
 function serializeNotification(notification: Notification) {
   return {
     id: notification.id,
+    // `notification.channel` is the column's real 3-variant Prisma enum
+    // value, and the response schema now mirrors it exactly (see
+    // `interface/schemas.ts`'s doc comment) — a persisted SMS/PUSH row
+    // (seed data, or any other direct write) serializes successfully
+    // instead of failing this route's Zod response validation. Whether a
+    // channel can actually be *sent* is a separate question this response
+    // makes no claim about — see `sendNotification`'s explicit channel
+    // check and `NotificationSender`'s doc comment.
     channel: notification.channel,
     type: notification.type,
     payload: notification.payload,
@@ -30,23 +37,12 @@ function serializeNotification(notification: Notification) {
   };
 }
 
-function requireUserId(request: { user?: { id: string } }): string {
-  if (!request.user) {
-    // Unreachable in practice — both routes below attach `authenticate` as
-    // a preHandler, which throws before a handler body ever runs. This
-    // exists so `request.user.id` is never accessed through a non-null
-    // assertion further down (same pattern as `users/interface/routes.ts`).
-    throw new UnauthorizedError('Authentication required');
-  }
-  return request.user.id;
-}
-
 export function createNotificationsRoutes(useCases: NotificationsUseCases): FastifyPluginAsyncZod {
   return async function notificationsRoutes(app) {
     app.get(
       '/notifications',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           querystring: listNotificationsQuerySchema,
@@ -55,8 +51,12 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
       },
       async (request, reply) => {
         const { status, limit, before } = request.query;
-        const { items, nextCursor, limit: appliedLimit } = await useCases.listNotifications({
-          userId: requireUserId(request),
+        const {
+          items,
+          nextCursor,
+          limit: appliedLimit,
+        } = await useCases.listNotifications({
+          userId: requireUser(request).id,
           ...(status && { status }),
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
@@ -79,7 +79,7 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
       },
       async (request, reply) => {
         const notification = await useCases.getNotification({
-          userId: requireUserId(request),
+          userId: requireUser(request).id,
           notificationId: request.params.id,
         });
         void reply.status(200).send(ok(serializeNotification(notification)));
