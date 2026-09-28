@@ -17,8 +17,28 @@ export function createFakeDisputeReviewReader(): DisputeReviewReader & {
     seed(value) {
       items = value;
     },
-    async listOpenDisputes() {
-      return items;
+    async listOpenDisputes(filter) {
+      const after = filter.after;
+      const matching = after
+        ? items.filter(
+            (item) =>
+              item.raisedAt > after.raisedAt ||
+              (item.raisedAt.getTime() === after.raisedAt.getTime() &&
+                item.chainDeliveryId > after.chainDeliveryId),
+          )
+        : items;
+      return matching
+        .slice()
+        .sort(
+          (a, b) =>
+            a.raisedAt.getTime() - b.raisedAt.getTime() ||
+            (a.chainDeliveryId < b.chainDeliveryId
+              ? -1
+              : a.chainDeliveryId > b.chainDeliveryId
+                ? 1
+                : 0),
+        )
+        .slice(0, filter.limit + 1);
     },
   };
 }
@@ -69,8 +89,10 @@ export function createInMemoryAuditLogRepository(): AuditLogRepository & {
         createdAt: new Date(),
       });
     },
-    async list(limit) {
-      return entries.slice(0, limit);
+    async list(filter) {
+      const before = filter.before;
+      const matching = before ? entries.filter((entry) => entry.createdAt < before) : entries;
+      return matching.slice(0, filter.limit);
     },
   };
 }

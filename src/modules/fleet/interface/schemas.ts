@@ -27,7 +27,7 @@ const fleetDriverDto = z.object({
 const fleetDto = z.object({
   id: z.string().uuid(),
   chainFleetId: z.string(),
-  ownerAddress: z.string(),
+  ownerAddress: z.string().max(MAX_ADDRESS_LENGTH),
   treasuryAddress: z.string().max(MAX_ADDRESS_LENGTH),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),
@@ -58,7 +58,7 @@ export const getFleetResponseSchema = z.object({ data: fleetDto });
 
 export const payoutAddressParamsSchema = z.object({ chainFleetId, driverAddress: stellarAddress });
 export const payoutAddressResponseSchema = z.object({
-  data: z.object({ payoutAddress: z.string() }),
+  data: z.object({ payoutAddress: z.string().max(MAX_ADDRESS_LENGTH) }),
 });
 
 export const registerFleetBodySchema = z.object({

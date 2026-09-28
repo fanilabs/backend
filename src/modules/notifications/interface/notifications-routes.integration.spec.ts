@@ -59,6 +59,16 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
 
+  it('rejects an unauthenticated request for a single notification', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/notifications/${randomUUID()}`,
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
   it("lists only the requesting user's own notifications", async () => {
     const { accessToken, userId } = await registerAndLogin();
     const { userId: otherUserId } = await registerAndLogin();

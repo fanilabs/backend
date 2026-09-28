@@ -9,6 +9,7 @@ import type {
 import {
   listAuditLogQuerySchema,
   listAuditLogResponseSchema,
+  listOpenDisputesQuerySchema,
   listOpenDisputesResponseSchema,
   updateUserRoleBodySchema,
   updateUserRoleResponseSchema,
@@ -59,12 +60,17 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',
+          querystring: listOpenDisputesQuerySchema,
           response: { 200: listOpenDisputesResponseSchema },
         },
       },
-      async (_request, reply) => {
-        const disputes = await useCases.listOpenDisputes();
-        void reply.status(200).send(ok(disputes.map(serializeDispute)));
+      async (request, reply) => {
+        const { limit: requestedLimit, after } = request.query;
+        const { items, nextCursor, limit } = await useCases.listOpenDisputes({
+          ...(requestedLimit !== undefined && { limit: requestedLimit }),
+          ...(after !== undefined && { after }),
+        });
+        void reply.status(200).send(ok(items.map(serializeDispute), { limit, nextCursor }));
       },
     );
 
@@ -103,7 +109,11 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
       },
       async (request, reply) => {
         const { limit, before } = request.query;
-        const { items, nextCursor, limit: appliedLimit } = await useCases.listAuditLog({
+        const {
+          items,
+          nextCursor,
+          limit: appliedLimit,
+        } = await useCases.listAuditLog({
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
         });
