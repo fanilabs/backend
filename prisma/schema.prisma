@@ -338,6 +338,7 @@ model Fleet {
   owner   User?         @relation(fields: [ownerId], references: [id])
   drivers FleetDriver[]
 
+  @@index([ownerId])
   @@map("fleets")
 }
 
