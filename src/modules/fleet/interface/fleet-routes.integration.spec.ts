@@ -83,6 +83,16 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an unauthenticated accept-fleet-invite transaction-build request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/accept-fleet-invite',
+      payload: { chainFleetId: '1', driverAddress: Keypair.random().publicKey() },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   // docs/API_REFERENCE.md: with FLEET_MANAGEMENT_CONTRACT_ID unset (its
   // .env.example default, and the default in this test process), the build
   // endpoints must return 502 BLOCKCHAIN_ERROR naming the missing variable —
