@@ -17,9 +17,15 @@ export interface BuildDisputeTransactionsDeps {
   disputeRepository?: DisputeRepository;
 }
 
-/** Five thin delegations to the `DisputeTransactionBuilder` port — same "no
- * branching business logic, so one file not one per call" rationale as the
- * `escrow`/`deliveries` modules' equivalent files. */
+/**
+ * Creates the dispute transaction-building use cases backed by a transaction
+ * builder. Each method delegates to the corresponding builder operation;
+ * resolving a split-funds dispute also records the proposed sender share when
+ * a repository is provided.
+ *
+ * @param deps - Transaction builder and optional dispute repository.
+ * @returns Use cases for building dispute transactions.
+ */
 export function createBuildDisputeTransactionsUseCases(deps: BuildDisputeTransactionsDeps) {
   return {
     buildRaiseDisputeTransaction: (input: RaiseDisputeTxInput): Promise<string> =>
