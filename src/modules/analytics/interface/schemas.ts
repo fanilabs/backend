@@ -4,7 +4,7 @@ export const gmvResponseSchema = z.object({
   data: z.array(
     z.object({
       token: z.string(),
-      releasedAmount: z.string(),
+      releasedAmount: z.string().max(100),
       releasedCount: z.number().int(),
     }),
   ),
