@@ -239,7 +239,7 @@ model Escrow {
   amount          Decimal      @db.Decimal(39, 0)
   platformFee     Decimal?     @map("platform_fee") @db.Decimal(39, 0)
   status          EscrowStatus @default(LOCKED)
-  disputedBy      String?      @map("disputed_by")
+  disputedBy      String?      @map("disputed_by") @db.VarChar(56)
   disputedAt      DateTime?    @map("disputed_at")
   releasedAt      DateTime?    @map("released_at")
   refundedAt      DateTime?    @map("refunded_at")
@@ -469,6 +469,7 @@ model Notification {
   status    NotificationStatus  @default(PENDING)
   sentAt    DateTime?           @map("sent_at")
   createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -482,7 +483,7 @@ model AuditLog {
   id         String   @id @default(uuid())
   actorId    String?  @map("actor_id")
   actorLabel String   @map("actor_label")
-  action     String
+  action     String   @db.VarChar(100)
   entityType String   @map("entity_type")
   entityId   String   @map("entity_id")
   metadata   Json?
