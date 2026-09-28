@@ -6,6 +6,7 @@ import { BlockchainError } from '../shared/errors/index.js';
 import { withRetry, CircuitBreaker } from './retry.js';
 
 const log = logger.child({ module: 'soroban-client' });
+const SOROBAN_RPC_TIMEOUT_MS = 30_000;
 
 /**
  * The one resilient entry point to Soroban RPC (ARCHITECTURE.md §4, adopted
@@ -19,6 +20,7 @@ export class SorobanClient {
   private readonly breaker: CircuitBreaker;
 
   constructor(rpcUrl: string = getConfig().SOROBAN_RPC_URL) {
+    rpc.AxiosClient.defaults.timeout = SOROBAN_RPC_TIMEOUT_MS;
     this.server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
     this.breaker = new CircuitBreaker();
   }

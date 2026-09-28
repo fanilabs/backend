@@ -83,11 +83,11 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it('rejects an unauthenticated accept-fleet-invite transaction-build request', async () => {
+  it('rejects an unauthenticated add-driver-to-fleet request before body validation', async () => {
     const response = await app.inject({
       method: 'POST',
-      url: '/api/v1/transactions/build/accept-fleet-invite',
-      payload: { chainFleetId: '1', driverAddress: Keypair.random().publicKey() },
+      url: '/api/v1/transactions/build/add-driver-to-fleet',
+      payload: {},
     });
 
     expect(response.statusCode).toBe(401);

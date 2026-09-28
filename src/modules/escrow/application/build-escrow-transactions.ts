@@ -9,9 +9,15 @@ export interface BuildEscrowTransactionsDeps {
   transactionBuilder: EscrowTransactionBuilder;
 }
 
-/** Three thin delegations to the `EscrowTransactionBuilder` port — same
- * "no branching business logic, so one file not one per call" rationale as
- * the `deliveries` module's build-delivery-transactions.ts. */
+/**
+ * Creates use cases for building escrow transaction envelopes.
+ *
+ * Each returned function delegates to the corresponding operation on the
+ * `EscrowTransactionBuilder` port without adding business logic.
+ *
+ * @param deps - Dependencies used to build escrow transactions.
+ * @returns Use cases for building create, release, and refund transactions.
+ */
 export function createBuildEscrowTransactionsUseCases(deps: BuildEscrowTransactionsDeps) {
   return {
     buildCreateEscrowTransaction: (input: CreateEscrowTxInput): Promise<string> =>

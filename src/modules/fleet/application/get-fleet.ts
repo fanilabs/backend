@@ -11,6 +11,10 @@ export interface GetFleetInput {
   driverLimit?: number;
 }
 
+/**
+ * Creates a use case that retrieves a fleet with its drivers and throws
+ * `FleetNotFoundError` when no fleet exists for the requested chain ID.
+ */
 export function createGetFleetUseCase(deps: GetFleetDeps) {
   return async function getFleet(input: GetFleetInput): Promise<FleetWithDrivers> {
     const fleet = await deps.fleetRepository.findByChainFleetId(input.chainFleetId, {
