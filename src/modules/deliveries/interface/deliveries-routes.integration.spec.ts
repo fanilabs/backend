@@ -130,6 +130,16 @@ describe.skipIf(!dbAvailable)('deliveries routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an unauthenticated cancel-delivery request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/cancel-delivery',
+      payload: { senderAddress: Keypair.random().publicKey(), chainDeliveryId: '1' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   // Regression coverage for the raise-dispute/raise-delivery-dispute route
   // collision (this endpoint previously had no HTTP-level coverage at all —
   // only a unit-level use-case-delegation test) — see

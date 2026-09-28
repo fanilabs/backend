@@ -1,17 +1,22 @@
 import { z } from 'zod';
 
 const email = z.string().trim().toLowerCase().email();
+const role = z.enum(['CUSTOMER', 'COURIER', 'FLEET_MANAGER', 'ADMIN']);
 // bcrypt truncates silently beyond 72 *bytes* (not characters — see the
 // bcrypt package README). Zod's `.max()` counts UTF-16 code units, so a
 // password with multi-byte UTF-8 characters (emoji, many non-Latin scripts)
 // can sit under a 72-character limit while still exceeding 72 bytes and
 // being silently truncated. Enforce the real byte boundary instead.
+const isWithinPasswordByteLimit = (value: string) => Buffer.byteLength(value, 'utf8') <= 72;
+const passwordByteLimitMessage = 'Password must be at most 72 bytes long';
 const password = z
   .string()
   .min(8)
-  .refine((value) => Buffer.byteLength(value, 'utf8') <= 72, {
-    message: 'Password must be at most 72 bytes long',
-  });
+  .refine(isWithinPasswordByteLimit, { message: passwordByteLimitMessage });
+const loginPassword = z
+  .string()
+  .min(1)
+  .refine(isWithinPasswordByteLimit, { message: passwordByteLimitMessage });
 
 // JWTs are compact but can grow with additional claims; 2048 characters is a
 // safe upper bound that still rejects oversized payloads.
@@ -31,7 +36,7 @@ export const registerResponseSchema = z.object({
 
 export const loginBodySchema = z.object({
   email,
-  password: z.string().min(1),
+  password: loginPassword,
 });
 export const loginResponseSchema = z.object({
   data: z.object({

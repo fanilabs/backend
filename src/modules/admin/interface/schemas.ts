@@ -34,7 +34,7 @@ export const listAuditLogResponseSchema = z.object({
       actorLabel: z.string(),
       action: z.string(),
       entityType: z.string(),
-      entityId: z.string(),
+      entityId: z.string().max(255),
       metadata: z.record(z.unknown()).nullable(),
       createdAt: z.string().datetime(),
     }),
