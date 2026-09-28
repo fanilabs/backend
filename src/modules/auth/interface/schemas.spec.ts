@@ -43,7 +43,11 @@ describe('auth password schema (byte-accurate max length)', () => {
     const tooLongEmail = `${'a'.repeat(243)}@example.com`;
 
     expect(maxLengthEmail).toHaveLength(254);
-    expect(registerBodySchema.safeParse({ email: maxLengthEmail, password: 'password123' }).success).toBe(true);
-    expect(registerBodySchema.safeParse({ email: tooLongEmail, password: 'password123' }).success).toBe(false);
+    expect(
+      registerBodySchema.safeParse({ email: maxLengthEmail, password: 'password123' }).success,
+    ).toBe(true);
+    expect(
+      registerBodySchema.safeParse({ email: tooLongEmail, password: 'password123' }).success,
+    ).toBe(false);
   });
 });
