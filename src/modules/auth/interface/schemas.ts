@@ -44,7 +44,7 @@ export const loginResponseSchema = z.object({
     refreshToken: token,
     user: z.object({
       id: z.string().uuid(),
-      email: z.string(),
+      email: z.string().max(254),
       role,
       emailVerifiedAt: z.string().datetime().nullable(),
     }),
