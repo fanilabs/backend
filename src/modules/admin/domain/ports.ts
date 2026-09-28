@@ -12,7 +12,10 @@ import type { AdminUser, AuditLogEntry, DisputeReviewItem, UserRole } from './en
  * this shape.
  */
 export interface DisputeReviewReader {
-  listOpenDisputes(): Promise<DisputeReviewItem[]>;
+  listOpenDisputes(filter: {
+    limit: number;
+    after?: { raisedAt: Date; chainDeliveryId: bigint };
+  }): Promise<DisputeReviewItem[]>;
 }
 
 /**

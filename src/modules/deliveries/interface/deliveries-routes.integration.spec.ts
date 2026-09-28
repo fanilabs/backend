@@ -128,6 +128,27 @@ describe.skipIf(!dbAvailable)('deliveries routes (integration)', () => {
     });
 
     expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('rejects an unauthenticated confirm-delivery request before body validation', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/confirm-delivery',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('rejects an unauthenticated cancel-delivery request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/cancel-delivery',
+      payload: { senderAddress: Keypair.random().publicKey(), chainDeliveryId: '1' },
+    });
+
+    expect(response.statusCode).toBe(401);
   });
 
   // Regression coverage for the raise-dispute/raise-delivery-dispute route

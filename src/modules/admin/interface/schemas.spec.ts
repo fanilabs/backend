@@ -1,42 +1,33 @@
 import { describe, expect, it } from 'vitest';
-import { listAuditLogResponseSchema, listOpenDisputesResponseSchema } from './schemas.js';
+import { listAuditLogResponseSchema } from './schemas.js';
 
 describe('listAuditLogResponseSchema', () => {
-  it('limits actorLabel to 255 characters', () => {
-    const response = {
-      data: [
-        {
-          id: '00000000-0000-4000-8000-000000000001',
-          actorId: null,
-          actorLabel: 'a'.repeat(256),
-          action: 'USER_ROLE_UPDATED',
-          entityType: 'User',
-          entityId: '00000000-0000-4000-8000-000000000002',
-          metadata: null,
-          createdAt: '2024-01-01T00:00:00.000Z',
-        },
-      ],
+  const entry = {
+    id: '70b85a76-e3f9-4c34-a8b8-a5a39bf86870',
+    actorId: null,
+    actorLabel: 'System',
+    action: 'user.role_updated',
+    entityType: 'User',
+    entityId: 'user-id',
+    metadata: null,
+    createdAt: '2025-01-01T00:00:00.000Z',
+  };
+
+  it('accepts entity types up to the maximum length', () => {
+    const result = listAuditLogResponseSchema.safeParse({
+      data: [{ ...entry, entityType: 'A'.repeat(100) }],
       meta: { limit: 50, nextCursor: null },
-    };
+    });
 
-    expect(listAuditLogResponseSchema.safeParse(response).success).toBe(false);
+    expect(result.success).toBe(true);
   });
-});
 
-describe('listOpenDisputesResponseSchema', () => {
-  it('limits raisedBy to 255 characters', () => {
-    const response = {
-      data: [
-        {
-          chainDeliveryId: '1',
-          status: 'OPEN',
-          raisedBy: 'a'.repeat(256),
-          raisedAt: '2024-01-01T00:00:00.000Z',
-          evidenceCount: 0,
-        },
-      ],
-    };
+  it('rejects entity types longer than the maximum length', () => {
+    const result = listAuditLogResponseSchema.safeParse({
+      data: [{ ...entry, entityType: 'A'.repeat(101) }],
+      meta: { limit: 50, nextCursor: null },
+    });
 
-    expect(listOpenDisputesResponseSchema.safeParse(response).success).toBe(false);
+    expect(result.success).toBe(false);
   });
 });

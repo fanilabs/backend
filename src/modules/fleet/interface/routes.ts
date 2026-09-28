@@ -130,7 +130,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/add-driver-to-fleet',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: addDriverToFleetBodySchema,
@@ -149,7 +149,7 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.post(
       '/transactions/build/accept-fleet-invite',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           body: acceptFleetInviteBodySchema,

@@ -154,6 +154,7 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -289,6 +290,7 @@ model Dispute {
   raiser   User?     @relation(fields: [raisedByUserId], references: [id], onDelete: SetNull)
 
   @@index([raisedByUserId])
+  @@index([status, raisedAt, chainDeliveryId])
   @@map("disputes")
 }
 
@@ -409,6 +411,7 @@ model ActorActivity {
   category   ActorActivityCategory
   occurredAt DateTime              @map("occurred_at")
   createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
 
   @@index([address, category, occurredAt])
   @@map("actor_activities")
@@ -420,7 +423,7 @@ model ActorActivity {
 
 model BlockchainCheckpoint {
   id            String   @id @default(uuid())
-  contractName  String   @map("contract_name")
+  contractName  String   @db.VarChar(255) @map("contract_name")
   network       String
   lastLedgerSeq BigInt   @default(0) @map("last_ledger_seq")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -431,7 +434,7 @@ model BlockchainCheckpoint {
 
 model BlockchainEvent {
   id           String    @id @default(uuid())
-  contractName String    @map("contract_name")
+  contractName String    @db.VarChar(255) @map("contract_name")
   network      String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
