@@ -190,7 +190,7 @@ model Delivery {
   id                String         @id @default(uuid())
   chainDeliveryId   BigInt         @unique @map("chain_delivery_id")
   senderAddress     String         @map("sender_address")
-  recipientAddress  String         @map("recipient_address")
+  recipientAddress  String         @map("recipient_address") @db.VarChar(56)
   driverAddress     String?        @map("driver_address")
   status            DeliveryStatus @default(PENDING)
   origin            String
@@ -229,7 +229,7 @@ model Escrow {
   /// caller supplies these directly, so they are not assumed to always
   /// match the related Delivery row (PHASE_1_DOMAIN_ANALYSIS.md §3).
   senderAddress    String    @map("sender_address")
-  recipientAddress String    @map("recipient_address")
+  recipientAddress String    @map("recipient_address") @db.VarChar(56)
   driverAddress    String    @map("driver_address")
   token           String
   /// Decimal(39, 0): i128::MAX (170141183460469231731687303715884105727) has

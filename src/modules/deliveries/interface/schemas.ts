@@ -24,7 +24,7 @@ const deliveryDto = z.object({
   id: z.string().uuid(),
   chainDeliveryId: z.string(),
   senderAddress: z.string(),
-  recipientAddress: z.string(),
+  recipientAddress: z.string().max(56),
   driverAddress: z.string().max(256).nullable(),
   status: deliveryStatus,
   origin: z.string().max(256),
