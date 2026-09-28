@@ -1,33 +1,35 @@
 import { describe, expect, it } from 'vitest';
-import { listDeliveriesResponseSchema } from './schemas.js';
+import { getDeliveryResponseSchema } from './schemas.js';
 
-describe('delivery response schema', () => {
-  const delivery = {
-    id: 'b936690e-9b1b-4ddd-8ed9-5803c00f1010',
+function deliveryDto(destination: string) {
+  return {
+    id: '11111111-1111-1111-1111-111111111111',
     chainDeliveryId: '1',
-    senderAddress: 'sender',
-    recipientAddress: 'r'.repeat(56),
+    senderAddress: 'GSENDER',
+    recipientAddress: 'GRECIPIENT',
     driverAddress: null,
     status: 'PENDING',
     origin: 'Lagos',
-    destination: 'Accra',
+    destination,
     cargoCategory: 'GENERAL',
-    weightGrams: 1,
+    weightGrams: 500,
     fragile: false,
-    createdAtChain: '2026-09-28T00:00:00.000Z',
+    createdAtChain: '2026-01-01T00:00:00.000Z',
     transitStartedAt: null,
     deliveredAt: null,
   };
+}
 
-  it('accepts recipient addresses up to 56 characters', () => {
-    expect(listDeliveriesResponseSchema.safeParse({ data: [delivery] }).success).toBe(true);
+describe('delivery response schemas', () => {
+  it('accepts a destination at the maximum length', () => {
+    const result = getDeliveryResponseSchema.safeParse({ data: deliveryDto('a'.repeat(256)) });
+
+    expect(result.success).toBe(true);
   });
 
-  it('rejects recipient addresses longer than 56 characters', () => {
-    expect(
-      listDeliveriesResponseSchema.safeParse({
-        data: [{ ...delivery, recipientAddress: 'r'.repeat(57) }],
-      }).success,
-    ).toBe(false);
+  it('rejects a destination longer than the maximum length', () => {
+    const result = getDeliveryResponseSchema.safeParse({ data: deliveryDto('a'.repeat(257)) });
+
+    expect(result.success).toBe(false);
   });
 });

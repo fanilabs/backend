@@ -58,6 +58,13 @@ describe.skipIf(!dbAvailable)('users routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
 
+  it('rejects an unauthenticated wallet-list request', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/users/me/wallets' });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
   it('returns the authenticated user’s profile with no wallets initially', async () => {
     const accessToken = await registerAndLogin();
 

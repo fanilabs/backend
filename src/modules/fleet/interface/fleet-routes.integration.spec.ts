@@ -83,6 +83,16 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an unauthenticated add-driver-to-fleet request before body validation', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/add-driver-to-fleet',
+      payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   // docs/API_REFERENCE.md: with FLEET_MANAGEMENT_CONTRACT_ID unset (its
   // .env.example default, and the default in this test process), the build
   // endpoints must return 502 BLOCKCHAIN_ERROR naming the missing variable —

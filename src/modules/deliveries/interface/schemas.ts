@@ -28,7 +28,7 @@ const deliveryDto = z.object({
   driverAddress: z.string().max(256).nullable(),
   status: deliveryStatus,
   origin: z.string().max(256),
-  destination: z.string(),
+  destination: z.string().max(256),
   cargoCategory,
   weightGrams: z.number().int(),
   fragile: z.boolean(),

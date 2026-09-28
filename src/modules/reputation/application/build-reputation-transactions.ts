@@ -8,9 +8,10 @@ export interface BuildReputationTransactionsDeps {
   transactionBuilder: ReputationTransactionBuilder;
 }
 
-/** Two thin delegations to the `ReputationTransactionBuilder` port — same
- * "no branching business logic, so one file not one per call" rationale as
- * every other module's equivalent file. */
+/**
+ * Creates use cases that delegate driver registration and KYC-status
+ * transaction construction to the `ReputationTransactionBuilder` port.
+ */
 export function createBuildReputationTransactionsUseCases(deps: BuildReputationTransactionsDeps) {
   return {
     buildRegisterDriverTransaction: (input: RegisterDriverTxInput): Promise<string> =>

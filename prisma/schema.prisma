@@ -154,6 +154,7 @@ model RefreshToken {
   expiresAt DateTime  @map("expires_at")
   revokedAt DateTime? @map("revoked_at")
   createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -238,7 +239,7 @@ model Escrow {
   amount          Decimal      @db.Decimal(39, 0)
   platformFee     Decimal?     @map("platform_fee") @db.Decimal(39, 0)
   status          EscrowStatus @default(LOCKED)
-  disputedBy      String?      @map("disputed_by")
+  disputedBy      String?      @map("disputed_by") @db.VarChar(56)
   disputedAt      DateTime?    @map("disputed_at")
   releasedAt      DateTime?    @map("released_at")
   refundedAt      DateTime?    @map("refunded_at")
@@ -289,6 +290,7 @@ model Dispute {
   raiser   User?     @relation(fields: [raisedByUserId], references: [id], onDelete: SetNull)
 
   @@index([raisedByUserId])
+  @@index([status, raisedAt, chainDeliveryId])
   @@map("disputes")
 }
 
@@ -410,6 +412,7 @@ model ActorActivity {
   category   ActorActivityCategory
   occurredAt DateTime              @map("occurred_at")
   createdAt  DateTime              @default(now()) @map("created_at")
+  updatedAt  DateTime              @updatedAt @map("updated_at")
 
   @@index([address, category, occurredAt])
   @@map("actor_activities")
@@ -421,7 +424,7 @@ model ActorActivity {
 
 model BlockchainCheckpoint {
   id            String   @id @default(uuid())
-  contractName  String   @map("contract_name")
+  contractName  String   @db.VarChar(255) @map("contract_name")
   network       String
   lastLedgerSeq BigInt   @default(0) @map("last_ledger_seq")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -432,7 +435,7 @@ model BlockchainCheckpoint {
 
 model BlockchainEvent {
   id           String    @id @default(uuid())
-  contractName String    @map("contract_name")
+  contractName String    @db.VarChar(255) @map("contract_name")
   network      String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
@@ -467,6 +470,7 @@ model Notification {
   status    NotificationStatus  @default(PENDING)
   sentAt    DateTime?           @map("sent_at")
   createdAt DateTime            @default(now()) @map("created_at")
+  updatedAt DateTime            @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -480,7 +484,7 @@ model AuditLog {
   id         String   @id @default(uuid())
   actorId    String?  @map("actor_id")
   actorLabel String   @map("actor_label")
-  action     String
+  action     String   @db.VarChar(100)
   entityType String   @map("entity_type")
   entityId   String   @map("entity_id")
   metadata   Json?
