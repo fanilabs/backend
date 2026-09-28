@@ -3,6 +3,7 @@ import type {
   RefreshTokenRepository,
   TokenService,
   UserRepository,
+  UserRole,
 } from '../domain/index.js';
 import { InvalidCredentialsError } from '../domain/index.js';
 
@@ -21,7 +22,7 @@ export interface LoginInput {
 export interface LoginResult {
   accessToken: string;
   refreshToken: string;
-  user: { id: string; email: string; role: string; emailVerifiedAt: Date | null };
+  user: { id: string; email: string; role: UserRole; emailVerifiedAt: Date | null };
 }
 
 /**
