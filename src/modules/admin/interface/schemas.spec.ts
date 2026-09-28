@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { listAuditLogResponseSchema } from './schemas.js';
+import { listAuditLogResponseSchema, listOpenDisputesResponseSchema } from './schemas.js';
 
 describe('listAuditLogResponseSchema', () => {
   it('limits actorLabel to 255 characters', () => {
@@ -20,5 +20,23 @@ describe('listAuditLogResponseSchema', () => {
     };
 
     expect(listAuditLogResponseSchema.safeParse(response).success).toBe(false);
+  });
+});
+
+describe('listOpenDisputesResponseSchema', () => {
+  it('limits raisedBy to 255 characters', () => {
+    const response = {
+      data: [
+        {
+          chainDeliveryId: '1',
+          status: 'OPEN',
+          raisedBy: 'a'.repeat(256),
+          raisedAt: '2024-01-01T00:00:00.000Z',
+          evidenceCount: 0,
+        },
+      ],
+    };
+
+    expect(listOpenDisputesResponseSchema.safeParse(response).success).toBe(false);
   });
 });

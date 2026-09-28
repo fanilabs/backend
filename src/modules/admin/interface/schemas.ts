@@ -8,7 +8,7 @@ export const listOpenDisputesResponseSchema = z.object({
     z.object({
       chainDeliveryId: z.string(),
       status: disputeStatus,
-      raisedBy: z.string(),
+      raisedBy: z.string().max(255),
       raisedAt: z.string().datetime(),
       evidenceCount: z.number().int(),
     }),
