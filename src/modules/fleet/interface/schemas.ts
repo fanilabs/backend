@@ -4,7 +4,7 @@ import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
-const chainFleetId = chainId;
+const chainFleetId = chainId.max(20, 'Must be no more than 20 digits');
 const fleetDriverStatus = z.enum(['PENDING', 'ACTIVE']);
 
 /**
