@@ -58,6 +58,17 @@ describe.skipIf(!dbAvailable)('users routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
 
+  it('rejects an unauthenticated wallet-link challenge request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/users/me/wallets/challenge',
+      payload: { address: Keypair.random().publicKey() },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
   it('returns the authenticated user’s profile with no wallets initially', async () => {
     const accessToken = await registerAndLogin();
 
