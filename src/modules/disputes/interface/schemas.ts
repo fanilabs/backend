@@ -5,7 +5,10 @@ import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
 const chainDeliveryId = chainId;
-const evidenceHash = z.string().regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
+const evidenceHash = z
+  .string()
+  .max(64)
+  .regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
 
 const allowedEvidenceContentTypes = [
@@ -31,7 +34,7 @@ const MAX_BASE64_CONTENT_LENGTH = 14 * 1024 * 1024;
 
 const evidenceDto = z.object({
   id: z.string().uuid(),
-  hash: z.string(),
+  hash: evidenceHash,
   contentType: z.string(),
   uploadedBy: z.string().max(255),
   createdAt: z.string().datetime(),
@@ -49,7 +52,7 @@ const disputeDto = z.object({
   // being served as if it were a real address.
   raisedBy: stellarAddress,
   raisedAt: z.string().datetime(),
-  resolvedBy: z.string().nullable(),
+  resolvedBy: z.string().max(255).nullable(),
   resolvedAt: z.string().datetime().nullable(),
   senderShareBps: z.number().int().nullable(),
   evidence: z.array(evidenceDto),
@@ -114,7 +117,7 @@ export const uploadEvidenceBodySchema = z.object({
 });
 
 export const uploadEvidenceResponseSchema = z.object({
-  data: z.object({ evidenceId: z.string().uuid(), hash: z.string() }),
+  data: z.object({ evidenceId: z.string().uuid(), hash: evidenceHash }),
 });
 
 export const evidenceIdParamsSchema = z.object({ evidenceId: z.string().uuid() });

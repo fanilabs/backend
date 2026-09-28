@@ -12,6 +12,14 @@ export interface CompletionRateResult {
   completionRate: number;
 }
 
+/**
+ * Creates the use case that calculates the fraction of deliveries completed.
+ *
+ * @param deps - Dependencies required by the use case.
+ * @param deps.analyticsReader - Reader used to fetch delivery funnel counts.
+ * @returns An async function that resolves with the total and delivered
+ *   delivery counts and their completion fraction.
+ */
 export function createGetCompletionRateUseCase(deps: GetCompletionRateDeps) {
   return async function getCompletionRate(): Promise<CompletionRateResult> {
     const { totalDeliveries, deliveredCount } =

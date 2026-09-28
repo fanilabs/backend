@@ -1,5 +1,5 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
+import { authenticate, ok, requireRole, requireUser } from '../../../shared/http/index.js';
 import type { EvidenceWithVerification, GetDisputeResult } from '../application/index.js';
 import type {
   createBuildDisputeTransactionsUseCases,
@@ -204,9 +204,10 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
     app.post(
       '/transactions/build/resolve-dispute-split-funds',
       {
-        preHandler: authenticate,
+        preHandler: [authenticate, requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
+          description: 'Requires ADMIN role.',
           body: resolveDisputeSplitFundsBodySchema,
           response: { 200: transactionResponseSchema },
         },

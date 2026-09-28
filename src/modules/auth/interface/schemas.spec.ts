@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { registerBodySchema, resetPasswordBodySchema } from './schemas.js';
+import { loginBodySchema, registerBodySchema, resetPasswordBodySchema } from './schemas.js';
 
 describe('auth password schema (byte-accurate max length)', () => {
   it('accepts a 72-byte pure-ASCII password', () => {
@@ -31,6 +31,22 @@ describe('auth password schema (byte-accurate max length)', () => {
       newPassword: '😀'.repeat(20),
     });
     expect(result.success).toBe(false);
+  });
+
+  it('applies the byte-accurate bound to login passwords', () => {
+    const validPassword = loginBodySchema.safeParse({
+      email: 'user@example.com',
+      password: 'a'.repeat(72),
+    });
+    expect(validPassword.success).toBe(true);
+
+    const oversizedPassword = loginBodySchema.safeParse({
+      email: 'user@example.com',
+      password: '😀'.repeat(20),
+    });
+    expect(oversizedPassword.success).toBe(false);
+    expect(oversizedPassword.success ? [] : oversizedPassword.error.issues.map((i) => i.message))
+      .toContain('Password must be at most 72 bytes long');
   });
 
   it('still rejects passwords shorter than 8 characters', () => {

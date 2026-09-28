@@ -105,6 +105,16 @@ describe.skipIf(!dbAvailable)('escrow routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an unauthenticated refund transaction-build request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/refund-escrow',
+      payload: { callerAddress: 'G'.padEnd(56, 'A'), chainDeliveryId: '1' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   // docs/API_REFERENCE.md: with ESCROW_CONTRACT_ID unset (its .env.example
   // default, and the default in this test process), the build endpoints must
   // return 502 BLOCKCHAIN_ERROR naming the missing variable — the
