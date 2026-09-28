@@ -85,6 +85,16 @@ describe.skipIf(!dbAvailable)('admin routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('FORBIDDEN');
   });
 
+  it('rejects an unauthenticated role update request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/users/${randomUUID()}/role`,
+      payload: { role: 'COURIER' },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   it('lists open disputes for review', async () => {
     const { accessToken } = await registerAndLogin('ADMIN');
     const prisma = getPrismaClient();

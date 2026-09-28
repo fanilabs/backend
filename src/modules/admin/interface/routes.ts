@@ -71,7 +71,7 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
     app.post(
       '/admin/users/:id/role',
       {
-        preHandler: adminOnly,
+        preHandler: [authenticate, requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',
