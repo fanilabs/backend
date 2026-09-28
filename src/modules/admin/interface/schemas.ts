@@ -19,7 +19,7 @@ export const userIdParamsSchema = z.object({ id: z.string().uuid() });
 
 export const updateUserRoleBodySchema = z.object({ role: userRole });
 export const updateUserRoleResponseSchema = z.object({
-  data: z.object({ id: z.string().uuid(), email: z.string(), role: userRole }),
+  data: z.object({ id: z.string().uuid(), email: z.string().max(254), role: userRole }),
 });
 
 export const listAuditLogQuerySchema = z.object({

@@ -37,4 +37,13 @@ describe('auth password schema (byte-accurate max length)', () => {
     const result = registerBodySchema.safeParse({ email: 'user@example.com', password: 'short' });
     expect(result.success).toBe(false);
   });
+
+  it('accepts email addresses up to 254 characters and rejects longer ones', () => {
+    const maxLengthEmail = `${'a'.repeat(242)}@example.com`;
+    const tooLongEmail = `${'a'.repeat(243)}@example.com`;
+
+    expect(maxLengthEmail).toHaveLength(254);
+    expect(registerBodySchema.safeParse({ email: maxLengthEmail, password: 'password123' }).success).toBe(true);
+    expect(registerBodySchema.safeParse({ email: tooLongEmail, password: 'password123' }).success).toBe(false);
+  });
 });
