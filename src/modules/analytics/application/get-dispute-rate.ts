@@ -17,6 +17,7 @@ export interface DisputeRateResult {
   disputeRate: number;
 }
 
+/** Creates a use case that returns delivery totals and the fraction ever disputed. */
 export function createGetDisputeRateUseCase(deps: GetDisputeRateDeps) {
   return async function getDisputeRate(): Promise<DisputeRateResult> {
     const { totalDeliveries, disputedCount } = await deps.analyticsReader.getDeliveryFunnelCounts();
