@@ -4,6 +4,7 @@ export {
   type GetPayoutAddressDeps,
   type GetPayoutAddressInput,
 } from './get-payout-address.js';
+/** Creates use cases that delegate fleet transaction construction to the transaction builder. */
 export {
   createBuildFleetTransactionsUseCases,
   type BuildFleetTransactionsDeps,

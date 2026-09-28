@@ -52,7 +52,7 @@ const disputeDto = z.object({
   // being served as if it were a real address.
   raisedBy: stellarAddress,
   raisedAt: z.string().datetime(),
-  resolvedBy: z.string().nullable(),
+  resolvedBy: z.string().max(255).nullable(),
   resolvedAt: z.string().datetime().nullable(),
   senderShareBps: z.number().int().nullable(),
   evidence: z.array(evidenceDto),
