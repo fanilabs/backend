@@ -32,7 +32,7 @@ export const listOpenDisputesResponseSchema = z.object({
     z.object({
       chainDeliveryId: z.string(),
       status: disputeStatus,
-      raisedBy: z.string(),
+      raisedBy: z.string().max(255),
       raisedAt: z.string().datetime(),
       evidenceCount: z.number().int(),
     }),
@@ -59,7 +59,7 @@ export const listAuditLogResponseSchema = z.object({
     z.object({
       id: z.string().uuid(),
       actorId: z.string().uuid().nullable(),
-      actorLabel: z.string(),
+      actorLabel: z.string().max(255),
       action: z.string(),
       entityType: z.string().max(MAX_ENTITY_TYPE_LENGTH),
       entityId: z.string(),

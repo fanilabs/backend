@@ -19,6 +19,7 @@ export interface GetMyProfileResult {
   wallets: Array<{ id: string; address: string; isPrimary: boolean; verifiedAt: Date | null }>;
 }
 
+/** Creates a use case that retrieves a user's profile and linked wallet addresses. */
 export function createGetMyProfileUseCase(deps: GetMyProfileDeps) {
   return async function getMyProfile(input: GetMyProfileInput): Promise<GetMyProfileResult> {
     const user = await deps.userReader.findById(input.userId);

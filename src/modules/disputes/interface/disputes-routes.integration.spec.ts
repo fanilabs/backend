@@ -299,6 +299,21 @@ describe.skipIf(!dbAvailable)('dispute routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('FORBIDDEN');
   });
 
+  it('rejects unauthenticated requests to resolve-dispute-split-funds endpoint', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/resolve-dispute-split-funds',
+      payload: {
+        callerAddress: Keypair.random().publicKey(),
+        chainDeliveryId: '1',
+        senderShareBps: 5000,
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
   it('allows admin users to access resolve-dispute-refund-sender endpoint', async () => {
     const admin = await registerWithWallet('ADMIN');
     const chainDeliveryId = await seedDispute();
