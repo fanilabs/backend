@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-const email = z.string().trim().toLowerCase().email();
+const email = z.string().trim().toLowerCase().max(254).email();
+const role: z.ZodType<string> = z.enum(['CUSTOMER', 'COURIER', 'FLEET_MANAGER', 'ADMIN']);
 // bcrypt truncates silently beyond 72 *bytes* (not characters — see the
 // bcrypt package README). Zod's `.max()` counts UTF-16 code units, so a
 // password with multi-byte UTF-8 characters (emoji, many non-Latin scripts)
@@ -39,7 +40,7 @@ export const loginResponseSchema = z.object({
     refreshToken: token,
     user: z.object({
       id: z.string().uuid(),
-      email: z.string(),
+      email: z.string().max(254),
       role,
       emailVerifiedAt: z.string().datetime().nullable(),
     }),

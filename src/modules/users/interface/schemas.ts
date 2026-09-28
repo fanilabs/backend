@@ -16,7 +16,7 @@ const walletDto = z.object({
 export const profileResponseSchema = z.object({
   data: z.object({
     id: z.string().uuid(),
-    email: z.string(),
+    email: z.string().max(254),
     role: z.string(),
     emailVerifiedAt: z.string().datetime().nullable(),
     createdAt: z.string().datetime(),
