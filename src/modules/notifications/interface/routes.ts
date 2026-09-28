@@ -42,7 +42,7 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
     app.get(
       '/notifications',
       {
-        preHandler: authenticate,
+        onRequest: [authenticate],
         schema: {
           security: [{ bearerAuth: [] }],
           querystring: listNotificationsQuerySchema,
@@ -51,7 +51,11 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
       },
       async (request, reply) => {
         const { status, limit, before } = request.query;
-        const { items, nextCursor, limit: appliedLimit } = await useCases.listNotifications({
+        const {
+          items,
+          nextCursor,
+          limit: appliedLimit,
+        } = await useCases.listNotifications({
           userId: requireUser(request).id,
           ...(status && { status }),
           ...(limit !== undefined && { limit }),
