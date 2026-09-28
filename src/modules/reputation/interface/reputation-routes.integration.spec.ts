@@ -118,6 +118,20 @@ describe.skipIf(!dbAvailable)('reputation routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects unauthenticated update-driver-kyc-status requests', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/transactions/build/update-driver-kyc-status',
+      payload: {
+        adminAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        kycVerified: true,
+      },
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
   it('rejects non-admin users from update-driver-kyc-status endpoint with 403', async () => {
     const customer = await registerAndLogin('CUSTOMER');
     const adminAddress = Keypair.random().publicKey();
