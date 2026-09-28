@@ -70,7 +70,10 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
 
     app.get(
       '/deliveries/:chainDeliveryId',
-      { schema: { params: deliveryIdParamsSchema, response: { 200: getDeliveryResponseSchema } } },
+      {
+        preHandler: authenticate,
+        schema: { params: deliveryIdParamsSchema, response: { 200: getDeliveryResponseSchema } },
+      },
       async (request, reply) => {
         const delivery = await useCases.getDelivery({
           chainDeliveryId: BigInt(request.params.chainDeliveryId),

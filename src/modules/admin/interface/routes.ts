@@ -99,7 +99,7 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
     app.get(
       '/admin/audit-log',
       {
-        preHandler: adminOnly,
+        preHandler: [authenticate, requireRole('ADMIN')],
         schema: {
           security: [{ bearerAuth: [] }],
           description: 'Requires ADMIN role.',

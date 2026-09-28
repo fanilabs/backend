@@ -72,6 +72,11 @@ describe.skipIf(!dbAvailable)('admin routes (integration)', () => {
     expect(response.statusCode).toBe(401);
   });
 
+  it('rejects an unauthenticated audit-log request', async () => {
+    const response = await app.inject({ method: 'GET', url: '/api/v1/admin/audit-log' });
+    expect(response.statusCode).toBe(401);
+  });
+
   it('rejects a non-admin authenticated request', async () => {
     const { accessToken } = await registerAndLogin('CUSTOMER');
 
