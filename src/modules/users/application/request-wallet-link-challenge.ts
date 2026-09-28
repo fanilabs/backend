@@ -15,6 +15,10 @@ export interface RequestWalletLinkChallengeResult {
   challenge: string;
 }
 
+/**
+ * Creates a use case that issues a wallet-link challenge unless the address
+ * is already linked to a different user.
+ */
 export function createRequestWalletLinkChallengeUseCase(deps: RequestWalletLinkChallengeDeps) {
   return async function requestWalletLinkChallenge(
     input: RequestWalletLinkChallengeInput,
