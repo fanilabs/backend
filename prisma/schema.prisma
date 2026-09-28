@@ -421,7 +421,7 @@ model ActorActivity {
 
 model BlockchainCheckpoint {
   id            String   @id @default(uuid())
-  contractName  String   @map("contract_name")
+  contractName  String   @db.VarChar(255) @map("contract_name")
   network       String
   lastLedgerSeq BigInt   @default(0) @map("last_ledger_seq")
   updatedAt     DateTime @updatedAt @map("updated_at")
@@ -432,7 +432,7 @@ model BlockchainCheckpoint {
 
 model BlockchainEvent {
   id           String    @id @default(uuid())
-  contractName String    @map("contract_name")
+  contractName String    @db.VarChar(255) @map("contract_name")
   network      String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
