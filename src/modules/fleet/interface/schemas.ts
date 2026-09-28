@@ -27,7 +27,7 @@ const fleetDriverDto = z.object({
 const fleetDto = z.object({
   id: z.string().uuid(),
   chainFleetId: z.string(),
-  ownerAddress: z.string(),
+  ownerAddress: z.string().max(MAX_ADDRESS_LENGTH),
   treasuryAddress: z.string().max(MAX_ADDRESS_LENGTH),
   createdAt: z.string().datetime(),
   updatedAt: z.string().datetime(),

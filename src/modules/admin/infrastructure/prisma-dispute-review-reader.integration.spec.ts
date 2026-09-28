@@ -88,7 +88,7 @@ describe.skipIf(!dbAvailable)('Prisma dispute review reader (integration)', () =
       },
     });
 
-    const results = await disputeReviewReader.listOpenDisputes();
+    const results = await disputeReviewReader.listOpenDisputes({ limit: 100 });
     const relevant = results.filter((r) => createdChainIds.includes(r.chainDeliveryId));
 
     expect(relevant).toEqual([
@@ -107,5 +107,29 @@ describe.skipIf(!dbAvailable)('Prisma dispute review reader (integration)', () =
         evidenceCount: 1,
       },
     ]);
+  });
+
+  it('paginates disputes with matching timestamps using the chain delivery id tie-breaker', async () => {
+    const first = await seedDelivery();
+    const second = await seedDelivery();
+    const third = await seedDelivery();
+    const raisedAt = new Date('2099-02-01T00:00:00Z');
+
+    for (const [chainDeliveryId, raisedBy] of [
+      [first, 'GRAISER1'],
+      [second, 'GRAISER2'],
+      [third, 'GRAISER3'],
+    ] as const) {
+      await prisma.dispute.create({
+        data: { chainDeliveryId, status: 'OPEN', raisedBy, raisedAt },
+      });
+    }
+
+    const results = await disputeReviewReader.listOpenDisputes({
+      limit: 1,
+      after: { raisedAt, chainDeliveryId: first },
+    });
+
+    expect(results.map((result) => result.chainDeliveryId)).toEqual([second, third]);
   });
 });
