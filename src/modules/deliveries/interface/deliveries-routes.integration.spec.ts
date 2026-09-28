@@ -128,6 +128,7 @@ describe.skipIf(!dbAvailable)('deliveries routes (integration)', () => {
     });
 
     expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
 
   // Regression coverage for the raise-dispute/raise-delivery-dispute route
