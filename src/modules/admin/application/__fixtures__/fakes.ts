@@ -94,6 +94,9 @@ export function createInMemoryAuditLogRepository(): AuditLogRepository & {
       const matching = before ? entries.filter((entry) => entry.createdAt < before) : entries;
       return matching.slice(0, filter.limit);
     },
+    async count() {
+      return entries.length;
+    },
   };
 }
 

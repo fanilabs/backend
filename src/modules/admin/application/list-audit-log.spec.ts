@@ -18,7 +18,9 @@ describe('listAuditLog', () => {
 
     const result = await listAuditLog();
 
-    expect(result).toHaveLength(50);
+    // #292 — totalCount is the unpaged total, not the page length.
+    expect(result.totalCount).toBe(60);
+    expect(result.items).toHaveLength(50);
   });
 
   it('caps limit at 200 even if a larger value is requested', async () => {
@@ -36,6 +38,20 @@ describe('listAuditLog', () => {
 
     const result = await listAuditLog({ limit: 1000 });
 
-    expect(result).toHaveLength(200);
+    expect(result.items).toHaveLength(200);
+    // totalCount stays the full total regardless of the requested/capped page size.
+    expect(result.totalCount).toBe(250);
+  });
+
+  it('reports totalCount of 0 for an empty audit log (#292)', async () => {
+    const listAuditLog = createListAuditLogUseCase({
+      auditLogRepository: createInMemoryAuditLogRepository(),
+    });
+
+    const result = await listAuditLog();
+
+    expect(result.items).toEqual([]);
+    expect(result.nextCursor).toBeNull();
+    expect(result.totalCount).toBe(0);
   });
 });

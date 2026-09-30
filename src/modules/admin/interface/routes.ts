@@ -113,13 +113,16 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
           items,
           nextCursor,
           limit: appliedLimit,
+          totalCount,
         } = await useCases.listAuditLog({
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
         });
         void reply
           .status(200)
-          .send(ok(items.map(serializeAuditLogEntry), { limit: appliedLimit, nextCursor }));
+          .send(
+            ok(items.map(serializeAuditLogEntry), { limit: appliedLimit, nextCursor, totalCount }),
+          );
       },
     );
   };

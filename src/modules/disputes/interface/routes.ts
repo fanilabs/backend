@@ -31,6 +31,15 @@ export interface DisputeRoutesConfig {
   evidenceMaxBytes: number;
 }
 
+/** `toISOString()` throws `RangeError` on an invalid `Date`, so a single corrupt
+ * nullable `resolvedAt` would otherwise turn the whole `getDispute` response
+ * into a 500 (#293). An invalid date serializes to `null` (the schema's own
+ * nullable value) instead of taking the endpoint down. */
+function toIsoStringOrNull(date: Date | null | undefined): string | null {
+  if (!date) return null;
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 function serializeEvidence(evidence: EvidenceWithVerification) {
   return {
     id: evidence.id,
@@ -50,13 +59,16 @@ function serializeDispute(result: GetDisputeResult) {
     raisedBy: result.dispute.raisedBy,
     raisedAt: result.dispute.raisedAt.toISOString(),
     resolvedBy: result.dispute.resolvedBy,
-    resolvedAt: result.dispute.resolvedAt?.toISOString() ?? null,
+    resolvedAt: toIsoStringOrNull(result.dispute.resolvedAt),
     senderShareBps: result.dispute.senderShareBps,
     evidence: result.evidence.map(serializeEvidence),
   };
 }
 
-export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRoutesConfig): FastifyPluginAsyncZod {
+export function createDisputeRoutes(
+  useCases: DisputeUseCases,
+  config: DisputeRoutesConfig,
+): FastifyPluginAsyncZod {
   const uploadEvidenceBodySchemaWithLimit = createUploadEvidenceBodySchema(config.evidenceMaxBytes);
   return async function disputeRoutes(app) {
     app.get(
@@ -114,7 +126,9 @@ export function createDisputeRoutes(useCases: DisputeUseCases, config: DisputeRo
           'audio/mpeg',
           'video/mp4',
         ];
-        const safeContentType = allowedTypes.includes(contentType) ? contentType : 'application/octet-stream';
+        const safeContentType = allowedTypes.includes(contentType)
+          ? contentType
+          : 'application/octet-stream';
         void reply
           .status(200)
           .type(safeContentType)

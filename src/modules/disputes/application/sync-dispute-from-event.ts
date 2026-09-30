@@ -100,6 +100,12 @@ async function handleDisputeResolutionEvent(
     case 'dispute_raised': {
       const raisedBy = parseAddress(payload[0]);
       if (raisedBy === null) return;
+      // Out-of-order/replay: a resolution may already have been recorded for
+      // this `chainDeliveryId` (indexer replay, or a replayed resolution
+      // batch). Re-asserting `OPEN` here would silently downgrade a settled
+      // dispute back to open, so the resolution is left authoritative and the
+      // late raise is ignored (#295).
+      if (await isAlreadyResolved(deps, chainDeliveryId)) return;
       const raisedByUserId = await deps.walletOwnershipRepository.findOwnerByAddress(
         raisedBy,
         event.closedAt,
@@ -176,7 +182,10 @@ async function handleEscrowEvent(
 
     // A dispute row raised purely via Layer A (no dispute_resolution_contract
     // case ever created) should still exist and be visible — create it as
-    // OPEN if this is the first event either layer has produced for it.
+    // OPEN if this is the first event either layer has produced for it. A
+    // late/replayed `delivery_disputed` must never reopen a dispute a
+    // resolution already settled (#295).
+    if (await isAlreadyResolved(deps, chainDeliveryId)) return;
     await deps.disputeRepository.upsert(chainDeliveryId, {
       status: 'OPEN',
       raisedBy: disputedBy,
@@ -189,6 +198,25 @@ async function handleEscrowEvent(
   if (event.topic[0] === 'dispute_resolved') {
     await handleEscrowOnlyResolution(deps, chainDeliveryId, event.closedAt);
   }
+}
+
+/**
+ * True when a resolution for this `chainDeliveryId` is already recorded.
+ *
+ * Events from either dispute layer can arrive out of order or be replayed
+ * (indexer glitch, checkpoint replay), so a "raise" event may be processed
+ * after the dispute it raises was already resolved (#295). Every write below
+ * goes through `DisputeRepository.upsert`, which is a create-or-update and so
+ * never itself throws `P2025` on a missing row — the remaining risk is the
+ * *silent* one: re-asserting `status: 'OPEN'` on an already-settled row would
+ * downgrade a real, confirmed resolution. This guards exactly that.
+ */
+async function isAlreadyResolved(
+  deps: SyncDisputeFromEventDeps,
+  chainDeliveryId: bigint,
+): Promise<boolean> {
+  const existing = await deps.disputeRepository.findByChainDeliveryId(chainDeliveryId);
+  return existing !== null && existing.status !== 'OPEN';
 }
 
 /**

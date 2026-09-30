@@ -284,7 +284,11 @@ describe('syncDisputeFromEvent', () => {
     const { disputeRepository, walletOwnershipRepository, syncDisputeFromEvent } = setup();
     const raisedAt = new Date('2026-01-02T00:00:00Z');
     // Linked well before the dispute was raised — the legitimate case.
-    walletOwnershipRepository.seed('original-raiser', 'GRAISER11', new Date('2026-01-01T00:00:00Z'));
+    walletOwnershipRepository.seed(
+      'original-raiser',
+      'GRAISER11',
+      new Date('2026-01-01T00:00:00Z'),
+    );
 
     await syncDisputeFromEvent(
       buildDisputeResolutionEvent({
@@ -332,5 +336,90 @@ describe('syncDisputeFromEvent', () => {
     const stored = await disputeRepository.findByChainDeliveryId(9n);
     expect(stored?.status).toBe('RESOLVED_PAYOUT');
     expect(stored?.raisedByUserId).toBe('original-raiser');
+  });
+
+  // ── out-of-order / replayed events (#295) ─────────────────────────────────
+
+  it('a late dispute_raised does not reopen an already-resolved dispute (#295)', async () => {
+    const { disputeRepository, syncDisputeFromEvent } = setup();
+    disputeRepository.seed(
+      buildDispute({
+        chainDeliveryId: 10n,
+        status: 'RESOLVED_PAYOUT',
+        resolvedBy: 'GADMIN',
+        resolvedAt: new Date('2026-03-01T00:00:00Z'),
+      }),
+    );
+
+    await syncDisputeFromEvent(
+      buildDisputeResolutionEvent({
+        topic: ['dispute_raised', '["10"]'],
+        payload: ['GSENDER', ['10']],
+        closedAt: new Date('2026-02-01T00:00:00Z'),
+      }),
+    );
+
+    const stored = await disputeRepository.findByChainDeliveryId(10n);
+    expect(stored?.status).toBe('RESOLVED_PAYOUT');
+    expect(stored?.resolvedAt).toEqual(new Date('2026-03-01T00:00:00Z'));
+  });
+
+  it('a late escrow delivery_disputed does not reopen an already-resolved dispute (#295)', async () => {
+    const { disputeRepository, syncDisputeFromEvent } = setup();
+    disputeRepository.seed(
+      buildDispute({
+        chainDeliveryId: 11n,
+        status: 'RESOLVED_REFUND',
+        resolvedBy: 'GADMIN',
+        resolvedAt: new Date('2026-03-01T00:00:00Z'),
+      }),
+    );
+
+    await syncDisputeFromEvent(
+      buildEscrowDisputeEvent({
+        topic: ['delivery_disputed', '11'],
+        payload: ['GSENDER', '11'],
+        closedAt: new Date('2026-02-01T00:00:00Z'),
+      }),
+    );
+
+    const stored = await disputeRepository.findByChainDeliveryId(11n);
+    expect(stored?.status).toBe('RESOLVED_REFUND');
+  });
+
+  it('a dispute_raised replay on an already-OPEN dispute stays OPEN and is idempotent (#295)', async () => {
+    const { disputeRepository, syncDisputeFromEvent } = setup();
+    const event = buildDisputeResolutionEvent({
+      topic: ['dispute_raised', '["12"]'],
+      payload: ['GSENDER', ['12']],
+    });
+
+    await syncDisputeFromEvent(event);
+    await syncDisputeFromEvent(event);
+
+    const stored = await disputeRepository.findByChainDeliveryId(12n);
+    expect(stored?.status).toBe('OPEN');
+  });
+
+  it('a dispute_resolved_refund arriving before any raise still records the resolution (#295)', async () => {
+    // Out-of-order: the resolution is processed first and creates the row;
+    // the later raise must not downgrade it.
+    const { disputeRepository, syncDisputeFromEvent } = setup();
+
+    await syncDisputeFromEvent(
+      buildDisputeResolutionEvent({
+        topic: ['dispute_resolved_refund', '["13"]'],
+        payload: ['GADMIN', ['13']],
+      }),
+    );
+    await syncDisputeFromEvent(
+      buildDisputeResolutionEvent({
+        topic: ['dispute_raised', '["13"]'],
+        payload: ['GSENDER', ['13']],
+      }),
+    );
+
+    const stored = await disputeRepository.findByChainDeliveryId(13n);
+    expect(stored?.status).toBe('RESOLVED_REFUND');
   });
 });

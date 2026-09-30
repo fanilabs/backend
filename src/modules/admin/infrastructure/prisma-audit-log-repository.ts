@@ -39,5 +39,9 @@ export function createPrismaAuditLogRepository(prisma: PrismaClient): AuditLogRe
       });
       return records.map(toDomain);
     },
+
+    async count() {
+      return prisma.auditLog.count();
+    },
   };
 }

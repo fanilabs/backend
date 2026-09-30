@@ -54,9 +54,15 @@ export interface ListAuditLogFilter {
   before?: Date;
 }
 
+/** Total number of audit log rows, ignoring both `limit` and the `before`
+ * cursor of {@link ListAuditLogFilter}. Deliberately unpaged so the admin UI
+ * can render a record/page total next to a single cursor page (#292) —
+ * counting only what `list` returned would make `totalCount` change on every
+ * page, which is not what a total is for. */
 export interface AuditLogRepository {
   record(input: RecordAuditLogInput): Promise<void>;
   list(filter: ListAuditLogFilter): Promise<AuditLogEntry[]>;
+  count(): Promise<number>;
 }
 
 /**
