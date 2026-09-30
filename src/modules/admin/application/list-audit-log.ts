@@ -14,6 +14,9 @@ export interface ListAuditLogResult {
   items: AuditLogEntry[];
   nextCursor: string | null;
   limit: number;
+  /** Total number of audit log rows, unpaged (#292) so the frontend can
+   * render an "N records" / page-count total alongside the cursor page. */
+  totalCount: number;
 }
 
 const DEFAULT_LIMIT = 50;
@@ -32,21 +35,24 @@ const MAX_LIMIT = 200;
  * @returns An async function that accepts an optional {@link ListAuditLogInput}
  *   (`limit` and ISO `before` cursor) and resolves to a
  *   {@link ListAuditLogResult} containing the page `items`, the `nextCursor`
- *   for the following page (or `null` when there are no more rows), and the
- *   effective `limit` that was applied.
+ *   for the following page (or `null` when there are no more rows), the
+ *   effective `limit` that was applied, and the unpaged `totalCount`
+ *   (#292).
  */
 export function createListAuditLogUseCase(deps: ListAuditLogDeps) {
   return async function listAuditLog(input: ListAuditLogInput = {}): Promise<ListAuditLogResult> {
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const items = await deps.auditLogRepository.list({
-      limit,
-      ...(input.before && { before: new Date(input.before) }),
-    });
+    const [items, totalCount] = await Promise.all([
+      deps.auditLogRepository.list({
+        limit,
+        ...(input.before && { before: new Date(input.before) }),
+      }),
+      deps.auditLogRepository.count(),
+    ]);
 
     const lastItem = items[items.length - 1];
-    const nextCursor =
-      items.length === limit && lastItem ? lastItem.createdAt.toISOString() : null;
+    const nextCursor = items.length === limit && lastItem ? lastItem.createdAt.toISOString() : null;
 
-    return { items, nextCursor, limit };
+    return { items, nextCursor, limit, totalCount };
   };
 }

@@ -70,5 +70,8 @@ export const listAuditLogResponseSchema = z.object({
   meta: z.object({
     limit: z.number().int(),
     nextCursor: z.string().datetime().nullable(),
+    /** Unpaged total number of audit log rows (#292) — lets the frontend
+     * render an "N records" total / page count next to a cursor page. */
+    totalCount: z.number().int(),
   }),
 });

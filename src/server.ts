@@ -11,14 +11,44 @@ async function main(): Promise<void> {
   const app = await buildApp();
 
   closeWithGrace({ delay: 10_000 }, async ({ err }: { err?: Error }) => {
-    if (err) {
-      logger.error({ err }, 'Shutting down due to unhandled error');
-    } else {
-      logger.info('Shutting down gracefully');
+    // Everything below is best-effort teardown: each step is attempted even
+    // if an earlier one throws (e.g. an already-disconnected Redis/Prisma),
+    // and the aggregate failure is logged rather than left as an unhandled
+    // rejection — otherwise a failure *inside* the handler would fail the
+    // shutdown silently (#294).
+    const shutdownErrors: unknown[] = [];
+
+    try {
+      if (err) {
+        logger.error({ err }, 'Shutting down due to unhandled error');
+      } else {
+        logger.info('Shutting down gracefully');
+      }
+    } catch (logError: unknown) {
+      shutdownErrors.push(logError);
     }
-    await app.close();
-    await closeAllQueues();
-    await Promise.all([disconnectPrisma(), disconnectRedis(), disconnectQueueConnection()]);
+
+    for (const step of [
+      () => app.close(),
+      () => closeAllQueues(),
+      () =>
+        Promise.all([disconnectPrisma(), disconnectRedis(), disconnectQueueConnection()]).then(
+          () => undefined,
+        ),
+    ]) {
+      try {
+        await step();
+      } catch (stepError: unknown) {
+        shutdownErrors.push(stepError);
+      }
+    }
+
+    if (shutdownErrors.length > 0) {
+      logger.error(
+        { err: shutdownErrors[0], errors: shutdownErrors },
+        'Errors during graceful shutdown',
+      );
+    }
   });
 
   await app.listen({ host: config.HOST, port: config.PORT });

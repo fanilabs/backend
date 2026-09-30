@@ -16,7 +16,7 @@ describe('listAuditLogResponseSchema', () => {
   it('accepts entity types up to the maximum length', () => {
     const result = listAuditLogResponseSchema.safeParse({
       data: [{ ...entry, entityType: 'A'.repeat(100) }],
-      meta: { limit: 50, nextCursor: null },
+      meta: { limit: 50, nextCursor: null, totalCount: 1 },
     });
 
     expect(result.success).toBe(true);
@@ -25,7 +25,25 @@ describe('listAuditLogResponseSchema', () => {
   it('rejects entity types longer than the maximum length', () => {
     const result = listAuditLogResponseSchema.safeParse({
       data: [{ ...entry, entityType: 'A'.repeat(101) }],
+      meta: { limit: 50, nextCursor: null, totalCount: 1 },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('requires totalCount in meta (#292)', () => {
+    const result = listAuditLogResponseSchema.safeParse({
+      data: [entry],
       meta: { limit: 50, nextCursor: null },
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-integer totalCount', () => {
+    const result = listAuditLogResponseSchema.safeParse({
+      data: [entry],
+      meta: { limit: 50, nextCursor: null, totalCount: 1.5 },
     });
 
     expect(result.success).toBe(false);
