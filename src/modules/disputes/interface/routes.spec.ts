@@ -29,14 +29,17 @@ function buildUseCases(dispute: GetDisputeResult['dispute']): DisputeUseCases {
  * here carries a real, randomly generated address instead. */
 const RAISER = Keypair.random().publicKey();
 
-async function getDisputeResponse(dispute: GetDisputeResult['dispute']) {
+async function getDisputeResponse(
+  dispute: GetDisputeResult['dispute'],
+  expectSuccess = true,
+) {
   const app = Fastify();
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   await app.register(createDisputeRoutes(buildUseCases(dispute), { evidenceMaxBytes: 1024 }));
   const response = await app.inject({ method: 'GET', url: '/disputes/1' });
   await app.close();
-  if (response.statusCode !== 200) {
+  if (expectSuccess && response.statusCode !== 200) {
     throw new Error(`GET /disputes/1 -> ${response.statusCode}: ${response.body}`);
   }
   return response;
@@ -66,5 +69,14 @@ describe('GET /disputes/:chainDeliveryId serialization (#293)', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json().data.resolvedAt).toBeNull();
+  });
+
+  it('rejects malformed resolvedBy values before they reach the client', async () => {
+    const response = await getDisputeResponse(
+      buildDispute({ raisedBy: RAISER, resolvedBy: 'not-a-valid-address' }),
+      false,
+    );
+
+    expect(response.statusCode).toBe(500);
   });
 });
