@@ -1,3 +1,5 @@
+import http from 'node:http';
+import https from 'node:https';
 import { rpc } from '@stellar/stellar-sdk';
 import type { Account, Transaction, FeeBumpTransaction } from '@stellar/stellar-sdk';
 import { getConfig } from '../shared/config/index.js';
@@ -21,6 +23,8 @@ export class SorobanClient {
 
   constructor(rpcUrl: string = getConfig().SOROBAN_RPC_URL) {
     rpc.AxiosClient.defaults.timeout = SOROBAN_RPC_TIMEOUT_MS;
+    rpc.AxiosClient.defaults.httpAgent = new http.Agent({ keepAlive: true });
+    rpc.AxiosClient.defaults.httpsAgent = new https.Agent({ keepAlive: true });
     this.server = new rpc.Server(rpcUrl, { allowHttp: rpcUrl.startsWith('http://') });
     this.breaker = new CircuitBreaker();
   }

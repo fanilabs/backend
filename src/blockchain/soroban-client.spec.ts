@@ -8,4 +8,11 @@ describe('SorobanClient', () => {
 
     expect(rpc.AxiosClient.defaults.timeout).toBe(30_000);
   });
+
+  it('configures keepAlive: true on the HTTP and HTTPS agents', () => {
+    new SorobanClient('https://soroban.example.test');
+
+    expect(rpc.AxiosClient.defaults.httpAgent?.keepAlive).toBe(true);
+    expect(rpc.AxiosClient.defaults.httpsAgent?.keepAlive).toBe(true);
+  });
 });

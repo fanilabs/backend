@@ -1,7 +1,7 @@
 import { Writable } from 'node:stream';
 import pino from 'pino';
 import { describe, expect, it } from 'vitest';
-import { redactConfig } from './index.js';
+import { errorSerializer, redactConfig } from './index.js';
 
 function captureLogger() {
   const chunks: string[] = [];
@@ -11,7 +11,16 @@ function captureLogger() {
       callback();
     },
   });
-  const log = pino({ redact: redactConfig }, stream);
+  const log = pino(
+    {
+      redact: redactConfig,
+      serializers: {
+        err: errorSerializer,
+        error: errorSerializer,
+      },
+    },
+    stream,
+  );
   return { log, output: () => chunks.join('') };
 }
 
@@ -38,5 +47,60 @@ describe('redactConfig', () => {
     log.info({ to: 'user@example.com', token: 'secret' }, 'Verification email');
 
     expect(output()).toContain('user@example.com');
+  });
+});
+
+describe('errorSerializer', () => {
+  it('strips password and token from an Error object properties', () => {
+    const { log, output } = captureLogger();
+
+    const error = new Error('Database connection failed');
+    (error as any).password = 'supersecret123';
+    (error as any).token = 'secrettoken456';
+
+    log.error({ err: error }, error.message);
+
+    const logOutput = output();
+    expect(logOutput).toContain('Database connection failed');
+    expect(logOutput).not.toContain('supersecret123');
+    expect(logOutput).not.toContain('secrettoken456');
+  });
+
+  it('strips sensitive fields and PII from nested details on an Error object', () => {
+    const { log, output } = captureLogger();
+
+    const error = new Error('Validation failed');
+    (error as any).details = {
+      user: 'alice',
+      password: 'mypassword',
+      token: 'jwt.token.value',
+      credentials: { secret: 'topsecret' },
+    };
+
+    log.error({ err: error }, error.message);
+
+    const logOutput = output();
+    expect(logOutput).toContain('Validation failed');
+    expect(logOutput).toContain('"user":"alice"');
+    expect(logOutput).not.toContain('mypassword');
+    expect(logOutput).not.toContain('jwt.token.value');
+    expect(logOutput).not.toContain('topsecret');
+  });
+
+  it('preserves non-sensitive error properties and stack', () => {
+    const { log, output } = captureLogger();
+
+    const error = new Error('Payment failed');
+    (error as any).code = 'INSUFFICIENT_FUNDS';
+    (error as any).details = { amount: 100, currency: 'XLM' };
+
+    log.error({ err: error }, error.message);
+
+    const logOutput = output();
+    expect(logOutput).toContain('Payment failed');
+    expect(logOutput).toContain('INSUFFICIENT_FUNDS');
+    expect(logOutput).toContain('"amount":100');
+    expect(logOutput).toContain('"currency":"XLM"');
+    expect(logOutput).toContain('stack');
   });
 });

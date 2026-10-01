@@ -29,7 +29,7 @@ const config = getConfig();
  * reset tokens were not being redacted at all before the bare keys below
  * were added.
  */
-export const redactConfig: LoggerOptions['redact'] = {
+export const redactConfig = {
   paths: [
     'req.headers.authorization',
     'req.headers.cookie',
@@ -45,21 +45,66 @@ export const redactConfig: LoggerOptions['redact'] = {
     '*.refreshToken',
   ],
   remove: true,
-};
+} satisfies LoggerOptions['redact'];
+
+const SENSITIVE_ERROR_KEYS = new Set([
+  'password',
+  'passwordhash',
+  'token',
+  'accesstoken',
+  'refreshtoken',
+  'authorization',
+  'cookie',
+  'secret',
+  'apikey',
+  'privatekey',
+  'credential',
+  'credentials',
+  'creditcard',
+  'ssn',
+]);
+
+function sanitizeErrorValue(val: unknown, seen = new WeakSet()): unknown {
+  if (!val || typeof val !== 'object') {
+    return val;
+  }
+  if (seen.has(val)) {
+    return val;
+  }
+  seen.add(val);
+
+  if (Array.isArray(val)) {
+    return val.map((item) => sanitizeErrorValue(item, seen));
+  }
+
+  const result: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(val)) {
+    if (SENSITIVE_ERROR_KEYS.has(key.toLowerCase())) {
+      continue;
+    }
+    result[key] = sanitizeErrorValue(value, seen);
+  }
+
+  for (const sym of Object.getOwnPropertySymbols(val)) {
+    (result as Record<string | symbol, unknown>)[sym] = (val as Record<string | symbol, unknown>)[
+      sym
+    ];
+  }
+
+  return result;
+}
+
+export const errorSerializer = pino.stdSerializers.wrapErrorSerializer(
+  (serialized: Record<string, unknown>) =>
+    sanitizeErrorValue(serialized) as Record<string, unknown>,
+);
 
 const options: LoggerOptions = {
   level: config.LOG_LEVEL,
-  redact: {
-    paths: [
-      'req.headers.authorization',
-      'req.headers.cookie',
-      '*.password',
-      '*.passwordHash',
-      '*.token',
-      '*.accessToken',
-      '*.refreshToken',
-    ],
-    remove: true,
+  redact: redactConfig,
+  serializers: {
+    err: errorSerializer,
+    error: errorSerializer,
   },
 };
 
