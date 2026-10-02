@@ -31,6 +31,27 @@ export interface UserRoleRepository {
   countByRole(role: UserRole): Promise<number>;
 }
 
+/**
+ * Reads inside one atomic unit of work. Everything `updateUserRole` does —
+ * the role write, the session revocation, and the audit-log entry — has to
+ * commit or roll back together (#276): a crash between the role write and
+ * the audit-log insert would leave a privilege change with no administrative
+ * record of it, which is exactly the accountability trail this module exists
+ * to keep.
+ */
+export interface AdminTransactionScope {
+  userRoleRepository: UserRoleRepository;
+  auditLogRepository: AuditLogRepository;
+  sessionRevoker: SessionRevoker;
+}
+
+/** Runs `work` inside a single database transaction, handing it
+ * transaction-scoped adapters so every write it performs is part of that
+ * one unit of work. */
+export interface AdminUnitOfWork {
+  run<T>(work: (scope: AdminTransactionScope) => Promise<T>): Promise<T>;
+}
+
 export interface RecordAuditLogInput {
   actorId: string | null;
   actorLabel: string;

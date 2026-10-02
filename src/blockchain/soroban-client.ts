@@ -110,10 +110,17 @@ function rpcErrorMessage(error: unknown): string {
  * anything that looks like a well-formed RPC error response is treated as
  * non-retryable, since retrying a malformed request just repeats the same
  * failure.
+ *
+ * HTTP 429 (rate limited) counts as retryable (#275): a shared public RPC
+ * provider rejecting a burst of requests is transient, and the existing
+ * exponential backoff in `withRetry` is exactly the right response to it.
+ * Without it, one rate-limited call fails the whole operation outright.
  */
 function isRetryableRpcError(error: unknown): boolean {
   if (error instanceof Error) {
-    return /timeout|ECONNRESET|ECONNREFUSED|network|fetch failed|502|503|504/i.test(error.message);
+    return /timeout|ECONNRESET|ECONNREFUSED|network|fetch failed|429|502|503|504/i.test(
+      error.message,
+    );
   }
   return false;
 }

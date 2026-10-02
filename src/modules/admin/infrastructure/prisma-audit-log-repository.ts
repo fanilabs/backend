@@ -1,4 +1,4 @@
-import type { AuditLog as PrismaAuditLog, Prisma, PrismaClient } from '@prisma/client';
+import type { AuditLog as PrismaAuditLog, Prisma } from '@prisma/client';
 import type { AuditLogEntry, AuditLogRepository } from '../domain/index.js';
 
 function toDomain(record: PrismaAuditLog): AuditLogEntry {
@@ -14,7 +14,9 @@ function toDomain(record: PrismaAuditLog): AuditLogEntry {
   };
 }
 
-export function createPrismaAuditLogRepository(prisma: PrismaClient): AuditLogRepository {
+export function createPrismaAuditLogRepository(
+  prisma: Prisma.TransactionClient,
+): AuditLogRepository {
   return {
     async record(input) {
       await prisma.auditLog.create({

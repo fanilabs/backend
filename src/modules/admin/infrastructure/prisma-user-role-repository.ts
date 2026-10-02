@@ -1,7 +1,13 @@
-import type { PrismaClient } from '@prisma/client';
+import type { Prisma } from '@prisma/client';
 import type { UserRoleRepository } from '../domain/index.js';
 
-export function createPrismaUserRoleRepository(prisma: PrismaClient): UserRoleRepository {
+/** Takes a `Prisma.TransactionClient` (or the root `PrismaClient`, which
+ * structurally satisfies it) so the same adapter can be built on the root
+ * client for standalone reads and on an interactive-transaction client
+ * inside `AdminUnitOfWork` (#276). */
+export function createPrismaUserRoleRepository(
+  prisma: Prisma.TransactionClient,
+): UserRoleRepository {
   return {
     async findById(userId) {
       const user = await prisma.user.findUnique({

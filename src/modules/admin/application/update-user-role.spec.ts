@@ -3,6 +3,7 @@ import { createUpdateUserRoleUseCase } from './update-user-role.js';
 import { AdminUserNotFoundError } from '../domain/index.js';
 import {
   buildAdminUser,
+  createInMemoryAdminUnitOfWork,
   createInMemoryAuditLogRepository,
   createInMemoryUserRoleRepository,
   createFakeSessionRevoker,
@@ -12,11 +13,12 @@ function setup() {
   const userRoleRepository = createInMemoryUserRoleRepository();
   const auditLogRepository = createInMemoryAuditLogRepository();
   const sessionRevoker = createFakeSessionRevoker();
-  const updateUserRole = createUpdateUserRoleUseCase({
+  const unitOfWork = createInMemoryAdminUnitOfWork({
     userRoleRepository,
     auditLogRepository,
     sessionRevoker,
   });
+  const updateUserRole = createUpdateUserRoleUseCase({ unitOfWork });
   return { userRoleRepository, auditLogRepository, sessionRevoker, updateUserRole };
 }
 
@@ -81,5 +83,35 @@ describe('updateUserRole', () => {
     });
 
     expect(sessionRevoker.wasCalledFor('target-1')).toBe(true);
+  });
+
+  // Issue #276: the role update, the session revocation, and the audit-log
+  // insert must commit or roll back as one unit — a crash (or a failing
+  // audit insert) must never leave a privilege change with no audit record.
+  it('rolls back the role change and session revocation when the audit log write fails', async () => {
+    const { userRoleRepository, auditLogRepository, sessionRevoker } = setup();
+    userRoleRepository.seed(buildAdminUser({ id: 'target-1', role: 'CUSTOMER' }));
+    userRoleRepository.seed(
+      buildAdminUser({ id: 'admin-1', email: 'admin@example.com', role: 'ADMIN' }),
+    );
+    const updateUserRole = createUpdateUserRoleUseCase({
+      unitOfWork: createInMemoryAdminUnitOfWork({
+        userRoleRepository,
+        auditLogRepository: {
+          ...auditLogRepository,
+          record: async () => {
+            throw new Error('audit log insert failed');
+          },
+        },
+        sessionRevoker,
+      }),
+    });
+
+    await expect(
+      updateUserRole({ actorId: 'admin-1', userId: 'target-1', role: 'COURIER' }),
+    ).rejects.toThrow('audit log insert failed');
+
+    expect((await userRoleRepository.findById('target-1'))?.role).toBe('CUSTOMER');
+    expect(sessionRevoker.wasCalledFor('target-1')).toBe(false);
   });
 });

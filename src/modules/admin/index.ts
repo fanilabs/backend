@@ -6,10 +6,9 @@ import {
   createUpdateUserRoleUseCase,
 } from './application/index.js';
 import {
+  createPrismaAdminUnitOfWork,
   createPrismaAuditLogRepository,
   createPrismaDisputeReviewReader,
-  createPrismaSessionRevoker,
-  createPrismaUserRoleRepository,
 } from './infrastructure/index.js';
 import { createAdminRoutes } from './interface/routes.js';
 
@@ -19,17 +18,12 @@ import { createAdminRoutes } from './interface/routes.js';
  * chain has an event for. Nothing for `src/workers/index.ts` to wire. */
 export function createAdminModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const disputeReviewReader = createPrismaDisputeReviewReader(prisma);
-  const userRoleRepository = createPrismaUserRoleRepository(prisma);
   const auditLogRepository = createPrismaAuditLogRepository(prisma);
-  const sessionRevoker = createPrismaSessionRevoker(prisma);
+  const unitOfWork = createPrismaAdminUnitOfWork(prisma);
 
   const useCases = {
     listOpenDisputes: createListOpenDisputesUseCase({ disputeReviewReader }),
-    updateUserRole: createUpdateUserRoleUseCase({
-      userRoleRepository,
-      auditLogRepository,
-      sessionRevoker,
-    }),
+    updateUserRole: createUpdateUserRoleUseCase({ unitOfWork }),
     listAuditLog: createListAuditLogUseCase({ auditLogRepository }),
   };
 

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  AdminUnitOfWork,
   AdminUser,
   AuditLogEntry,
   AuditLogRepository,
@@ -45,11 +46,22 @@ export function createFakeDisputeReviewReader(): DisputeReviewReader & {
 
 export function createInMemoryUserRoleRepository(): UserRoleRepository & {
   seed(user: AdminUser): void;
+  snapshot(): AdminUser[];
+  restore(users: AdminUser[]): void;
 } {
   const users = new Map<string, AdminUser>();
   return {
     seed(user) {
       users.set(user.id, user);
+    },
+    snapshot() {
+      return [...users.values()].map((user) => ({ ...user }));
+    },
+    restore(saved) {
+      users.clear();
+      for (const user of saved) {
+        users.set(user.id, { ...user });
+      }
     },
     async findById(userId) {
       return users.get(userId) ?? null;
@@ -71,11 +83,20 @@ export function createInMemoryUserRoleRepository(): UserRoleRepository & {
 
 export function createInMemoryAuditLogRepository(): AuditLogRepository & {
   all(): AuditLogEntry[];
+  snapshot(): AuditLogEntry[];
+  restore(entries: AuditLogEntry[]): void;
 } {
   const entries: AuditLogEntry[] = [];
   return {
     all() {
       return entries;
+    },
+    snapshot() {
+      return entries.map((entry) => ({ ...entry }));
+    },
+    restore(saved) {
+      entries.length = 0;
+      entries.push(...saved.map((entry) => ({ ...entry })));
     },
     async record(input) {
       entries.unshift({
@@ -125,6 +146,7 @@ export function buildAdminUser(overrides: Partial<AdminUser> = {}): AdminUser {
 export function createFakeSessionRevoker(): SessionRevoker & {
   wasCalledFor(userId: string): boolean;
   allRevoked(): string[];
+  restore(revokedUserIds: string[]): void;
 } {
   const revokedUserIds: string[] = [];
   return {
@@ -134,9 +156,43 @@ export function createFakeSessionRevoker(): SessionRevoker & {
     allRevoked() {
       return revokedUserIds;
     },
+    restore(saved) {
+      revokedUserIds.length = 0;
+      revokedUserIds.push(...saved);
+    },
     async revokeAllForUser(userId) {
       if (!revokedUserIds.includes(userId)) {
         revokedUserIds.push(userId);
+      }
+    },
+  };
+}
+
+export type InMemoryAdminScope = {
+  userRoleRepository: ReturnType<typeof createInMemoryUserRoleRepository>;
+  auditLogRepository: ReturnType<typeof createInMemoryAuditLogRepository>;
+  sessionRevoker: ReturnType<typeof createFakeSessionRevoker>;
+};
+
+/**
+ * In-memory `AdminUnitOfWork` — snapshots the three in-memory adapters,
+ * runs `work`, and restores their state if it throws, so a failure inside
+ * the unit of work rolls back the same way Prisma's `$transaction` does
+ * (#276). Lets the use-case spec assert atomicity without a database.
+ */
+export function createInMemoryAdminUnitOfWork(scope: InMemoryAdminScope): AdminUnitOfWork {
+  return {
+    async run(work) {
+      const usersBefore = scope.userRoleRepository.snapshot();
+      const auditBefore = scope.auditLogRepository.snapshot();
+      const revokedBefore = scope.sessionRevoker.allRevoked();
+      try {
+        return await work(scope);
+      } catch (error) {
+        scope.userRoleRepository.restore(usersBefore);
+        scope.auditLogRepository.restore(auditBefore);
+        scope.sessionRevoker.restore(revokedBefore);
+        throw error;
       }
     },
   };
