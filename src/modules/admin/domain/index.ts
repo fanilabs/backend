@@ -6,6 +6,8 @@ export type {
   UserRole,
 } from './entities.js';
 export type {
+  AdminTransactionScope,
+  AdminUnitOfWork,
   AuditLogRepository,
   DisputeReviewReader,
   ListAuditLogFilter,

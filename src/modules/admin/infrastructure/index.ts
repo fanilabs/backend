@@ -2,3 +2,4 @@ export { createPrismaDisputeReviewReader } from './prisma-dispute-review-reader.
 export { createPrismaUserRoleRepository } from './prisma-user-role-repository.js';
 export { createPrismaAuditLogRepository } from './prisma-audit-log-repository.js';
 export { createPrismaSessionRevoker } from './prisma-session-revoker.js';
+export { createPrismaAdminUnitOfWork } from './prisma-admin-unit-of-work.js';
