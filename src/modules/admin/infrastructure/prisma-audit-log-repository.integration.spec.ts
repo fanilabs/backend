@@ -43,7 +43,7 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
       metadata: { previousRole: 'CUSTOMER', newRole: 'ADMIN' },
     });
 
-    const entries = await auditLogRepository.list(50);
+    const entries = await auditLogRepository.list({ limit: 50 });
     const entry = entries.find((e) => e.actorId === actorId);
     expect(entry).toMatchObject({
       actorLabel: 'admin@example.com',
@@ -76,7 +76,54 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
       entityId: 'x',
     });
 
-    const entries = (await auditLogRepository.list(1000)).filter((e) => e.actorId === actorId);
+    const entries = (await auditLogRepository.list({ limit: 1000 })).filter(
+      (e) => e.actorId === actorId,
+    );
     expect(entries.map((e) => e.action)).toEqual(['second', 'first']);
+  });
+
+  it('pages through entries without duplicates or gaps using ID cursor', async () => {
+    const actorId = await seedActor();
+    // Insert 5 entries with explicit delays to guarantee distinct createdAt values
+    // and thus a reliable ordering without depending on same-millisecond tiebreaking.
+    for (let i = 0; i < 5; i += 1) {
+      await auditLogRepository.record({
+        actorId,
+        actorLabel: 'admin@example.com',
+        action: `cursor-test-${i}`,
+        entityType: 'User',
+        entityId: `u-${i}`,
+      });
+      if (i < 4) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+      }
+    }
+
+    // Page 1: fetch 2 entries.
+    const page1 = await auditLogRepository.list({ limit: 2 });
+    const ourPage1 = page1.filter((e) => e.actorId === actorId);
+    expect(ourPage1).toHaveLength(2);
+
+    // Page 2: fetch the next 2 entries using the last item's ID as cursor.
+    const cursor1 = ourPage1[ourPage1.length - 1]!.id;
+    const page2 = await auditLogRepository.list({ limit: 2, before: cursor1 });
+    const ourPage2 = page2.filter((e) => e.actorId === actorId);
+    expect(ourPage2).toHaveLength(2);
+
+    // Page 3: fetch remaining entry.
+    const cursor2 = ourPage2[ourPage2.length - 1]!.id;
+    const page3 = await auditLogRepository.list({ limit: 2, before: cursor2 });
+    const ourPage3 = page3.filter((e) => e.actorId === actorId);
+    expect(ourPage3).toHaveLength(1);
+
+    // No duplicates across the three pages.
+    const allIds = [...ourPage1, ...ourPage2, ...ourPage3].map((e) => e.id);
+    expect(new Set(allIds).size).toBe(5);
+
+    // Ordering is newest-first across all pages.
+    const createdAts = [...ourPage1, ...ourPage2, ...ourPage3].map((e) => e.createdAt.getTime());
+    for (let i = 1; i < createdAts.length; i += 1) {
+      expect(createdAts[i]).toBeLessThanOrEqual(createdAts[i - 1]!);
+    }
   });
 });
