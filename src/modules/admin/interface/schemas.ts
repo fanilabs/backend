@@ -52,7 +52,7 @@ export const updateUserRoleResponseSchema = z.object({
 
 export const listAuditLogQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
-  before: z.string().datetime().optional(),
+  before: z.string().uuid().optional(),
 });
 export const listAuditLogResponseSchema = z.object({
   data: z.array(
@@ -69,7 +69,7 @@ export const listAuditLogResponseSchema = z.object({
   ),
   meta: z.object({
     limit: z.number().int(),
-    nextCursor: z.string().datetime().nullable(),
+    nextCursor: z.string().uuid().nullable(),
     /** Unpaged total number of audit log rows (#292) — lets the frontend
      * render an "N records" total / page count next to a cursor page. */
     totalCount: z.number().int(),

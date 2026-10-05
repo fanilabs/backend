@@ -69,10 +69,8 @@ export interface RecordAuditLogInput {
  * shared decorator with one caller. */
 export interface ListAuditLogFilter {
   limit: number;
-  /** Keyset cursor — only rows strictly older than this are returned, the
-   * same `before`-cursor pattern `notifications` uses (#101), so paging
-   * past `MAX_LIMIT` rows stays possible without an unstable `skip`. */
-  before?: Date;
+  /** ID of the last row from the previous page, used as a stable cursor. */
+  before?: string;
 }
 
 /** Total number of audit log rows, ignoring both `limit` and the `before`

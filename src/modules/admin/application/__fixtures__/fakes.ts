@@ -111,9 +111,15 @@ export function createInMemoryAuditLogRepository(): AuditLogRepository & {
       });
     },
     async list(filter) {
-      const before = filter.before;
-      const matching = before ? entries.filter((entry) => entry.createdAt < before) : entries;
-      return matching.slice(0, filter.limit);
+      const ordered = [...entries].sort(
+        (left, right) =>
+          right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id),
+      );
+      const cursorIndex = filter.before
+        ? ordered.findIndex((entry) => entry.id === filter.before)
+        : -1;
+      const start = filter.before ? cursorIndex + 1 : 0;
+      return ordered.slice(start, start + filter.limit);
     },
     async count() {
       return entries.length;

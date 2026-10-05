@@ -6,7 +6,7 @@ export interface ListAuditLogDeps {
 
 export interface ListAuditLogInput {
   limit?: number;
-  /** ISO timestamp cursor — the previous page's `nextCursor`. */
+  /** ID cursor — the previous page's `nextCursor`. */
   before?: string;
 }
 
@@ -45,13 +45,13 @@ export function createListAuditLogUseCase(deps: ListAuditLogDeps) {
     const [items, totalCount] = await Promise.all([
       deps.auditLogRepository.list({
         limit,
-        ...(input.before && { before: new Date(input.before) }),
+        ...(input.before && { before: input.before }),
       }),
       deps.auditLogRepository.count(),
     ]);
 
     const lastItem = items[items.length - 1];
-    const nextCursor = items.length === limit && lastItem ? lastItem.createdAt.toISOString() : null;
+    const nextCursor = items.length === limit && lastItem ? lastItem.id : null;
 
     return { items, nextCursor, limit, totalCount };
   };
