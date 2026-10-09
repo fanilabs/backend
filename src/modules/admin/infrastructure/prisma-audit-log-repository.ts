@@ -35,8 +35,8 @@ export function createPrismaAuditLogRepository(
 
     async list(filter) {
       const records = await prisma.auditLog.findMany({
-        where: { ...(filter.before && { createdAt: { lt: filter.before } }) },
-        orderBy: { createdAt: 'desc' },
+        ...(filter.before && { cursor: { id: filter.before }, skip: 1 }),
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: filter.limit,
       });
       return records.map(toDomain);
