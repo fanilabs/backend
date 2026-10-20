@@ -19,7 +19,11 @@ export interface BuildInvokeTransactionInput {
   /** Optional transaction memo (e.g. Memo.text('delivery-ref')) for
    * accounting correlation. No memo is attached when omitted. */
   memo?: Memo;
+  /** Optional expiration timeout in seconds (defaults to 300s). */
+  timeoutSeconds?: number;
 }
+
+export const DEFAULT_TX_TIMEOUT_SECONDS = 300;
 
 /**
  * The one place every module's XDR builder goes through to turn a contract
@@ -44,7 +48,7 @@ export async function buildInvokeTransaction(
     networkPassphrase: config.STELLAR_NETWORK_PASSPHRASE,
   })
     .addOperation(contract.call(input.method, ...input.args))
-    .setTimeout(60);
+    .setTimeout(input.timeoutSeconds ?? DEFAULT_TX_TIMEOUT_SECONDS);
 
   if (input.memo) {
     builder = builder.addMemo(input.memo);
