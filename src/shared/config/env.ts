@@ -1,4 +1,11 @@
+import { StrKey } from '@stellar/stellar-sdk';
 import { z } from 'zod';
+
+const contractIdEnvSchema = z
+  .string()
+  .regex(/^C[A-Z2-7]{55}$/, 'Invalid Soroban contract ID format')
+  .refine((val) => StrKey.isValidContract(val), 'Invalid Soroban contract ID checksum')
+  .optional();
 
 /**
  * Every environment variable the application reads, validated once at boot.
@@ -79,11 +86,11 @@ const baseEnvSchema = z.object({
   // exclusion in src/modules/indexer/index.ts and ROADMAP.md §9) — a config
   // variable with no reader is documentation debt CONTRIBUTING.md prohibits.
   // Re-add it when settlement_contract is actually implemented.
-  ESCROW_CONTRACT_ID: z.string().optional(),
-  DELIVERY_CONTRACT_ID: z.string().optional(),
-  DISPUTE_RESOLUTION_CONTRACT_ID: z.string().optional(),
-  FLEET_MANAGEMENT_CONTRACT_ID: z.string().optional(),
-  IDENTITY_REPUTATION_CONTRACT_ID: z.string().optional(),
+  ESCROW_CONTRACT_ID: contractIdEnvSchema,
+  DELIVERY_CONTRACT_ID: contractIdEnvSchema,
+  DISPUTE_RESOLUTION_CONTRACT_ID: contractIdEnvSchema,
+  FLEET_MANAGEMENT_CONTRACT_ID: contractIdEnvSchema,
+  IDENTITY_REPUTATION_CONTRACT_ID: contractIdEnvSchema,
   ALLOWED_PAYMENT_TOKENS: z
     .string()
     .default('')

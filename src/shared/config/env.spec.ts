@@ -58,3 +58,17 @@ describe('CORS_ORIGIN validation', () => {
     expect(env.CORS_ORIGIN).toEqual(['https://app.example.com', 'http://localhost:5173']);
   });
 });
+
+describe('contractIdEnvSchema validation (#456)', () => {
+  it('rejects malformed contract IDs at startup', () => {
+    expect(() =>
+      parseEnv({
+        DATABASE_URL: 'postgresql://localhost:5432/db',
+        REDIS_URL: 'redis://localhost:6379',
+        JWT_ACCESS_SECRET: 'a'.repeat(32),
+        JWT_REFRESH_SECRET: 'b'.repeat(32),
+        ESCROW_CONTRACT_ID: 'not-a-valid-contract-id',
+      }),
+    ).toThrow(/Invalid environment configuration/);
+  });
+});
