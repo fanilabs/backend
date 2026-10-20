@@ -7,17 +7,16 @@ import type {
 import type { ActorActivityCategory } from '../domain/index.js';
 import { systemClock } from '../domain/index.js';
 
+export interface FraudThresholdConfig {
+  deliveryCreationVelocityThreshold?: number;
+  escrowReleaseVelocityThreshold?: number;
+  disputeRaiseVelocityThreshold?: number;
+}
+
 export interface AssessActorDeps {
   activityRepository: ActorActivityRepository;
-  /**
-   * Time base for rule windows — see `../domain/clock.ts`'s header comment
-   * for why this must not just be `Date.now()` inline. Defaults to
-   * `systemClock` (real wall-clock time) so existing callers/tests are
-   * unaffected; production wiring (`../index.ts`) passes a ledger-time-
-   * derived clock instead so window boundaries share the same time base as
-   * the `occurredAt` values they're compared against, immune to indexer lag.
-   */
   clock?: Clock;
+  thresholds?: FraudThresholdConfig;
 }
 
 export interface AssessActorInput {
@@ -82,13 +81,63 @@ const RULES: RuleDefinition[] = [
  *   (each with its `ruleType`, `category`, `windowHours`, `threshold`, observed
  *   `count`, and `triggered` flag).
  */
+export function resolveFraudRules(overrides?: FraudThresholdConfig): RuleDefinition[] {
+  const envNum = (key: string, fallback: number): number => {
+    const raw = process.env[key];
+    if (!raw) return fallback;
+    const parsed = Number(raw);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  };
+  const deliveryThreshold =
+    overrides?.deliveryCreationVelocityThreshold ??
+    envNum('FRAUD_DELIVERY_CREATION_THRESHOLD', 10);
+  const escrowThreshold =
+    overrides?.escrowReleaseVelocityThreshold ??
+    envNum('FRAUD_ESCROW_RELEASE_THRESHOLD', 10);
+  const disputeThreshold =
+    overrides?.disputeRaiseVelocityThreshold ??
+    envNum('FRAUD_DISPUTE_RAISE_THRESHOLD', 3);
+
+  for (const [name, val] of [
+    ['deliveryCreationVelocityThreshold', deliveryThreshold],
+    ['escrowReleaseVelocityThreshold', escrowThreshold],
+    ['disputeRaiseVelocityThreshold', disputeThreshold],
+  ] as const) {
+    if (!Number.isInteger(val) || val <= 0) {
+      throw new Error(`Invalid ${name}: must be a positive integer`);
+    }
+  }
+
+  return [
+    {
+      ruleType: 'DELIVERY_CREATION_VELOCITY',
+      category: 'DELIVERY_CREATED',
+      windowHours: 1,
+      threshold: deliveryThreshold,
+    },
+    {
+      ruleType: 'ESCROW_RELEASE_VELOCITY',
+      category: 'ESCROW_RELEASED',
+      windowHours: 1,
+      threshold: escrowThreshold,
+    },
+    {
+      ruleType: 'DISPUTE_RAISE_VELOCITY',
+      category: 'DISPUTE_RAISED',
+      windowHours: 24,
+      threshold: disputeThreshold,
+    },
+  ];
+}
+
 export function createAssessActorUseCase(deps: AssessActorDeps) {
   const clock = deps.clock ?? systemClock;
+  const rules = resolveFraudRules(deps.thresholds);
 
   return async function assessActor(input: AssessActorInput): Promise<ActorAssessment> {
     const now = (await clock.now()).getTime();
     const signals = await Promise.all(
-      RULES.map(async (rule) => {
+      rules.map(async (rule) => {
         const since = new Date(now - rule.windowHours * 60 * 60 * 1000);
         const count = await deps.activityRepository.countSince(input.address, rule.category, since);
         return {

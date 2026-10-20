@@ -96,3 +96,26 @@ describe('assessActor', () => {
     });
   });
 });
+
+describe('createAssessActorUseCase configurable thresholds (#405)', () => {
+  it('supports custom threshold overrides and rejects non-positive thresholds', async () => {
+    const repo = createInMemoryActorActivityRepository();
+    const now = new Date('2026-06-01T12:00:00Z');
+    await repo.record({ address: 'GACTOR', category: 'DISPUTE_RAISED', occurredAt: now });
+    await repo.record({ address: 'GACTOR', category: 'DISPUTE_RAISED', occurredAt: now });
+
+    const assess = createAssessActorUseCase({
+      activityRepository: repo,
+      clock: createFixedClock(now),
+      thresholds: { disputeRaiseVelocityThreshold: 1 },
+    });
+    const res = await assess({ address: 'GACTOR' });
+    expect(res.flagged).toBe(true);
+    expect(() =>
+      createAssessActorUseCase({
+        activityRepository: repo,
+        thresholds: { disputeRaiseVelocityThreshold: 0 },
+      }),
+    ).toThrow(/Invalid disputeRaiseVelocityThreshold/);
+  });
+});
