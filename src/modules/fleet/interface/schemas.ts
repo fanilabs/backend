@@ -72,11 +72,16 @@ export const updateFleetTreasuryBodySchema = z.object({
   treasuryAddress: stellarAddress,
 });
 
-export const addDriverToFleetBodySchema = z.object({
-  callerAddress: stellarAddress,
-  chainFleetId,
-  driverAddress: stellarAddress,
-});
+export const addDriverToFleetBodySchema = z
+  .object({
+    callerAddress: stellarAddress,
+    chainFleetId,
+    driverAddress: stellarAddress,
+  })
+  .refine((data) => data.callerAddress !== data.driverAddress, {
+    message: 'Driver address cannot be the same as caller address',
+    path: ['driverAddress'],
+  });
 
 export const acceptFleetInviteBodySchema = z.object({
   chainFleetId,

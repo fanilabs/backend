@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { payoutAddressResponseSchema } from './schemas.js';
+import { Keypair } from '@stellar/stellar-sdk';
+import { addDriverToFleetBodySchema, payoutAddressResponseSchema } from './schemas.js';
 
 describe('payoutAddressResponseSchema', () => {
   it('accepts payout addresses up to the maximum address length', () => {
@@ -15,6 +16,18 @@ describe('payoutAddressResponseSchema', () => {
       data: { payoutAddress: 'A'.repeat(129) },
     });
 
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('addDriverToFleetBodySchema (#401)', () => {
+  it('rejects adding a driver whose address matches callerAddress', () => {
+    const addr = Keypair.random().publicKey();
+    const result = addDriverToFleetBodySchema.safeParse({
+      callerAddress: addr,
+      chainFleetId: '1',
+      driverAddress: addr,
+    });
     expect(result.success).toBe(false);
   });
 });
