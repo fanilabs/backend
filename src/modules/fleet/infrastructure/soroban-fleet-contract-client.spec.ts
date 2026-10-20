@@ -7,10 +7,11 @@ import {
   Keypair,
   TransactionBuilder,
 } from '@stellar/stellar-sdk';
-import type { rpc, xdr } from '@stellar/stellar-sdk';
+import { xdr, type rpc } from '@stellar/stellar-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { SorobanClient } from '../../../blockchain/soroban-client.js';
 import { addressToScVal, scValToNative } from '../../../blockchain/xdr/sc-val.js';
+import { DriverNotFoundError } from '../domain/index.js';
 import { createSorobanFleetContractClient } from './soroban-fleet-contract-client.js';
 
 const CONTRACT_ID = Address.contract(randomBytes(32)).toString();
@@ -166,5 +167,24 @@ describe('createSorobanFleetContractClient — getPayoutAddress', () => {
     const contractClient = createSorobanFleetContractClient(client, CONTRACT_ID);
 
     await expect(contractClient.getPayoutAddress('GDRIVER', 999n)).rejects.toThrow();
+  });
+});
+
+describe('createSorobanFleetContractClient null driver handling (#398)', () => {
+  it('throws DriverNotFoundError when simulation retval is scvVoid (null)', async () => {
+    const client = new SorobanClient();
+    const driver = Keypair.random().publicKey();
+    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
+      id: '1',
+      latestLedger: 1000,
+      events: [],
+      transactionData: {} as never,
+      minResourceFee: '100',
+      cost: {} as never,
+      result: { auth: [], retval: xdr.ScVal.scvVoid() },
+      _parsed: true,
+    } satisfies rpc.Api.SimulateTransactionSuccessResponse);
+    const contractClient = createSorobanFleetContractClient(client, CONTRACT_ID);
+    await expect(contractClient.getPayoutAddress(driver, 1n)).rejects.toBeInstanceOf(DriverNotFoundError);
   });
 });

@@ -5,7 +5,7 @@ import {
   u64ToScVal,
   type SorobanClient,
 } from '../../../blockchain/index.js';
-import type { FleetContractReader, FleetTransactionBuilder } from '../domain/index.js';
+import { DriverNotFoundError, type FleetContractReader, type FleetTransactionBuilder } from '../domain/index.js';
 
 /**
  * Real implementation of both fleet-module contract ports, backed by the
@@ -29,6 +29,9 @@ export function createSorobanFleetContractClient(
         method: 'get_payout_address',
         args: [addressToScVal(driverAddress), u64ToScVal(chainFleetId)],
       });
+      if (native === null || native === undefined) {
+        throw new DriverNotFoundError();
+      }
       if (typeof native !== 'string') {
         throw new Error('Expected get_payout_address to return an Address-as-string');
       }

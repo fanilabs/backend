@@ -5,7 +5,7 @@ export type {
   FleetDriverStatus,
   FleetWithDrivers,
 } from './entities.js';
-export { FleetNotFoundError, DriverFleetRecordNotFoundError } from './errors.js';
+export { FleetNotFoundError, DriverNotFoundError, DriverFleetRecordNotFoundError } from './errors.js';
 export type {
   AcceptFleetInviteTxInput,
   AddDriverToFleetTxInput,

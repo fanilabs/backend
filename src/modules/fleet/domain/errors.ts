@@ -11,3 +11,9 @@ export class DriverFleetRecordNotFoundError extends NotFoundError {
     super('No fleet-membership record found for this driver');
   }
 }
+
+export class DriverNotFoundError extends NotFoundError {
+  constructor() {
+    super('Driver not found on-chain');
+  }
+}
