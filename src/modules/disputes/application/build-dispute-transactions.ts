@@ -44,10 +44,15 @@ export function createBuildDisputeTransactionsUseCases(deps: BuildDisputeTransac
       input: ResolveDisputeSplitFundsTxInput,
     ): Promise<string> => {
       const xdr = await deps.transactionBuilder.buildResolveDisputeSplitFunds(input);
-      await deps.disputeRepository?.recordProposedSenderShareBps(
-        input.chainDeliveryId,
-        input.senderShareBps,
-      );
+      if (deps.disputeRepository) {
+        const existing = await deps.disputeRepository.findByChainDeliveryId(input.chainDeliveryId);
+        if (!existing || existing.status === 'OPEN') {
+          await deps.disputeRepository.recordProposedSenderShareBps(
+            input.chainDeliveryId,
+            input.senderShareBps,
+          );
+        }
+      }
       return xdr;
     },
   };
