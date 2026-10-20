@@ -27,6 +27,8 @@ export function createNotificationJobScheduler(): NotificationJobScheduler {
         jobId: `send-${notificationId}`,
         attempts: 5,
         backoff: { type: 'exponential', delay: 2_000 },
+        removeOnComplete: true,
+        removeOnFail: true,
       });
     },
   };
