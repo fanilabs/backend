@@ -42,6 +42,13 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
     // needed here.
     origin: config.CORS_ORIGIN,
     credentials: true,
+    exposedHeaders: [
+      'RateLimit-Limit',
+      'RateLimit-Remaining',
+      'RateLimit-Reset',
+      'Retry-After',
+      'Content-Disposition',
+    ],
   });
 
   await app.register(rateLimit, {
