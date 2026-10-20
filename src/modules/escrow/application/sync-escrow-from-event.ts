@@ -117,10 +117,11 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
   };
 }
 
-function parseAmount(value: unknown): bigint | null {
+export function parseAmount(value: unknown): bigint | null {
   if (typeof value !== 'string' && typeof value !== 'number') return null;
   try {
-    return BigInt(value);
+    const parsed = BigInt(value);
+    return parsed >= 0n ? parsed : null;
   } catch {
     return null;
   }

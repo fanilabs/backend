@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { testAddress } from '../../../shared/testing/addresses.js';
-import { createSyncEscrowFromEventUseCase } from './sync-escrow-from-event.js';
+import { createSyncEscrowFromEventUseCase, parseAmount } from './sync-escrow-from-event.js';
 import {
   buildChainEscrowRecord,
   buildEscrow,
@@ -280,5 +280,13 @@ describe('syncEscrowFromEvent', () => {
     expect(warnLogs[0]).toMatchObject({
       msg: expect.stringContaining('Unrecognized payment token'),
     });
+  });
+});
+
+describe('parseAmount non-negative invariant (#441)', () => {
+  it('returns null for negative numbers and negative numeric strings', () => {
+    expect(parseAmount(-100)).toBeNull();
+    expect(parseAmount('-500')).toBeNull();
+    expect(parseAmount('500')).toBe(500n);
   });
 });
