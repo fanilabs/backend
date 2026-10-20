@@ -57,7 +57,10 @@ export function createInMemoryUserRepository(): UserRepository & { seed(user: Us
     },
     async updatePasswordHash(id, passwordHash) {
       const user = users.get(id);
-      if (user) user.passwordHash = passwordHash;
+      if (user) {
+        user.passwordHash = passwordHash;
+        user.tokenVersion += 1;
+      }
     },
   };
 }

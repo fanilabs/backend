@@ -40,7 +40,7 @@ export function createPrismaUserRepository(prisma: PrismaClient): UserRepository
       await prisma.user.update({ where: { id }, data: { emailVerifiedAt: new Date() } });
     },
     async updatePasswordHash(id, passwordHash) {
-      await prisma.user.update({ where: { id }, data: { passwordHash } });
+      await prisma.user.update({ where: { id }, data: { passwordHash, tokenVersion: { increment: 1 } } });
     },
   };
 }

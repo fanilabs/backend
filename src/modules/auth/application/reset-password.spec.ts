@@ -76,4 +76,16 @@ describe('resetPassword', () => {
       InvalidPasswordResetTokenError,
     );
   });
+
+  it('increments user tokenVersion to invalidate active access tokens (#425)', async () => {
+    const { userRepository, tokenService, resetPassword } = setup();
+    const user = buildUser({ passwordHash: 'hashed:old', tokenVersion: 2 });
+    userRepository.seed(user);
+    const token = tokenService.issuePasswordResetToken(user);
+
+    await resetPassword({ token, newPassword: 'newpassword' });
+
+    const stored = await userRepository.findById(user.id);
+    expect(stored?.tokenVersion).toBe(3);
+  });
 });
