@@ -1,3 +1,4 @@
+import { logger } from '../../../shared/logger/index.js';
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
 import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
 import type {
@@ -75,6 +76,8 @@ export interface SyncDisputeFromEventDeps {
  * gap would wrongly resolve to the new owner on first creation, not just
  * on a later replay. `findOwnerByAddress`'s `asOf` parameter closes that.
  */
+const log = logger.child({ module: 'sync-dispute-from-event' });
+
 export function createSyncDisputeFromEventUseCase(deps: SyncDisputeFromEventDeps) {
   return async function syncDisputeFromEvent(event: BlockchainEventEnvelope): Promise<void> {
     if (event.contractName === 'dispute-resolution') {
@@ -245,7 +248,7 @@ async function handleEscrowOnlyResolution(
     // Layer A's delivery_disputed nor Layer B's dispute_raised) — nothing
     // to resolve, and no raisedBy to record it against. Out-of-order/
     // replayed event, not expected on the happy path.
-    console.warn(
+    log.warn(
       `[disputes] escrow.dispute_resolved observed for chainDeliveryId=${chainDeliveryId} with no prior dispute raised — skipping.`,
     );
     return;
@@ -277,7 +280,7 @@ async function handleEscrowOnlyResolution(
   // settled from this read's point of view (a race with indexing, or an
   // on-chain state this handler doesn't expect). Leave it OPEN rather than
   // guess.
-  console.warn(
+  log.warn(
     `[disputes] escrow.dispute_resolved observed for chainDeliveryId=${chainDeliveryId} but escrow status is "${escrowStatus}" — leaving dispute OPEN.`,
   );
 }
@@ -301,7 +304,7 @@ async function upsertResolution(
   // nothing valid to write — skip the upsert rather than poison the column.
   const raisedBy = existing?.raisedBy ?? resolvedBy;
   if (raisedBy === null) {
-    console.warn(
+    log.warn(
       `[disputes] ${status} resolution observed for chainDeliveryId=${chainDeliveryId} with no known raiser (no prior raise, no caller address) — skipping.`,
     );
     return;

@@ -1,3 +1,4 @@
+import { logger } from '../../../shared/logger/index.js';
 import type {
   Fleet as PrismaFleet,
   FleetDriver as PrismaFleetDriver,
@@ -57,6 +58,8 @@ function toFleetWithDrivers(
  * (`updateTreasury`, and the fleet-not-found guards below) — never a bare
  * `create`/`update` that throws `P2002`/`P2025` on the out-of-order case.
  */
+const log = logger.child({ module: 'prisma-fleet-repository' });
+
 export function createPrismaFleetRepository(prisma: PrismaClient): FleetRepository {
   return {
     async findByChainFleetId(chainFleetId, options) {
@@ -116,7 +119,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
         data: { treasuryAddress },
       });
       if (result.count === 0) {
-        console.debug(
+        log.warn(
           `[fleet] fleet_treasury_updated skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
         );
       }
@@ -125,7 +128,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
     async inviteDriver(chainFleetId, driverAddress, invitedAt) {
       const fleet = await prisma.fleet.findUnique({ where: { chainFleetId } });
       if (!fleet) {
-        console.debug(
+        log.warn(
           `[fleet] driver_invited skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
         );
         return;
@@ -145,7 +148,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
     async acceptInvite(chainFleetId, driverAddress, acceptedAt) {
       const fleet = await prisma.fleet.findUnique({ where: { chainFleetId } });
       if (!fleet) {
-        console.debug(
+        log.warn(
           `[fleet] invite_accepted skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
         );
         return;
@@ -169,7 +172,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
     async removeDriver(chainFleetId, driverAddress, removedAt) {
       const fleet = await prisma.fleet.findUnique({ where: { chainFleetId } });
       if (!fleet) {
-        console.debug(
+        log.warn(
           `[fleet] driver_removed skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
         );
         return;
