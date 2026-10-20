@@ -65,7 +65,7 @@ describe('createBuildDisputeTransactionsUseCases', () => {
     expect(dispute?.senderShareBps).toBe(7500);
   });
 
-  it('buildResolveDisputeSplitFundsTransaction: records the proposed value without touching an existing dispute\'s other fields', async () => {
+  it("buildResolveDisputeSplitFundsTransaction: records the proposed value without touching an existing dispute's other fields", async () => {
     const disputeRepository = createInMemoryDisputeRepository();
     disputeRepository.seed(
       buildDispute({ chainDeliveryId: 5n, status: 'OPEN', raisedBy: 'GORIGINAL' }),
@@ -85,7 +85,7 @@ describe('createBuildDisputeTransactionsUseCases', () => {
     expect(dispute).toMatchObject({ status: 'OPEN', raisedBy: 'GORIGINAL', senderShareBps: 4000 });
   });
 
-  it('buildResolveDisputeSplitFundsTransaction: never overwrites an already-resolved dispute\'s confirmed senderShareBps', async () => {
+  it("buildResolveDisputeSplitFundsTransaction: never overwrites an already-resolved dispute's confirmed senderShareBps", async () => {
     const disputeRepository = createInMemoryDisputeRepository();
     disputeRepository.seed(
       buildDispute({ chainDeliveryId: 6n, status: 'SPLIT', senderShareBps: 7500 }),
@@ -103,5 +103,28 @@ describe('createBuildDisputeTransactionsUseCases', () => {
 
     const dispute = await disputeRepository.findByChainDeliveryId(6n);
     expect(dispute?.senderShareBps).toBe(7500);
+  });
+
+  it('buildResolveDisputeSplitFundsTransaction: enforces 10,000 basis points split invariant (#396)', async () => {
+    const useCases = createBuildDisputeTransactionsUseCases({
+      transactionBuilder: createFakeDisputeTransactionBuilder(),
+    });
+
+    await expect(
+      useCases.buildResolveDisputeSplitFundsTransaction({
+        callerAddress: 'GADMIN',
+        chainDeliveryId: 1n,
+        senderShareBps: 12000,
+      }),
+    ).rejects.toThrow(/senderShareBps must be an integer between 0 and 10000/);
+
+    await expect(
+      useCases.buildResolveDisputeSplitFundsTransaction({
+        callerAddress: 'GADMIN',
+        chainDeliveryId: 1n,
+        senderShareBps: 6000,
+        recipientShareBps: 5000,
+      }),
+    ).rejects.toThrow(/senderShareBps \+ recipientShareBps must equal 10000/);
   });
 });

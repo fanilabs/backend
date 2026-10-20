@@ -1,3 +1,4 @@
+import { ValidationError } from '../../../shared/errors/app-error.js';
 import type {
   AddEvidenceHashTxInput,
   DisputeRepository,
@@ -43,7 +44,29 @@ export function createBuildDisputeTransactionsUseCases(deps: BuildDisputeTransac
     buildResolveDisputeSplitFundsTransaction: async (
       input: ResolveDisputeSplitFundsTxInput,
     ): Promise<string> => {
-      const xdr = await deps.transactionBuilder.buildResolveDisputeSplitFunds(input);
+      if (
+        !Number.isInteger(input.senderShareBps) ||
+        input.senderShareBps < 0 ||
+        input.senderShareBps > 10_000
+      ) {
+        throw new ValidationError('senderShareBps must be an integer between 0 and 10000');
+      }
+      const recipientShareBps = input.recipientShareBps ?? 10_000 - input.senderShareBps;
+      if (
+        !Number.isInteger(recipientShareBps) ||
+        recipientShareBps < 0 ||
+        recipientShareBps > 10_000 ||
+        input.senderShareBps + recipientShareBps !== 10_000
+      ) {
+        throw new ValidationError(
+          'senderShareBps + recipientShareBps must equal 10000 basis points',
+        );
+      }
+      const normalizedInput: ResolveDisputeSplitFundsTxInput = {
+        ...input,
+        recipientShareBps,
+      };
+      const xdr = await deps.transactionBuilder.buildResolveDisputeSplitFunds(normalizedInput);
       await deps.disputeRepository?.recordProposedSenderShareBps(
         input.chainDeliveryId,
         input.senderShareBps,

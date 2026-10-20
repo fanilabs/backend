@@ -156,6 +156,37 @@ export interface DisputeContractReader {
 
 /** Mirrors `escrow_contract`'s own `EscrowState` enum — only the variants
  * `handleEscrowEvent`'s `dispute_resolved` fallback needs to distinguish. */
-export type EscrowStat
+export type EscrowStatusForDispute = 'LOCKED' | 'RELEASED' | 'REFUNDED' | 'PAUSED';
 
-/* … truncated 2012 chars — edit only what you need near the top … */
+export interface DisputeEscrowStateReader {
+  getEscrowStatus(chainDeliveryId: bigint): Promise<EscrowStatusForDispute>;
+}
+
+export interface RaiseDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface AddEvidenceHashTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+  evidenceHash: string;
+}
+
+export interface ResolveDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface ResolveDisputeSplitFundsTxInput extends ResolveDisputeTxInput {
+  senderShareBps: number;
+  recipientShareBps?: number;
+}
+
+export interface DisputeTransactionBuilder {
+  buildRaiseDispute(input: RaiseDisputeTxInput): Promise<string>;
+  buildAddEvidenceHash(input: AddEvidenceHashTxInput): Promise<string>;
+  buildResolveDisputeRefundSender(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputePayDriver(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputeSplitFunds(input: ResolveDisputeSplitFundsTxInput): Promise<string>;
+}
