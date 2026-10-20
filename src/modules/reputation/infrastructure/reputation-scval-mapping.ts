@@ -62,9 +62,17 @@ function requireBoolean(value: unknown, field: string): boolean {
   return value;
 }
 
-function u64StringToDate(value: unknown): Date {
-  if (typeof value !== 'string') throw new Error('Expected a u64-as-string value');
-  return new Date(Number(value) * 1000);
+const MAX_SAFE_DATE_SECONDS = 8_640_000_000_000n;
+
+export function u64StringToDate(value: unknown): Date {
+  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
+    throw new Error('Expected a valid non-negative integer u64-as-string value');
+  }
+  const seconds = BigInt(value);
+  if (seconds < 0n || seconds > MAX_SAFE_DATE_SECONDS) {
+    throw new Error('u64 timestamp exceeds safe Date bounds');
+  }
+  return new Date(Number(seconds) * 1000);
 }
 
 /**
