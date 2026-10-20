@@ -96,3 +96,11 @@ describe('shared/jwt', () => {
     });
   });
 });
+
+describe('jwt.verify explicit HS256 algorithm pinning (#437)', () => {
+  it('rejects unsigned alg:none tokens', () => {
+    const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' })).toString('base64url');
+    const payload = Buffer.from(JSON.stringify({ sub: 'u1', role: 'ADMIN' })).toString('base64url');
+    expect(() => verifyAccessToken(`${header}.${payload}.`)).toThrow();
+  });
+});

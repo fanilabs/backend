@@ -34,7 +34,7 @@ export function signAccessToken(claims: AccessTokenClaims): string {
 
 export function verifyAccessToken(token: string): AccessTokenClaims {
   const config = getConfig();
-  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET);
+  const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] });
   return decoded as unknown as AccessTokenClaims;
 }
 
@@ -47,6 +47,6 @@ export function signRefreshToken(claims: RefreshTokenClaims): string {
 
 export function verifyRefreshToken(token: string): RefreshTokenClaims {
   const config = getConfig();
-  const decoded = jwt.verify(token, config.JWT_REFRESH_SECRET);
+  const decoded = jwt.verify(token, config.JWT_REFRESH_SECRET, { algorithms: ['HS256'] });
   return decoded as unknown as RefreshTokenClaims;
 }

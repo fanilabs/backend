@@ -75,7 +75,7 @@ export function createJwtTokenService(): TokenService {
     },
 
     verifyEmailVerificationToken(token) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as PurposeClaims;
       if (decoded.purpose !== 'email-verification' || !decoded.sub) {
         throw new Error('Token is not a valid email verification token');
       }
@@ -95,7 +95,7 @@ export function createJwtTokenService(): TokenService {
     },
 
     verifyPasswordResetToken(token, currentPasswordHash) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET, { algorithms: ['HS256'] }) as PurposeClaims;
       if (decoded.purpose !== 'password-reset' || !decoded.sub) {
         throw new Error('Token is not a valid password reset token');
       }
