@@ -93,3 +93,19 @@ describe('createDeliveryBodySchema (issue #377)', () => {
     }
   });
 });
+
+describe('POST /transactions/build/confirm-delivery preHandler consistency (#452)', () => {
+  it('registers preHandler: authenticate instead of onRequest', async () => {
+    const { createDeliveriesRoutes } = await import('./routes.js');
+    const registered: Array<{ method: string; url: string; opts: Record<string, unknown> }> = [];
+    const fakeApp = {
+      get: (url: string, opts: Record<string, unknown>) => registered.push({ method: 'GET', url, opts }),
+      post: (url: string, opts: Record<string, unknown>) => registered.push({ method: 'POST', url, opts }),
+    };
+    const plugin = createDeliveriesRoutes({} as never);
+    await (plugin as unknown as (app: unknown) => Promise<void>)(fakeApp);
+    const confirmRoute = registered.find((r) => r.url === '/transactions/build/confirm-delivery');
+    expect(confirmRoute?.opts.onRequest).toBeUndefined();
+    expect(confirmRoute?.opts.preHandler).toBeDefined();
+  });
+});
