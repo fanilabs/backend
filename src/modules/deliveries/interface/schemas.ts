@@ -61,7 +61,9 @@ export const createDeliveryBodySchema = z
     cargoCategory,
     weightGrams: z.number().int().positive(),
     fragile: z.boolean(),
-    estimatedDelivery: z.string().datetime(),
+    estimatedDelivery: z.string().datetime().refine((val) => new Date(val).getTime() > Date.now(), {
+      message: 'estimatedDelivery must be a timestamp in the future',
+    }),
   })
   // A delivery whose destination equals its origin is nonsensical: it locks
   // escrow funds and clutters courier dispatch boards for a trip that goes

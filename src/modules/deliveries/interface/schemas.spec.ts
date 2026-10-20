@@ -93,3 +93,21 @@ describe('createDeliveryBodySchema (issue #377)', () => {
     }
   });
 });
+
+describe('createDeliveryBodySchema future estimatedDelivery (#440)', () => {
+  it('rejects past timestamps and accepts future timestamps', () => {
+    const base = {
+      senderAddress: 'GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7',
+      recipientAddress: 'GBDEVU63Y6NTHJQQZIKVTC23NWLQVP3WJ2RI2OTSJTNYOIGICST6DUXR',
+      origin: 'Lagos',
+      destination: 'Abuja',
+      cargoCategory: 'ELECTRONICS',
+      weightGrams: 500,
+      fragile: true,
+    };
+    const past = new Date(Date.now() - 3600_000).toISOString();
+    const future = new Date(Date.now() + 86400_000).toISOString();
+    expect(createDeliveryBodySchema.safeParse({ ...base, estimatedDelivery: past }).success).toBe(false);
+    expect(createDeliveryBodySchema.safeParse({ ...base, estimatedDelivery: future }).success).toBe(true);
+  });
+});
