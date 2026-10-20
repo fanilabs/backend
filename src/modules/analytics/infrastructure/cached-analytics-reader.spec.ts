@@ -54,3 +54,21 @@ describe('createCachedAnalyticsReader', () => {
     expect(cached).toEqual([{ token: 'XLM', releasedAmount: hugeAmount, releasedCount: 2 }]);
   });
 });
+
+describe('createCachedAnalyticsReader resilience (#432)', () => {
+  it('falls back to underlying reader on Redis rejection or corrupt JSON', async () => {
+    const reader = {
+      getGmvByToken: async () => [{ token: 'USDC', releasedAmount: 100n }],
+      getDeliveryFunnelCounts: async () => ({ pending: 1, active: 0, inTransit: 0, delivered: 2, disputed: 0, cancelled: 0 }),
+      getDriverTierCounts: async () => ({ bronze: 1, silver: 0, gold: 0, platinum: 0 }),
+    };
+    const brokenCache = {
+      get: async () => '{invalid-json',
+      set: async () => {
+        throw new Error('Redis write error');
+      },
+    };
+    const cached = createCachedAnalyticsReader(reader as never, brokenCache, 30);
+    await expect(cached.getGmvByToken()).resolves.toEqual([{ token: 'USDC', releasedAmount: 100n }]);
+  });
+});
