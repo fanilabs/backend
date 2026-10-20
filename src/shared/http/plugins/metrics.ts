@@ -14,6 +14,9 @@ import { httpRequestDuration, httpRequestsTotal } from '../../metrics/index.js';
 export default fp(async function metricsPlugin(app: FastifyInstance) {
   app.addHook('onResponse', async (request, reply) => {
     const route = request.routeOptions.url ?? 'unmatched';
+    if (route === '/metrics' || route.startsWith('/health')) {
+      return;
+    }
     const labels = {
       method: request.method,
       route,
