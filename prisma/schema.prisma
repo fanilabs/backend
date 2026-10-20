@@ -505,6 +505,8 @@ model AuditLog {
   actor User? @relation(fields: [actorId], references: [id], onDelete: SetNull)
 
   @@index([entityType, entityId])
+  @@index([action, createdAt(sort: Desc)])
+  @@index([entityType, createdAt(sort: Desc)])
   @@index([actorId])
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
