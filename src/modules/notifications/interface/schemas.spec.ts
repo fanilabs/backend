@@ -52,3 +52,17 @@ describe('notification response schemas', () => {
     expect(result.success).toBe(false);
   });
 });
+
+describe('sanitizeNotificationPayload (#412)', () => {
+  it('strips internal identifiers and sensitive keys from notification payload', async () => {
+    const { sanitizeNotificationPayload } = await import('./routes.js');
+    const clean = sanitizeNotificationPayload({
+      internalId: 'secret-uuid',
+      userId: 'user-uuid',
+      email: 'private@example.com',
+      chainDeliveryId: '42',
+      status: 'DELIVERED',
+    });
+    expect(clean).toEqual({ chainDeliveryId: '42', status: 'DELIVERED' });
+  });
+});

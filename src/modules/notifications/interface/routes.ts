@@ -17,7 +17,28 @@ export interface NotificationsUseCases {
   getNotification: ReturnType<typeof createGetNotificationUseCase>;
 }
 
-function serializeNotification(notification: Notification) {
+const REDACTED_PAYLOAD_KEYS = new Set([
+  'userId',
+  'internalId',
+  'email',
+  'passwordHash',
+  'token',
+  'stack',
+]);
+
+export function sanitizeNotificationPayload(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (!REDACTED_PAYLOAD_KEYS.has(key)) {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
+export function serializeNotification(notification: Notification) {
   return {
     id: notification.id,
     // `notification.channel` is the column's real 3-variant Prisma enum
@@ -30,7 +51,7 @@ function serializeNotification(notification: Notification) {
     // check and `NotificationSender`'s doc comment.
     channel: notification.channel,
     type: notification.type,
-    payload: notification.payload,
+    payload: sanitizeNotificationPayload(notification.payload),
     status: notification.status,
     sentAt: notification.sentAt?.toISOString() ?? null,
     createdAt: notification.createdAt.toISOString(),
