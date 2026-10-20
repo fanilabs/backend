@@ -162,7 +162,7 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
       await prisma.fleetDriver.upsert({
         where: { fleetId_driverAddress: { fleetId: fleet.id, driverAddress } },
         create: { fleetId: fleet.id, driverAddress, status: 'ACTIVE', acceptedAt },
-        update: { status: 'ACTIVE', acceptedAt },
+        update: { status: 'ACTIVE', acceptedAt, removedAt: null },
       });
     },
 
