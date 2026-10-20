@@ -48,6 +48,12 @@ export function createInMemoryEventStore(): EventStore & { stored: StoredEvent[]
       stored.push(event);
       return true;
     },
+    async remove(event) {
+      const key = `${event.contractName}:${event.network}:${event.rpcEventId}`;
+      seen.delete(key);
+      const idx = stored.findIndex((e) => e.rpcEventId === event.rpcEventId);
+      if (idx !== -1) stored.splice(idx, 1);
+    },
   };
 }
 

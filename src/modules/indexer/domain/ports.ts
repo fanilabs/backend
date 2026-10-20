@@ -13,6 +13,7 @@ export interface CheckpointRepository {
  */
 export interface EventStore {
   tryInsert(event: StoredEvent): Promise<boolean>;
+  remove?(event: StoredEvent): Promise<void>;
 }
 
 export interface FetchEventsResult {
