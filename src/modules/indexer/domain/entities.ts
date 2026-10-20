@@ -2,6 +2,7 @@ export interface Checkpoint {
   contractName: string;
   network: string;
   lastLedgerSeq: bigint;
+  createdAt?: Date;
   updatedAt: Date;
 }
 
