@@ -6,6 +6,7 @@ import type {
   createRefreshSessionUseCase,
   createRegisterUserUseCase,
   createRequestPasswordResetUseCase,
+  createResendVerificationEmailUseCase,
   createResetPasswordUseCase,
   createVerifyEmailUseCase,
 } from '../application/index.js';
@@ -19,6 +20,7 @@ import {
   registerBodySchema,
   registerResponseSchema,
   requestPasswordResetBodySchema,
+  resendVerificationEmailBodySchema,
   resetPasswordBodySchema,
   verifyEmailBodySchema,
 } from './schemas.js';
@@ -30,6 +32,7 @@ export interface AuthUseCases {
   logout: ReturnType<typeof createLogoutUseCase>;
   verifyEmail: ReturnType<typeof createVerifyEmailUseCase>;
   requestPasswordReset: ReturnType<typeof createRequestPasswordResetUseCase>;
+  resendVerificationEmail?: ReturnType<typeof createResendVerificationEmailUseCase>;
   resetPassword: ReturnType<typeof createResetPasswordUseCase>;
 }
 
@@ -80,6 +83,20 @@ export function createAuthRoutes(useCases: AuthUseCases): FastifyPluginAsyncZod 
       { schema: { body: logoutBodySchema, response: { 200: emptyDataResponseSchema } } },
       async (request, reply) => {
         await useCases.logout(request.body);
+        void reply.status(200).send(ok({}));
+      },
+    );
+
+    app.post(
+      '/auth/resend-verification-email',
+      {
+        schema: {
+          body: resendVerificationEmailBodySchema,
+          response: { 200: emptyDataResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        await useCases.resendVerificationEmail?.(request.body);
         void reply.status(200).send(ok({}));
       },
     );

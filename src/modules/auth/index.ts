@@ -8,6 +8,7 @@ import {
   createRefreshSessionUseCase,
   createRegisterUserUseCase,
   createRequestPasswordResetUseCase,
+  createResendVerificationEmailUseCase,
   createResetPasswordUseCase,
   createVerifyEmailUseCase,
 } from './application/index.js';
@@ -59,6 +60,11 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
     }),
     logout: createLogoutUseCase({ refreshTokenRepository, tokenService }),
     verifyEmail: createVerifyEmailUseCase({ userRepository, tokenService }),
+    resendVerificationEmail: createResendVerificationEmailUseCase({
+      userRepository,
+      tokenService,
+      mailer,
+    }),
     requestPasswordReset: createRequestPasswordResetUseCase({
       userRepository,
       tokenService,
