@@ -217,4 +217,19 @@ describe('error-handler', () => {
     expect(sendArg.error.details).toEqual({ column_name: 'recipient_address' });
     expect(sendArg.requestId).toBe('req-123');
   });
+
+  it('maps Prisma P2004 and P2011 constraint violations to HTTP 400 VALIDATION_ERROR (#467)', () => {
+    for (const code of ['P2004', 'P2011']) {
+      const reply = createMockReply();
+      const request = createMockRequest(() => {});
+      const prismaErr = Object.assign(new Error('Constraint failed'), {
+        code,
+        meta: { constraint: 'positive_amount' },
+      });
+      handleError(prismaErr, request, reply);
+      expect(reply.status).toHaveBeenCalledWith(400);
+      const sendArg = (reply.send as any).mock.calls[0]?.[0];
+      expect(sendArg.error.code).toBe('VALIDATION_ERROR');
+    }
+  });
 });
