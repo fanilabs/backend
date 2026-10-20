@@ -11,4 +11,4 @@ export type {
   DeliveryParties,
   DeliveryPartyLookup,
 } from './ports.js';
-export { NotificationNotFoundError, ForbiddenNotificationAccessError } from './errors.js';
+export { NotificationNotFoundError, RecipientContactNotFoundError, ForbiddenNotificationAccessError } from './errors.js';
