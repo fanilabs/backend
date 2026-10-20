@@ -104,4 +104,16 @@ describe('createJwtTokenService', () => {
     expect(tokenService.peekPasswordResetSubject(token)).toBe(user.id);
     expect(tokenService.peekPasswordResetSubject('garbage')).toBeNull();
   });
+
+  it('rejects verification or reset tokens signed directly with raw JWT_ACCESS_SECRET (#429)', async () => {
+    const jwt = (await import('jsonwebtoken')).default;
+    const { getConfig } = await import('../../../shared/config/index.js');
+    const tokenService = createJwtTokenService();
+    const user = testUser();
+    const forgedVerify = jwt.sign(
+      { sub: user.id, purpose: 'email-verification' },
+      getConfig().JWT_ACCESS_SECRET,
+    );
+    expect(() => tokenService.verifyEmailVerificationToken(forgedVerify)).toThrow();
+  });
 });

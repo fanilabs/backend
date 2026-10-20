@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, createHmac, randomUUID } from 'node:crypto';
 import jwt from 'jsonwebtoken';
 import { getConfig } from '../../../shared/config/index.js';
 import {
@@ -46,6 +46,12 @@ function passwordFingerprint(passwordHash: string): string {
  */
 export function createJwtTokenService(): TokenService {
   const config = getConfig();
+  const verificationSecret = createHmac('sha256', config.JWT_ACCESS_SECRET)
+    .update('fanilab:email-verification-secret:v1')
+    .digest('hex');
+  const passwordResetSecret = createHmac('sha256', config.JWT_ACCESS_SECRET)
+    .update('fanilab:password-reset-secret:v1')
+    .digest('hex');
 
   return {
     issueAccessToken(user) {
@@ -69,13 +75,13 @@ export function createJwtTokenService(): TokenService {
     hashToken: sha256Hex,
 
     issueEmailVerificationToken(user) {
-      return jwt.sign({ sub: user.id, purpose: 'email-verification' }, config.JWT_ACCESS_SECRET, {
+      return jwt.sign({ sub: user.id, purpose: 'email-verification' }, verificationSecret, {
         expiresIn: EMAIL_VERIFICATION_TTL,
       } as jwt.SignOptions);
     },
 
     verifyEmailVerificationToken(token) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, verificationSecret, { algorithms: ['HS256'] }) as PurposeClaims;
       if (decoded.purpose !== 'email-verification' || !decoded.sub) {
         throw new Error('Token is not a valid email verification token');
       }
@@ -89,13 +95,13 @@ export function createJwtTokenService(): TokenService {
           purpose: 'password-reset',
           pwFingerprint: passwordFingerprint(user.passwordHash),
         },
-        config.JWT_ACCESS_SECRET,
+        passwordResetSecret,
         { expiresIn: PASSWORD_RESET_TTL } as jwt.SignOptions,
       );
     },
 
     verifyPasswordResetToken(token, currentPasswordHash) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, passwordResetSecret, { algorithms: ['HS256'] }) as PurposeClaims;
       if (decoded.purpose !== 'password-reset' || !decoded.sub) {
         throw new Error('Token is not a valid password reset token');
       }
