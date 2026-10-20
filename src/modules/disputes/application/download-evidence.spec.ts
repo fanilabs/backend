@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createDownloadEvidenceUseCase } from './download-evidence.js';
 import {
@@ -8,12 +9,28 @@ import {
   createInMemoryDisputeRepository,
   createInMemoryEvidenceRepository,
 } from './__fixtures__/fakes.js';
-import { DisputeStatus } from '../domain/dispute-status.js';
-import { EvidenceNotFoundError, ForbiddenEvidenceAccessError } from '../domain/index.js';
+import { EvidenceIntegrityError, EvidenceNotFoundError, ForbiddenEvidenceAccessError } from '../domain/index.js';
 
 function setup() {
   const evidenceRepository = createInMemoryEvidenceRepository();
-  const evidenceStorage = createFakeEvidenceStorage();
+  const rawStorage = createFakeEvidenceStorage();
+  const seededRecords: any[] = [];
+  const origEvSeed = evidenceRepository.seed.bind(evidenceRepository);
+  evidenceRepository.seed = (ev) => {
+    seededRecords.push(ev);
+    origEvSeed(ev);
+  };
+  const evidenceStorage = {
+    ...rawStorage,
+    seed(storageUrl: string, bytes: Buffer) {
+      rawStorage.seed(storageUrl, bytes);
+      for (const rec of seededRecords) {
+        if (rec.storageUrl === storageUrl && rec.hash === 'a'.repeat(64)) {
+          rec.hash = createHash('sha256').update(bytes).digest('hex');
+        }
+      }
+    },
+  };
   const disputeRepository = createInMemoryDisputeRepository();
   const walletOwnershipRepository = createFakeWalletOwnershipRepository();
   const downloadEvidence = createDownloadEvidenceUseCase({
@@ -228,11 +245,11 @@ describe('downloadEvidence', () => {
   });
 
   describe('dispute lifecycle access policy', () => {
-    const participantStatuses: DisputeStatus[] = [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW];
-    const restrictedStatuses: DisputeStatus[] = [
-      DisputeStatus.RESOLVED,
-      DisputeStatus.CANCELLED,
-      DisputeStatus.CLOSED,
+    const participantStatuses: any[] = ['OPEN' as any, 'UNDER_REVIEW' as any];
+    const restrictedStatuses: any[] = [
+      'RESOLVED_REFUND' as any,
+      'CANCELLED' as any,
+      'CLOSED' as any,
     ];
 
     it.each(participantStatuses)(
@@ -355,5 +372,33 @@ describe('downloadEvidence', () => {
         expect(result.bytes).toEqual(Buffer.from('admin-visible'));
       },
     );
+  });
+});
+
+describe('downloadEvidence SHA-256 integrity verification (#430)', () => {
+  it('throws EvidenceIntegrityError when stored bytes do not match evidence.hash', async () => {
+    const { evidenceRepository, disputeRepository, evidenceStorage, downloadEvidence } = setup();
+    const dispute = buildDispute({
+      chainDeliveryId: 1n,
+      raisedBy: 'GRAISER',
+      raisedByUserId: 'raiser-user',
+    });
+    disputeRepository.seed(dispute);
+    const evidence = buildEvidence({
+      disputeId: dispute.id,
+      uploadedBy: 'GRAISER',
+      storageUrl: 'fake://d/tampered',
+      hash: 'b'.repeat(64),
+    });
+    evidenceRepository.seed(evidence);
+    evidenceStorage.seed('fake://d/tampered', Buffer.from('corrupted-bytes'));
+
+    await expect(
+      downloadEvidence({
+        evidenceId: evidence.id,
+        requesterId: 'raiser-user',
+        requesterRole: 'CUSTOMER',
+      }),
+    ).rejects.toBeInstanceOf(EvidenceIntegrityError);
   });
 });

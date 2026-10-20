@@ -17,6 +17,7 @@ export type {
 export {
   DisputeNotFoundError,
   DisputeNotOpenError,
+  EvidenceIntegrityError,
   EvidenceNotFoundError,
   ForbiddenEvidenceAccessError,
   ForbiddenEvidenceUploadError,
