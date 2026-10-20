@@ -104,8 +104,9 @@ export function handleError(
 
   if (isPrismaKnownRequestError(error)) {
     if (error.code === 'P2002') {
+      request.log.warn({ err: error, meta: error.meta }, 'Unique constraint conflict (P2002)');
       const body: ErrorResponseBody = {
-        error: { code: 'CONFLICT', message: 'Resource already exists', details: error.meta },
+        error: { code: 'CONFLICT', message: 'Resource already exists' },
         requestId,
       };
       void reply.status(409).send(body);
@@ -132,11 +133,11 @@ export function handleError(
       return;
     }
     if (error.code === 'P2003') {
+      request.log.warn({ err: error, meta: error.meta }, 'Foreign key constraint conflict (P2003)');
       const body: ErrorResponseBody = {
         error: {
           code: 'RELATED_RESOURCE_MISSING',
           message: 'A related resource required by this operation does not exist',
-          details: error.meta,
         },
         requestId,
       };
