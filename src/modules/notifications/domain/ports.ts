@@ -95,6 +95,13 @@ export interface NotificationSender {
 }
 
 /**
+ * Channel-keyed registry of notification delivery adapters (issue #457).
+ * Allows wiring distinct senders per `NotificationChannel` (`EMAIL`, `SMS`, `PUSH`)
+ * while deferring unconfigured channels without falsely poisoning terminal failure metrics.
+ */
+export type NotificationSenderRegistry = Partial<Record<NotificationChannel, NotificationSender>>;
+
+/**
  * Producer-side handle onto the `notifications` BullMQ queue
  * (`src/shared/queue/queues.ts`) — enqueues one delivery job per row
  * `dispatchNotificationsFromEvent` creates, consumed by the worker-side

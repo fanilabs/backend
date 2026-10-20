@@ -3,6 +3,7 @@ import { NotificationNotFoundError } from '../domain/index.js';
 import type {
   NotificationRepository,
   NotificationSender,
+  NotificationSenderRegistry,
   UserContactLookup,
 } from '../domain/index.js';
 
@@ -12,6 +13,7 @@ export interface SendNotificationDeps {
   notificationRepository: NotificationRepository;
   userContactLookup: UserContactLookup;
   sender: NotificationSender;
+  senderRegistry?: NotificationSenderRegistry;
 }
 
 export interface SendNotificationInput {
@@ -59,7 +61,20 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
     // field entirely); no retry could ever fix this, so it's marked FAILED
     // immediately rather than going through the isFinalAttempt-gated path
     // below, which exists for genuinely transient failures.
-    if (notification.channel !== 'EMAIL') {
+    const activeSender = deps.senderRegistry
+      ? deps.senderRegistry[notification.channel]
+      : notification.channel === 'EMAIL'
+        ? deps.sender
+        : undefined;
+
+    if (!activeSender) {
+      if (deps.senderRegistry) {
+        log.info(
+          { notificationId: notification.id, channel: notification.channel },
+          'Notification channel has no configured sender in registry — retaining in deferred PENDING state',
+        );
+        return;
+      }
       await deps.notificationRepository.markFailed(
         notification.id,
         `No sender configured for channel ${notification.channel}`,
@@ -101,7 +116,7 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
     }
 
     try {
-      await deps.sender.send({
+      await activeSender.send({
         to: contact.email,
         type: notification.type,
         payload: notification.payload,

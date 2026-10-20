@@ -146,4 +146,53 @@ describe('sendNotification', () => {
       failureReason: 'Simulated send failure',
     });
   });
+
+  it('routes SMS and PUSH notifications to their registered channel sender when senderRegistry is configured (issue #457)', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    const userContactLookup = createFakeUserContactLookup();
+    const emailSender = createFakeNotificationSender();
+    const smsSender = createFakeNotificationSender();
+    const sendNotification = createSendNotificationUseCase({
+      notificationRepository,
+      userContactLookup,
+      sender: emailSender,
+      senderRegistry: {
+        EMAIL: emailSender,
+        SMS: smsSender,
+      },
+    });
+
+    const smsNotification = buildNotification({ userId: 'user-1', channel: 'SMS' });
+    notificationRepository.seed(smsNotification);
+    userContactLookup.seedUserId('user-1', { userId: 'user-1', email: '+15550001111' });
+
+    await sendNotification({ notificationId: smsNotification.id });
+
+    expect(smsSender.sent).toMatchObject([{ to: '+15550001111', type: smsNotification.type }]);
+    expect(emailSender.sent).toHaveLength(0);
+    expect((await notificationRepository.findById(smsNotification.id))?.status).toBe('SENT');
+  });
+
+  it('retains unconfigured channels in PENDING deferred state without marking FAILED when senderRegistry is used (issue #457)', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    const userContactLookup = createFakeUserContactLookup();
+    const emailSender = createFakeNotificationSender();
+    const sendNotification = createSendNotificationUseCase({
+      notificationRepository,
+      userContactLookup,
+      sender: emailSender,
+      senderRegistry: {
+        EMAIL: emailSender,
+      },
+    });
+
+    const pushNotification = buildNotification({ userId: 'user-1', channel: 'PUSH' });
+    notificationRepository.seed(pushNotification);
+    userContactLookup.seedUserId('user-1', { userId: 'user-1', email: 'driver@example.com' });
+
+    await sendNotification({ notificationId: pushNotification.id });
+
+    expect(emailSender.sent).toHaveLength(0);
+    expect((await notificationRepository.findById(pushNotification.id))?.status).toBe('PENDING');
+  });
 });

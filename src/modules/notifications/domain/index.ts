@@ -7,6 +7,7 @@ export type {
   UserContactLookup,
   NotificationEmailInput,
   NotificationSender,
+  NotificationSenderRegistry,
   NotificationJobScheduler,
   DeliveryParties,
   DeliveryPartyLookup,

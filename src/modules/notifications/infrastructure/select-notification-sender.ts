@@ -1,6 +1,6 @@
 import type { Env } from '../../../shared/config/env.js';
 import type { SmtpSettings } from '../../../shared/smtp/index.js';
-import type { NotificationSender } from '../domain/index.js';
+import type { NotificationSender, NotificationSenderRegistry } from '../domain/index.js';
 import { createLoggerNotificationSender } from './logger-notification-sender.js';
 import { createSmtpNotificationSender } from './smtp-notification-sender.js';
 
@@ -39,4 +39,14 @@ export function selectNotificationSender(
     );
   }
   return createSmtpNotificationSender(smtp);
+}
+
+export function createNotificationSenderRegistry(
+  emailSender: NotificationSender,
+  overrides?: Omit<NotificationSenderRegistry, 'EMAIL'>,
+): NotificationSenderRegistry {
+  return {
+    EMAIL: emailSender,
+    ...overrides,
+  };
 }
