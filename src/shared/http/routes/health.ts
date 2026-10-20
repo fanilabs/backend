@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { FastifyInstance } from 'fastify';
 import { getPrismaClient } from '../../database/index.js';
 import { getRedisClient } from '../../cache/index.js';
@@ -31,8 +32,38 @@ function isQueueStalled(queue: QueueCounts): boolean {
  * deeper checks like indexer lag live under /health/indexer once the
  * indexer module exists (ARCHITECTURE.md §6), not here.
  */
+
+export const healthStatusResponseSchema = z.object({
+  status: z.enum(['ok', 'degraded']),
+  database: z.enum(['ok', 'error']),
+  redis: z.enum(['ok', 'error']),
+});
+
+const queueCountsSchema = z.object({
+  name: z.string(),
+  waiting: z.number(),
+  active: z.number(),
+  completed: z.number(),
+  failed: z.number(),
+  delayed: z.number(),
+  paused: z.number(),
+});
+
+export const queueHealthStatusResponseSchema = z.object({
+  status: z.enum(['ok', 'degraded', 'unavailable']),
+  queues: z.array(queueCountsSchema),
+});
+
 export default async function healthRoutes(app: FastifyInstance): Promise<void> {
-  app.get('/health', async (_request, reply) => {
+  app.get(
+    '/health',
+    {
+      schema: {
+        description: 'Liveness and readiness probe for database and Redis connectivity',
+        response: { 200: healthStatusResponseSchema, 503: healthStatusResponseSchema },
+      },
+    },
+    async (_request, reply) => {
     const [database, redis] = await Promise.all([
       getPrismaClient().$queryRaw`SELECT 1`.then(() => 'ok' as const).catch(() => 'error' as const),
       getRedisClient()
@@ -62,7 +93,15 @@ export default async function healthRoutes(app: FastifyInstance): Promise<void> 
    * only case that should be treated as a hard failure by anything acting
    * on the status code.
    */
-  app.get('/health/queue', async (_request, reply) => {
+  app.get(
+    '/health/queue',
+    {
+      schema: {
+        description: 'Queue backlog and failure health check',
+        response: { 200: queueHealthStatusResponseSchema, 503: queueHealthStatusResponseSchema },
+      },
+    },
+    async (_request, reply) => {
     try {
       const queues = await getQueueHealth();
       const stalled = queues.some(isQueueStalled);
