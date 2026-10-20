@@ -1,29 +1,37 @@
 import type { PrismaClient } from '@prisma/client';
 import type { Clock } from '../domain/index.js';
 
+export const DEFAULT_LEDGER_CLOCK_TTL_MS = 5_000;
+
 /**
  * Derives "now" from the most recently ingested blockchain event's ledger
- * close time, rather than wall-clock time — see `../domain/clock.ts`'s
- * header comment. This keeps `assessActor`'s window boundary on the same
- * time base as `ActorActivity.occurredAt` (also ledger close time, see
- * `record-actor-activity-from-event.ts`), so rule windows are correct
- * regardless of how far behind the indexer currently is: a lagging
- * indexer simply makes "now" lag too, in lockstep with the data it's
- * being compared against, instead of racing ahead of it.
- *
- * Falls back to real wall-clock time when no event has been ingested yet
- * (e.g. a freshly seeded database) — there is no ledger time to derive
- * from in that case, and refusing to assess would be worse than a
- * momentarily-approximate window.
+ * close time with a 5-second in-memory cache (#404) so repeated rule
+ * evaluations inside `assessActor` do not re-query PostgreSQL on every rule.
  */
-export function createLedgerClock(prisma: PrismaClient): Clock {
+export function createLedgerClock(
+  prisma: PrismaClient,
+  ttlMs: number = DEFAULT_LEDGER_CLOCK_TTL_MS,
+): Clock {
+  let cachedValue: Date | null = null;
+  let expiresAt = 0;
+
   return {
     async now(): Promise<Date> {
+      const currentWallMs = Date.now();
+      if (cachedValue !== null && currentWallMs < expiresAt) {
+        return cachedValue;
+      }
+
       const latest = await prisma.blockchainEvent.findFirst({
         orderBy: { ledgerClosedAt: 'desc' },
         select: { ledgerClosedAt: true },
       });
-      return latest?.ledgerClosedAt ?? new Date();
+      const resolved = latest?.ledgerClosedAt ?? new Date();
+      if (ttlMs > 0) {
+        cachedValue = resolved;
+        expiresAt = currentWallMs + ttlMs;
+      }
+      return resolved;
     },
   };
 }
