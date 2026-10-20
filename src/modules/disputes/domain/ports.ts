@@ -81,6 +81,7 @@ export interface DisputeRepository {
 
 export interface EvidenceRepository {
   findById(id: string): Promise<Evidence | null>;
+  findByDisputeIdAndHash?(disputeId: string, hash: string): Promise<Evidence | null>;
   listByDisputeId(disputeId: string): Promise<Evidence[]>;
   create(record: Omit<Evidence, 'id' | 'createdAt'>): Promise<Evidence>;
 }

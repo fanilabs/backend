@@ -78,6 +78,9 @@ export function createInMemoryEvidenceRepository(): EvidenceRepository & {
     async findById(id) {
       return rows.find((row) => row.id === id) ?? null;
     },
+    async findByDisputeIdAndHash(disputeId, hash) {
+      return rows.find((row) => row.disputeId === disputeId && row.hash === hash) ?? null;
+    },
     async listByDisputeId(disputeId) {
       return rows.filter((row) => row.disputeId === disputeId);
     },
