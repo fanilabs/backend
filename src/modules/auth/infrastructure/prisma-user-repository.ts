@@ -42,5 +42,8 @@ export function createPrismaUserRepository(prisma: PrismaClient): UserRepository
     async updatePasswordHash(id, passwordHash) {
       await prisma.user.update({ where: { id }, data: { passwordHash } });
     },
+    async delete(id) {
+      await prisma.user.delete({ where: { id } });
+    },
   };
 }

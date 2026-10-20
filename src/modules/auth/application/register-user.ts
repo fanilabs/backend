@@ -58,7 +58,12 @@ export function createRegisterUserUseCase(deps: RegisterUserDeps) {
     });
 
     const verificationToken = deps.tokenService.issueEmailVerificationToken(user);
-    await deps.mailer.sendVerificationEmail(user.email, verificationToken);
+    try {
+      await deps.mailer.sendVerificationEmail(user.email, verificationToken);
+    } catch (err: unknown) {
+      await deps.userRepository.delete?.(user.id);
+      throw err;
+    }
 
     return { userId: user.id };
   };

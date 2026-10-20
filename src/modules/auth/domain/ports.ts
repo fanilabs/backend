@@ -15,6 +15,7 @@ export interface UserRepository {
   create(input: { email: string; passwordHash: string; role: UserRole }): Promise<User>;
   markEmailVerified(id: string): Promise<void>;
   updatePasswordHash(id: string, passwordHash: string): Promise<void>;
+  delete?(id: string): Promise<void>;
 }
 
 export interface RefreshTokenRepository {

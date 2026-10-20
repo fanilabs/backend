@@ -67,4 +67,17 @@ describe('registerUser', () => {
       EmailAlreadyRegisteredError,
     );
   });
+
+  it('rolls back user creation if sendVerificationEmail fails (#426)', async () => {
+    const { registerUser, userRepository, mailer } = setup();
+    mailer.sendVerificationEmail = async () => {
+      throw new Error('SMTP connection refused');
+    };
+
+    await expect(
+      registerUser({ email: 'rollback@example.com', password: 'password123' }),
+    ).rejects.toThrow('SMTP connection refused');
+
+    expect(await userRepository.findByEmail('rollback@example.com')).toBeNull();
+  });
 });

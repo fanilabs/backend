@@ -59,6 +59,9 @@ export function createInMemoryUserRepository(): UserRepository & { seed(user: Us
       const user = users.get(id);
       if (user) user.passwordHash = passwordHash;
     },
+    async delete(id) {
+      users.delete(id);
+    },
   };
 }
 
