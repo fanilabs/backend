@@ -1,3 +1,4 @@
+import { renderNotificationTemplate } from './templates.js';
 import { createSmtpClient, type SmtpSettings } from '../../../shared/smtp/index.js';
 import type { NotificationSender } from '../domain/index.js';
 
@@ -14,10 +15,11 @@ export function createSmtpNotificationSender(settings: SmtpSettings): Notificati
   const client = createSmtpClient(settings);
   return {
     async send({ to, type, payload }) {
+      const rendered = renderNotificationTemplate(type, payload);
       await client.send({
         to,
-        subject: `FaniLab notification: ${type}`,
-        text: `${type}\n\n${JSON.stringify(payload, null, 2)}\n`,
+        subject: rendered.subject,
+        text: rendered.text,
       });
     },
   };
