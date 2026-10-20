@@ -2,8 +2,16 @@ import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
 import { parseAddress } from '../../../shared/events/index.js';
 import type { ActorActivityRepository, RecordActivityInput } from '../domain/index.js';
 
+import type { ActorAssessment } from '../domain/index.js';
+
+export interface FraudAlertNotifier {
+  notifyActorFlagged(assessment: ActorAssessment): Promise<void>;
+}
+
 export interface RecordActorActivityFromEventDeps {
   activityRepository: ActorActivityRepository;
+  assessActor?: (input: { address: string }) => Promise<ActorAssessment>;
+  alertNotifier?: FraudAlertNotifier;
 }
 
 /**
@@ -34,7 +42,18 @@ export function createRecordActorActivityFromEventUseCase(deps: RecordActorActiv
   ): Promise<void> {
     const activity = resolveActivity(event);
     if (!activity) return;
+    let wasFlagged = false;
+    if (deps.assessActor && deps.alertNotifier) {
+      const prior = await deps.assessActor({ address: activity.address });
+      wasFlagged = prior.flagged;
+    }
     await deps.activityRepository.record(activity);
+    if (deps.assessActor && deps.alertNotifier && !wasFlagged) {
+      const current = await deps.assessActor({ address: activity.address });
+      if (current.flagged) {
+        await deps.alertNotifier.notifyActorFlagged(current);
+      }
+    }
   };
 }
 
