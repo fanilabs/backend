@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { chainId } from '../../../shared/validation/chain-id.js';
-import { stellarAddress } from '../../../shared/validation/stellar-address.js';
+import { stellarAddress, stellarContractOrAccountAddress } from '../../../shared/validation/stellar-address.js';
 
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
@@ -51,7 +51,7 @@ export const createEscrowBodySchema = z.object({
   recipientAddress: stellarAddress,
   driverAddress: stellarAddress,
   chainDeliveryId,
-  token: stellarAddress,
+  token: stellarContractOrAccountAddress,
   amount,
 });
 

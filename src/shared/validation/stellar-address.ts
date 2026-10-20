@@ -20,3 +20,20 @@ export const stellarAddress = z
   .refine((value) => StrKey.isValidEd25519PublicKey(value), {
     message: 'Not a valid Stellar public key',
   });
+
+/**
+ * Accepts either a Stellar Ed25519 account public key (`G...`) or a Soroban
+ * contract address (`C...`), verifying the CRC16-XDR checksum via StrKey.
+ */
+export const stellarContractOrAccountAddress = z
+  .string()
+  .regex(/^[GC][A-Z2-7]{55}$/, 'Not a valid Stellar account or contract address')
+  .refine(
+    (value) =>
+      value.startsWith('G')
+        ? StrKey.isValidEd25519PublicKey(value)
+        : StrKey.isValidContract(value),
+    {
+      message: 'Not a valid Stellar account or contract address',
+    },
+  );
