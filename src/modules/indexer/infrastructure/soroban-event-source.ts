@@ -39,27 +39,47 @@ export function createSorobanEventSource(client: SorobanClient): EventSource {
   };
 }
 
+const MAX_EVENT_PAGES = 20;
+
 async function runGetEvents(
   client: SorobanClient,
   contractId: string,
   startLedger: number,
 ): Promise<FetchEventsResult> {
-  const response = await client.getEvents({
-    startLedger,
-    filters: [{ type: 'contract', contractIds: [contractId] }],
-  });
+  const events: RawContractEvent[] = [];
+  let cursor: string | undefined;
+  let latestLedgerSeen = startLedger;
 
-  const events: RawContractEvent[] = response.events.map((event) => ({
-    contractId: event.contractId?.contractId() ?? contractId,
-    rpcEventId: event.id,
-    ledgerSeq: event.ledger,
-    txHash: event.txHash,
-    topic: event.topic.map((segment) => stringifyTopicSegment(scValToNative(segment))),
-    value: scValToNative(event.value),
-    closedAt: new Date(event.ledgerClosedAt),
-  }));
+  for (let page = 0; page < MAX_EVENT_PAGES; page += 1) {
+    const requestParams = cursor
+      ? ({ cursor, filters: [{ type: 'contract' as const, contractIds: [contractId] }] } as never)
+      : { startLedger, filters: [{ type: 'contract' as const, contractIds: [contractId] }] };
 
-  return { events, latestLedgerSeen: response.latestLedger };
+    const response = (await client.getEvents(requestParams)) as Awaited<
+      ReturnType<SorobanClient['getEvents']>
+    > & { cursor?: string };
+
+    latestLedgerSeen = response.latestLedger;
+
+    for (const event of response.events) {
+      events.push({
+        contractId: event.contractId?.contractId() ?? contractId,
+        rpcEventId: event.id,
+        ledgerSeq: event.ledger,
+        txHash: event.txHash,
+        topic: event.topic.map((segment) => stringifyTopicSegment(scValToNative(segment))),
+        value: scValToNative(event.value),
+        closedAt: new Date(event.ledgerClosedAt),
+      });
+    }
+
+    if (!response.cursor || response.events.length === 0 || response.cursor === cursor) {
+      break;
+    }
+    cursor = response.cursor;
+  }
+
+  return { events, latestLedgerSeen };
 }
 
 function parseValidRangeStart(error: unknown): number | undefined {
