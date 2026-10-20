@@ -19,8 +19,12 @@ export interface MetricsRoutesDeps {
  */
 export function createMetricsRoutes(deps: MetricsRoutesDeps): FastifyPluginAsync {
   return async function metricsRoutes(app) {
-    app.get('/metrics', async (_request, reply) => {
-      await deps.refreshExternalGauges();
+    app.get('/metrics', async (request, reply) => {
+      try {
+        await deps.refreshExternalGauges();
+      } catch (err: unknown) {
+        request.log.error({ err }, 'Failed to refresh external Prometheus gauges during scrape');
+      }
       void reply
         .status(200)
         .type(registry.contentType)
