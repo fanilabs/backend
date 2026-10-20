@@ -61,4 +61,22 @@ describe('createDeliveryLegacyProfileReader', () => {
       reader.getLegacyDeliveriesCompleted(Keypair.random().publicKey()),
     ).rejects.toThrow();
   });
+
+  it('returns 0 when simulateReadCall returns null (scvVoid) for non-existent legacy profile (#461)', async () => {
+    const client = new SorobanClient();
+    const driver = Keypair.random().publicKey();
+    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
+      id: '1',
+      latestLedger: 1000,
+      events: [],
+      transactionData: {} as never,
+      minResourceFee: '100',
+      cost: {} as never,
+      result: { auth: [], retval: xdr.ScVal.scvVoid() },
+      _parsed: true,
+    } satisfies rpc.Api.SimulateTransactionSuccessResponse);
+
+    const reader = createDeliveryLegacyProfileReader(client, CONTRACT_ID);
+    await expect(reader.getLegacyDeliveriesCompleted(driver)).resolves.toBe(0);
+  });
 });
