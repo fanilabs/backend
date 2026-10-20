@@ -1,6 +1,9 @@
 import { Redis } from 'ioredis';
 import { getConfig } from '../config/index.js';
 import { logger } from '../logger/index.js';
+import { withTimeout } from '../shutdown/index.js';
+
+export const REDIS_DISCONNECT_TIMEOUT_MS = 2_000;
 
 const log = logger.child({ module: 'redis-client' });
 
@@ -26,5 +29,11 @@ export function getRedisClient(): Redis {
 export async function disconnectRedis(): Promise<void> {
   const current = client;
   client = undefined;
-  await current?.quit();
+  if (!current) return;
+  try {
+    await withTimeout(() => current.quit(), REDIS_DISCONNECT_TIMEOUT_MS, 'RedisClient');
+  } catch (error: unknown) {
+    log.warn({ err: error }, 'Redis quit did not complete — force disconnecting socket');
+    current.disconnect();
+  }
 }
