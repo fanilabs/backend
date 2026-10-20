@@ -64,7 +64,7 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
     // here instead of a doomed startLedger. A fresh contract with no
     // checkpoint yet (e.g. just redeployed) starts from the chain tip
     // rather than this floor — there's no history to catch up on.
-    const retentionFloor = latestLedger - retentionWindowLedgers + 1;
+    const retentionFloor = Math.max(1, latestLedger - retentionWindowLedgers + 1);
 
     const startLedger = checkpoint
       ? Math.max(Number(checkpoint.lastLedgerSeq) + 1, retentionFloor)
