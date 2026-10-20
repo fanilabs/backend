@@ -2,6 +2,7 @@ import { Address, Keypair, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import {
   addressToScVal,
+  i128ToScVal,
   boolToScVal,
   namedStructToScVal,
   scValToNative,
@@ -154,5 +155,19 @@ describe('native -> ScVal encoders', () => {
       estimated_delivery: '1700100000',
       origin: 'Lagos',
     });
+  });
+});
+
+describe('i128ToScVal 128-bit bounds and round-trip (#468)', () => {
+  it('round-trips max positive (2^127 - 1) and min negative (-2^127) i128 values', () => {
+    const maxI128 = (1n << 127n) - 1n;
+    const minI128 = -(1n << 127n);
+    expect(scValToNative(i128ToScVal(maxI128))).toBe(maxI128.toString());
+    expect(scValToNative(i128ToScVal(minI128))).toBe(minI128.toString());
+  });
+
+  it('throws RangeError when value exceeds signed 128-bit bounds', () => {
+    expect(() => i128ToScVal(1n << 127n)).toThrow(RangeError);
+    expect(() => i128ToScVal(-(1n << 127n) - 1n)).toThrow(RangeError);
   });
 });
