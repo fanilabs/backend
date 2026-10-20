@@ -49,12 +49,13 @@ declare module 'fastify' {
  */
 export const authGuard = {
   async authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
-    const header = request.headers.authorization;
-    if (!header?.startsWith('Bearer ')) {
+    const header = request.headers.authorization?.trim();
+    const match = header ? /^bearer\s+(.+)$/i.exec(header) : null;
+    if (!match || !match[1]?.trim()) {
       throw new UnauthorizedError('Missing or malformed Authorization header');
     }
 
-    const token = header.slice('Bearer '.length);
+    const token = match[1].trim();
 
     let claims;
     try {

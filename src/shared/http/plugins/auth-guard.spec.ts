@@ -206,3 +206,19 @@ describe('authenticate — auth context cache (#369)', () => {
     expect(cacheEntries.size).toBe(0);
   });
 });
+
+describe('authenticate — case-insensitive Bearer scheme (#463)', () => {
+  it('accepts lowercase bearer and uppercase BEARER schemes per RFC 6750', async () => {
+    vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
+      role: 'CUSTOMER',
+      tokenVersion: 0,
+    } as never);
+    const token = signAccessToken({ sub: 'user-1', role: 'CUSTOMER', tokenVersion: 0 });
+
+    for (const prefix of ['bearer', 'Bearer', 'BEARER']) {
+      const request = fakeRequest(`${prefix} ${token}`);
+      await authenticate(request, fakeReply);
+      expect(request.user).toEqual({ id: 'user-1', role: 'CUSTOMER' });
+    }
+  });
+});
