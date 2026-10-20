@@ -31,14 +31,33 @@ function isQueueStalled(queue: QueueCounts): boolean {
  * deeper checks like indexer lag live under /health/indexer once the
  * indexer module exists (ARCHITECTURE.md §6), not here.
  */
+export const HEALTH_PROBE_TIMEOUT_MS = 2_000;
+
+export async function runProbeWithTimeout(
+  probe: () => Promise<unknown>,
+  timeoutMs: number = HEALTH_PROBE_TIMEOUT_MS,
+): Promise<'ok' | 'error'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      probe(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error('Health probe timed out')), timeoutMs);
+      }),
+    ]);
+    return 'ok';
+  } catch {
+    return 'error';
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export default async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', async (_request, reply) => {
     const [database, redis] = await Promise.all([
-      getPrismaClient().$queryRaw`SELECT 1`.then(() => 'ok' as const).catch(() => 'error' as const),
-      getRedisClient()
-        .ping()
-        .then(() => 'ok' as const)
-        .catch(() => 'error' as const),
+      runProbeWithTimeout(() => getPrismaClient().$queryRaw`SELECT 1`),
+      runProbeWithTimeout(() => getRedisClient().ping()),
     ]);
 
     const body: HealthStatus = {
