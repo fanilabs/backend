@@ -44,11 +44,11 @@ import { createAdminModule } from './modules/admin/index.js';
  * ships in Phase 5 — see ROADMAP.md §5 for what's left.
  */
 export async function buildApp() {
-  const config = getConfig();
+  const DEFAULT_JSON_BODY_LIMIT = 256 * 1024; // 256 KiB; evidence upload overrides per-route
   const app = Fastify({
     loggerInstance: logger,
     trustProxy: true,
-    bodyLimit: config.EVIDENCE_MAX_BYTES,
+    bodyLimit: DEFAULT_JSON_BODY_LIMIT,
   }).withTypeProvider<ZodTypeProvider>();
 
   // Ensure native BigInt values serialize cleanly to strings across all Fastify JSON responses
