@@ -68,5 +68,6 @@ describe('unlinkWallet', () => {
     const remaining = await walletAddressRepository.findByUserId(userId);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].id).toBe(secondaryWallet.id);
+    expect(remaining[0].isPrimary).toBe(true);
   });
 });

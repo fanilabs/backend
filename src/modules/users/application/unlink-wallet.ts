@@ -33,5 +33,14 @@ export function createUnlinkWalletUseCase(deps: UnlinkWalletDeps) {
     }
 
     await deps.walletAddressRepository.remove(wallet.id);
+    if (wallet.isPrimary) {
+      const remaining = await deps.walletAddressRepository.findByUserId(input.userId);
+      const verified = remaining
+        .filter((w) => w.id !== wallet.id && w.verifiedAt !== null)
+        .sort((a, b) => (a.verifiedAt?.getTime() ?? 0) - (b.verifiedAt?.getTime() ?? 0));
+      if (verified[0]) {
+        await deps.walletAddressRepository.setPrimary(input.userId, verified[0].id);
+      }
+    }
   };
 }
