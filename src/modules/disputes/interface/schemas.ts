@@ -8,7 +8,8 @@ const chainDeliveryId = chainId;
 const evidenceHash = z
   .string()
   .max(64)
-  .regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
+  .regex(/^[0-9a-fA-F]{64}$/, 'Must be a 32-byte hex-encoded hash')
+  .transform((val) => val.toLowerCase());
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
 
 const allowedEvidenceContentTypes = [
