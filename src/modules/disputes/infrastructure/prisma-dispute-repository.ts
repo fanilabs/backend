@@ -59,9 +59,22 @@ export function createPrismaDisputeRepository(prisma: PrismaClient): DisputeRepo
       // pre-confirmation hint, not the authoritative write (see the port's
       // doc comment), so a missing row here must never throw/fail the
       // caller's request for an unsigned transaction that is otherwise
-      // valid to build. The `status: 'OPEN'` filter makes the "never
-      // overwrite a confirmed resolution" rule atomic rather than a
-      // separate read-then-write that could race with the real sync.
+      // valid to build.
+      //
+      // CRITICAL: The `status: 'OPEN'` filter is the safeguard against race
+      // conditions (documented in detail in DisputeRepository.recordProposedSenderShareBps
+      // in ports.ts). It makes "never overwrite a confirmed resolution" atomic
+      // rather than a separate read-then-write that could race with the sync
+      // layer processing a confirmed `dispute_resolved_split` event.
+      // Status values and order of operations (backend issue #40):
+      //   1. dispute_raised event syncs → status = 'OPEN'
+      //   2. Admin builds transaction → recordProposedSenderShareBps writes proposed value
+      //   3. Either:
+      //      a. Admin signs + blockchain confirms → sync sets status to 'SPLIT' + confirmed value
+      //      b. Admin rejects wallet → no-op, admin builds a new transaction
+      //   4. Any later recordProposedSenderShareBps calls → no-op because status is no longer 'OPEN'
+      // Without this guard: case 3a could race, leaving either the proposed OR confirmed
+      // value in the database depending on timing. With the guard: confirmed values always win.
       await prisma.dispute.updateMany({
         where: { chainDeliveryId, status: 'OPEN' },
         data: { senderShareBps },
