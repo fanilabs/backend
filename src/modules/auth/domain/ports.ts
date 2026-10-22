@@ -15,6 +15,16 @@ export interface UserRepository {
   create(input: { email: string; passwordHash: string; role: UserRole }): Promise<User>;
   markEmailVerified(id: string): Promise<void>;
   updatePasswordHash(id: string, passwordHash: string): Promise<void>;
+  /**
+   * Increments the user's tokenVersion by 1, immediately invalidating all
+   * outstanding access tokens for that user on their next use (security
+   * issue #12). Used by password reset to ensure compromised sessions
+   * can't execute authenticated actions post-reset until their tokens expire
+   * naturally (~15 min), and by role changes to ensure demoted users lose
+   * their former privileges at once rather than retaining them for the
+   * token's remaining lifetime.
+   */
+  incrementTokenVersion(id: string): Promise<void>;
 }
 
 export interface RefreshTokenRepository {
