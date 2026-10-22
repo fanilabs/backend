@@ -40,9 +40,8 @@ function passwordFingerprint(passwordHash: string): string {
  * tokens (access/refresh) reuse src/shared/jwt so their claim shape and
  * secret handling stay identical to what the shared HTTP auth guard
  * verifies; single-purpose tokens (email verification, password reset) are
- * signed here directly with an explicit `purpose` claim, checked strictly
- * on verify, so a token issued for one purpose can never be replayed as
- * another even though they share a signing secret.
+ * signed here directly with purpose-specific secrets and an explicit
+ * `purpose` claim, checked strictly on verify.
  */
 export function createJwtTokenService(): TokenService {
   const config = getConfig();
@@ -69,13 +68,17 @@ export function createJwtTokenService(): TokenService {
     hashToken: sha256Hex,
 
     issueEmailVerificationToken(user) {
-      return jwt.sign({ sub: user.id, purpose: 'email-verification' }, config.JWT_ACCESS_SECRET, {
-        expiresIn: EMAIL_VERIFICATION_TTL,
-      } as jwt.SignOptions);
+      return jwt.sign(
+        { sub: user.id, purpose: 'email-verification' },
+        config.JWT_VERIFICATION_SECRET,
+        {
+          expiresIn: EMAIL_VERIFICATION_TTL,
+        } as jwt.SignOptions,
+      );
     },
 
     verifyEmailVerificationToken(token) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, config.JWT_VERIFICATION_SECRET) as PurposeClaims;
       if (decoded.purpose !== 'email-verification' || !decoded.sub) {
         throw new Error('Token is not a valid email verification token');
       }
@@ -89,13 +92,13 @@ export function createJwtTokenService(): TokenService {
           purpose: 'password-reset',
           pwFingerprint: passwordFingerprint(user.passwordHash),
         },
-        config.JWT_ACCESS_SECRET,
+        config.JWT_RESET_SECRET,
         { expiresIn: PASSWORD_RESET_TTL } as jwt.SignOptions,
       );
     },
 
     verifyPasswordResetToken(token, currentPasswordHash) {
-      const decoded = jwt.verify(token, config.JWT_ACCESS_SECRET) as PurposeClaims;
+      const decoded = jwt.verify(token, config.JWT_RESET_SECRET) as PurposeClaims;
       if (decoded.purpose !== 'password-reset' || !decoded.sub) {
         throw new Error('Token is not a valid password reset token');
       }

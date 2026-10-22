@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
@@ -28,6 +29,41 @@ const required = {
 };
 
 describe('parseEnv', () => {
+  it('derives distinct purpose-specific JWT secrets from the access secret by default', () => {
+    const env = parseEnv(required);
+
+    expect(env.JWT_VERIFICATION_SECRET).toBe(
+      createHmac('sha256', required.JWT_ACCESS_SECRET).update('jwt-verification').digest('hex'),
+    );
+    expect(env.JWT_RESET_SECRET).toBe(
+      createHmac('sha256', required.JWT_ACCESS_SECRET).update('jwt-password-reset').digest('hex'),
+    );
+    expect(env.JWT_VERIFICATION_SECRET).not.toBe(env.JWT_RESET_SECRET);
+  });
+
+  it('accepts explicitly configured purpose-specific JWT secrets', () => {
+    const env = parseEnv({
+      ...required,
+      JWT_VERIFICATION_SECRET: 'v'.repeat(32),
+      JWT_RESET_SECRET: 'r'.repeat(32),
+    });
+
+    expect(env.JWT_VERIFICATION_SECRET).toBe('v'.repeat(32));
+    expect(env.JWT_RESET_SECRET).toBe('r'.repeat(32));
+  });
+
+  it('treats blank purpose-specific JWT secrets as unset', () => {
+    const env = parseEnv({
+      ...required,
+      JWT_VERIFICATION_SECRET: '',
+      JWT_RESET_SECRET: '',
+    });
+
+    expect(env.JWT_VERIFICATION_SECRET).not.toBe(required.JWT_ACCESS_SECRET);
+    expect(env.JWT_RESET_SECRET).not.toBe(required.JWT_ACCESS_SECRET);
+    expect(env.JWT_VERIFICATION_SECRET).not.toBe(env.JWT_RESET_SECRET);
+  });
+
   it('rejects an invalid LOG_LEVEL with the standard configuration error', () => {
     expect(() => parseEnv({ ...required, LOG_LEVEL: 'verbose' })).toThrow(
       /Invalid environment configuration/,
