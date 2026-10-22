@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getPrismaClient } from '../../database/index.js';
 import { getRedisClient } from '../../cache/index.js';
 import { getQueueHealth, type QueueCounts } from '../../queue/index.js';
+import { withTimeout } from '../../shutdown/with-timeout.js';
 
 interface HealthStatus {
   status: 'ok' | 'degraded';
@@ -30,15 +31,25 @@ function isQueueStalled(queue: QueueCounts): boolean {
  * Liveness/readiness probe. Deliberately cheap (single SELECT 1 / PING) —
  * deeper checks like indexer lag live under /health/indexer once the
  * indexer module exists (ARCHITECTURE.md §6), not here.
+ *
+ * All checks have 2-second timeouts to ensure the endpoint completes within
+ * Kubernetes probe deadlines (typically 2–5s) and prevents indefinite hangs
+ * during database stalls or network partitions (#XXX).
  */
+const HEALTH_CHECK_TIMEOUT_MS = 2000;
 export default async function healthRoutes(app: FastifyInstance): Promise<void> {
   app.get('/health', async (_request, reply) => {
     const [database, redis] = await Promise.all([
-      getPrismaClient().$queryRaw`SELECT 1`.then(() => 'ok' as const).catch(() => 'error' as const),
-      getRedisClient()
-        .ping()
-        .then(() => 'ok' as const)
-        .catch(() => 'error' as const),
+      withTimeout(
+        () => getPrismaClient().$queryRaw`SELECT 1`.then(() => 'ok' as const),
+        HEALTH_CHECK_TIMEOUT_MS,
+        'database health check',
+      ).catch(() => 'error' as const),
+      withTimeout(
+        () => getRedisClient().ping().then(() => 'ok' as const),
+        HEALTH_CHECK_TIMEOUT_MS,
+        'redis health check',
+      ).catch(() => 'error' as const),
     ]);
 
     const body: HealthStatus = {
