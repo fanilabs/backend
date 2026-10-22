@@ -7,6 +7,7 @@ import {
   createDispatchNotificationsFromEventUseCase,
   createGetNotificationUseCase,
   createListNotificationsUseCase,
+  createMarkNotificationsReadUseCase,
   createSendNotificationUseCase,
 } from './application/index.js';
 import {
@@ -21,8 +22,8 @@ import {
 import { createNotificationsRoutes } from './interface/routes.js';
 
 /**
- * API-process composition root: wires the read-only `GET /notifications*`
- * routes, and — as a side effect, same as every other module's own
+ * API-process composition root: wires notification read routes, and — as
+ * a side effect, same as every other module's own
  * `createXModule` — subscribes `dispatchNotificationsFromEvent` to the
  * shared in-process event bus. That subscription only actually fires when
  * this factory runs in the same OS process as the indexer's poll job (the
@@ -48,6 +49,7 @@ export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAs
   const useCases = {
     listNotifications: createListNotificationsUseCase({ notificationRepository }),
     getNotification: createGetNotificationUseCase({ notificationRepository }),
+    markNotificationsRead: createMarkNotificationsReadUseCase({ notificationRepository }),
   };
 
   return createNotificationsRoutes(useCases);

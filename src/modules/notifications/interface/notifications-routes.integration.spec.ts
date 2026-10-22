@@ -69,6 +69,47 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
 
+  it('rejects an unauthenticated mark-read request', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/notifications/mark-read',
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
+  });
+
+  it("marks all of the requesting user's unread notifications as read", async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.createMany({
+      data: Array.from({ length: 5 }, (_, index) => ({
+        userId,
+        channel: 'EMAIL' as const,
+        type: `mark-read-${index}`,
+        payload: {},
+      })),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/notifications/mark-read',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<SuccessBody<{ count: number }>>().data.count).toBe(5);
+
+    const listed = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    const notifications = listed.json<SuccessBody<Array<{ readAt: string | null }>>>().data;
+    expect(notifications).toHaveLength(5);
+    expect(notifications.every((notification) => notification.readAt !== null)).toBe(true);
+  });
+
   it("lists only the requesting user's own notifications", async () => {
     const { accessToken, userId } = await registerAndLogin();
     const { userId: otherUserId } = await registerAndLogin();

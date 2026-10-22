@@ -18,3 +18,8 @@ export {
   type GetNotificationDeps,
   type GetNotificationInput,
 } from './get-notification.js';
+export {
+  createMarkNotificationsReadUseCase,
+  type MarkNotificationsReadDeps,
+  type MarkNotificationsReadInput,
+} from './mark-notifications-read.js';

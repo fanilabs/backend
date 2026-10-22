@@ -475,6 +475,7 @@ model Notification {
   type      String
   payload   Json
   status    NotificationStatus  @default(PENDING)
+  readAt    DateTime?           @map("read_at")
   sentAt    DateTime?           @map("sent_at")
   createdAt DateTime            @default(now()) @map("created_at")
   updatedAt DateTime            @updatedAt @map("updated_at")
