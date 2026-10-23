@@ -113,3 +113,33 @@ describe('recordActorActivityFromEvent', () => {
     expect(activityRepository.all()).toHaveLength(0);
   });
 });
+
+describe('recordActorActivityFromEvent actor_flagged notification (#408)', () => {
+  it('emits notifyActorFlagged only on unflagged -> flagged transition', async () => {
+    const repo = createInMemoryActorActivityRepository();
+    const notified: string[] = [];
+    let count = 0;
+    const useCase = createRecordActorActivityFromEventUseCase({
+      activityRepository: repo,
+      assessActor: async ({ address }) => {
+        count += 1;
+        return { address, flagged: count >= 2, signals: [] };
+      },
+      alertNotifier: {
+        notifyActorFlagged: async (a) => {
+          notified.push(a.address);
+        },
+      },
+    });
+
+    const targetAddr = testAddress('flagged-actor');
+    await useCase(
+      buildBlockchainEvent({
+        contractName: 'escrow',
+        topic: ['delivery_disputed'],
+        payload: [targetAddr],
+      }),
+    );
+    expect(notified).toEqual([targetAddr]);
+  });
+});
