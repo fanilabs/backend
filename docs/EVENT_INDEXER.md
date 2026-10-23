@@ -59,3 +59,7 @@ No FaniLab contracts are deployed anywhere reachable from this repository's own 
 ## Status
 
 Implemented (Phase 5). Verified against the real public Soroban testnet RPC (not just fakes) for `getLatestLedger`/`getEvents` connectivity and XDR decoding — there being no deployed FaniLab contracts to fetch real business events from is a deployment-environment fact, not a testing gap; the request/response/decode pipeline itself is proven against a live network. Checkpoint/event-store idempotency is verified against a real Postgres database (CI) or skipped honestly where none is reachable.
+
+## Notifications
+
+Event-triggered notifications support channel-keyed routing via `NotificationSenderRegistry` (`EMAIL`, `SMS`, `PUSH`). In v1, `EMAIL` is wired by default (`selectNotificationSender`); when a `senderRegistry` is configured without an `SMS` or `PUSH` provider, non-email records remain in a deferred `PENDING` state with a configuration notice rather than poisoning terminal failure counters (`notification_failures_total`).
