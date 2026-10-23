@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { addressToScVal, scValToNative, u64ToScVal } from '../../../blockchain/xdr/sc-val.js';
 import {
   nativeToChainDriverProfile,
+  u64StringToDate,
   registerDriverArgsToScVal,
   updateDriverKycStatusArgsToScVal,
 } from './reputation-scval-mapping.js';
@@ -81,5 +82,15 @@ describe('nativeToChainDriverProfile', () => {
 
   it('throws on a structurally invalid profile rather than returning partial data', () => {
     expect(() => nativeToChainDriverProfile({ not: 'a driver profile' })).toThrow();
+  });
+});
+
+describe('u64StringToDate validation (#447)', () => {
+  it('rejects empty, non-numeric, negative, and overflowing u64 timestamp strings', () => {
+    expect(() => u64StringToDate('')).toThrow();
+    expect(() => u64StringToDate('abc')).toThrow();
+    expect(() => u64StringToDate('-100')).toThrow();
+    expect(() => u64StringToDate('99999999999999999999')).toThrow(/exceeds safe Date bounds/);
+    expect(u64StringToDate('1700000000').toISOString()).toBe('2023-11-14T22:13:20.000Z');
   });
 });
