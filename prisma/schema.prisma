@@ -247,7 +247,7 @@ model Escrow {
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 
-  delivery Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
+  delivery Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId], onDelete: Restrict)
 
   /// Backs `analytics.getGmvByToken`'s `groupBy` on exactly this predicate
   /// (`status = 'RELEASED'`, grouped by `token`) — see
@@ -287,7 +287,7 @@ model Dispute {
   createdAt       DateTime      @default(now()) @map("created_at")
   updatedAt       DateTime      @updatedAt @map("updated_at")
 
-  delivery Delivery   @relation(fields: [chainDeliveryId], references: [chainDeliveryId])
+  delivery Delivery   @relation(fields: [chainDeliveryId], references: [chainDeliveryId], onDelete: Restrict)
   evidence Evidence[]
   raiser   User?      @relation(fields: [raisedByUserId], references: [id], onDelete: SetNull)
 
