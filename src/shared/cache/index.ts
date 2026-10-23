@@ -1,4 +1,4 @@
-export { getRedisClient, disconnectRedis } from './redis-client.js';
+export { getRedisClient, disconnectRedis, REDIS_DISCONNECT_TIMEOUT_MS } from './redis-client.js';
 export {
   readAuthContext,
   writeAuthContext,
