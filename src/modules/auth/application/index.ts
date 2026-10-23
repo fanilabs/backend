@@ -26,3 +26,4 @@ export {
   type ResetPasswordDeps,
   type ResetPasswordInput,
 } from './reset-password.js';
+export { createResendVerificationEmailUseCase, type ResendVerificationEmailDeps, type ResendVerificationEmailInput } from './resend-verification-email.js';

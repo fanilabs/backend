@@ -78,3 +78,5 @@ export const resetPasswordBodySchema = z.object({
 export const emptyDataResponseSchema = z.object({
   data: z.object({}),
 });
+
+export const resendVerificationEmailBodySchema = z.object({ email });
