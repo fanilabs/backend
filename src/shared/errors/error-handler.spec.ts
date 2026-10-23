@@ -217,4 +217,17 @@ describe('error-handler', () => {
     expect(sendArg.error.details).toEqual({ column_name: 'recipient_address' });
     expect(sendArg.requestId).toBe('req-123');
   });
+
+  it('redacts raw Prisma error.meta from HTTP 409 P2002 and P2003 responses (#436)', () => {
+    const reply = createMockReply();
+    const request = createMockRequest(() => {});
+    const p2002 = Object.assign(new Error('Unique constraint'), {
+      code: 'P2002',
+      meta: { target: ['users_email_key'] },
+    });
+    handleError(p2002, request, reply);
+    expect(reply.status).toHaveBeenCalledWith(409);
+    const sendArg = (reply.send as any).mock.calls[0]?.[0];
+    expect(JSON.stringify(sendArg)).not.toContain('users_email_key');
+  });
 });
