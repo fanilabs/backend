@@ -113,7 +113,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
     app.post(
       '/transactions/build/confirm-delivery',
       {
-        onRequest: [authenticate],
+        preHandler: authenticate,
         schema: { body: confirmDeliveryBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
