@@ -26,6 +26,7 @@ const notificationDto = z.object({
   payload: z.record(z.unknown()),
   status: notificationStatus,
   sentAt: z.string().datetime().nullable(),
+  failureReason: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
 

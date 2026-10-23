@@ -33,6 +33,7 @@ function serializeNotification(notification: Notification) {
     payload: notification.payload,
     status: notification.status,
     sentAt: notification.sentAt?.toISOString() ?? null,
+    failureReason: notification.failureReason,
     createdAt: notification.createdAt.toISOString(),
   };
 }

@@ -34,6 +34,8 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
         payload: input.payload,
         status: 'PENDING',
         sentAt: null,
+        failureReason: null,
+        attempts: 0,
         createdAt: new Date(),
       };
       notifications.set(notification.id, notification);
@@ -54,10 +56,15 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
       if (!existing) return;
       notifications.set(id, { ...existing, status: 'SENT', sentAt });
     },
-    async markFailed(id) {
+    async markFailed(id: string, reason: string | null) {
       const existing = notifications.get(id);
       if (!existing) return;
-      notifications.set(id, { ...existing, status: 'FAILED' });
+      notifications.set(id, {
+        ...existing,
+        status: 'FAILED',
+        failureReason: reason ?? null,
+        attempts: existing.attempts + 1,
+      });
     },
   };
 }
@@ -143,6 +150,8 @@ export function buildNotification(overrides: Partial<Notification> = {}): Notifi
     payload: {},
     status: 'PENDING',
     sentAt: null,
+    failureReason: null,
+    attempts: 0,
     createdAt: new Date('2026-01-01T00:00:00Z'),
     ...overrides,
   };

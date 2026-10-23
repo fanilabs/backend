@@ -47,6 +47,8 @@ describe.skipIf(!dbAvailable)('Prisma notification repository (integration)', ()
       type: 'delivery.driver_assigned',
       status: 'PENDING',
       payload: { chainDeliveryId: '42' },
+      failureReason: null,
+      attempts: 0,
     });
     expect(await notificationRepository.findById(created.id)).toMatchObject({ id: created.id });
   });
@@ -74,7 +76,12 @@ describe.skipIf(!dbAvailable)('Prisma notification repository (integration)', ()
       payload: {},
     });
     await notificationRepository.markFailed(other.id);
-    expect(await notificationRepository.findById(other.id)).toMatchObject({ status: 'FAILED' });
+    await notificationRepository.markFailed(other.id, 'Invalid SMTP address');
+    expect(await notificationRepository.findById(other.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'Invalid SMTP address',
+      attempts: 1,
+    });
   });
 
   it('listByUserId filters by status, orders newest first, and respects limit', async () => {

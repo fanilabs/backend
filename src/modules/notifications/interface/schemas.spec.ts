@@ -1,8 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import {
-  getNotificationResponseSchema,
-  listNotificationsResponseSchema,
-} from './schemas.js';
+import { getNotificationResponseSchema, listNotificationsResponseSchema } from './schemas.js';
 
 /**
  * Regression coverage for the notification channel data/type mismatch: the
@@ -19,6 +16,7 @@ function notificationDto(channel: string) {
     payload: {},
     status: 'PENDING',
     sentAt: null,
+    failureReason: null,
     createdAt: '2026-01-01T00:00:00.000Z',
   };
 }
@@ -48,7 +46,9 @@ describe('notification response schemas', () => {
   });
 
   it('still rejects a channel value outside the persisted domain enum', () => {
-    const result = getNotificationResponseSchema.safeParse({ data: notificationDto('CARRIER_PIGEON') });
+    const result = getNotificationResponseSchema.safeParse({
+      data: notificationDto('CARRIER_PIGEON'),
+    });
     expect(result.success).toBe(false);
   });
 });

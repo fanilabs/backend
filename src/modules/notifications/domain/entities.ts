@@ -10,5 +10,7 @@ export interface Notification {
   payload: Record<string, unknown>;
   status: NotificationStatus;
   sentAt: Date | null;
+  failureReason: string | null;
+  attempts: number;
   createdAt: Date;
 }

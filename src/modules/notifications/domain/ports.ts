@@ -30,7 +30,7 @@ export interface NotificationRepository {
   findById(id: string): Promise<Notification | null>;
   listByUserId(userId: string, filter: ListNotificationsFilter): Promise<Notification[]>;
   markSent(id: string, sentAt: Date): Promise<void>;
-  markFailed(id: string): Promise<void>;
+  markFailed(id: string, reason?: string): Promise<void>;
 }
 
 export interface UserContact {

@@ -60,7 +60,10 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
     // immediately rather than going through the isFinalAttempt-gated path
     // below, which exists for genuinely transient failures.
     if (notification.channel !== 'EMAIL') {
-      await deps.notificationRepository.markFailed(notification.id);
+      await deps.notificationRepository.markFailed(
+        notification.id,
+        `No sender configured for channel ${notification.channel}`,
+      );
       log.error(
         { notificationId: notification.id, channel: notification.channel },
         'Notification channel has no configured sender — marking failed without attempting delivery',
@@ -73,7 +76,10 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
     const contact = await deps.userContactLookup.findByUserId(notification.userId);
     if (!contact) {
       if (isFinalAttempt) {
-        await deps.notificationRepository.markFailed(notification.id);
+        await deps.notificationRepository.markFailed(
+          notification.id,
+          'No contact email found for notification recipient',
+        );
         log.error(
           { notificationId: notification.id, userId: notification.userId, isFinalAttempt },
           'No contact email found for notification recipient',
@@ -102,7 +108,10 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
       });
     } catch (error: unknown) {
       if (isFinalAttempt) {
-        await deps.notificationRepository.markFailed(notification.id);
+        await deps.notificationRepository.markFailed(
+          notification.id,
+          error instanceof Error ? error.message : String(error),
+        );
       } else {
         log.warn(
           { notificationId: notification.id, err: error },
