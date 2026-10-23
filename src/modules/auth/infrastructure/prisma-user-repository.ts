@@ -42,5 +42,8 @@ export function createPrismaUserRepository(prisma: PrismaClient): UserRepository
     async updatePasswordHash(id, passwordHash) {
       await prisma.user.update({ where: { id }, data: { passwordHash } });
     },
+    async incrementTokenVersion(id) {
+      await prisma.user.update({ where: { id }, data: { tokenVersion: { increment: 1 } } });
+    },
   };
 }

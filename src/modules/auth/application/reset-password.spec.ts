@@ -54,6 +54,19 @@ describe('resetPassword', () => {
     expect(stored?.revokedAt).not.toBeNull();
   });
 
+  it('increments tokenVersion to invalidate outstanding access tokens', async () => {
+    const { userRepository, tokenService, resetPassword } = setup();
+    const user = buildUser({ passwordHash: 'hashed:old' });
+    userRepository.seed(user);
+    const token = tokenService.issuePasswordResetToken(user);
+    const initialTokenVersion = user.tokenVersion;
+
+    await resetPassword({ token, newPassword: 'newpassword' });
+
+    const updated = await userRepository.findById(user.id);
+    expect(updated?.tokenVersion).toBe(initialTokenVersion + 1);
+  });
+
   it('rejects a token issued against a password that has since changed', async () => {
     const { userRepository, tokenService, resetPassword } = setup();
     const user = buildUser({ passwordHash: 'hashed:old' });
