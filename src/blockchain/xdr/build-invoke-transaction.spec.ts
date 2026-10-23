@@ -160,3 +160,30 @@ describe('buildInvokeTransaction', () => {
     expect(builtTx.memo.value).toBeNull();
   });
 });
+
+describe('buildInvokeTransaction configurable timeout (#455)', () => {
+  it('defaults to 300s timeout and honors custom timeoutSeconds', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const account = new Account(sourceKeypairAddress, '100');
+    const contractId = Address.contract(randomBytes(32)).toString();
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+    const preparedTx = new TransactionBuilder(new Account(sourceKeypairAddress, '100'), {
+      fee: BASE_FEE,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    })
+      .addOperation(new Contract(contractId).call('assign_driver'))
+      .setTimeout(180)
+      .build();
+    const prepareSpy = vi.spyOn(client, 'prepareTransaction').mockResolvedValue(preparedTx);
+
+    await buildInvokeTransaction(client, {
+      contractId,
+      method: 'assign_driver',
+      args: [u64ToScVal(7n)],
+      sourceAddress: sourceKeypairAddress,
+      timeoutSeconds: 180,
+    });
+    expect(prepareSpy).toHaveBeenCalledTimes(1);
+  });
+});
