@@ -9,6 +9,7 @@ export interface Notification {
   type: string;
   payload: Record<string, unknown>;
   status: NotificationStatus;
+  readAt: Date | null;
   sentAt: Date | null;
   failureReason: string | null;
   attempts: number;

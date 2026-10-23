@@ -25,6 +25,7 @@ const notificationDto = z.object({
   type: z.string().max(100),
   payload: z.record(z.unknown()),
   status: notificationStatus,
+  readAt: z.string().datetime().nullable(),
   sentAt: z.string().datetime().nullable(),
   failureReason: z.string().nullable(),
   createdAt: z.string().datetime(),
@@ -45,3 +46,6 @@ export const listNotificationsResponseSchema = z.object({
 
 export const notificationIdParamsSchema = z.object({ id: z.string().uuid() });
 export const getNotificationResponseSchema = z.object({ data: notificationDto });
+export const markNotificationsReadResponseSchema = z.object({
+  data: z.object({ count: z.number().int().nonnegative() }),
+});

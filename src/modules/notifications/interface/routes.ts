@@ -4,17 +4,20 @@ import type { Notification } from '../domain/index.js';
 import type {
   createGetNotificationUseCase,
   createListNotificationsUseCase,
+  createMarkNotificationsReadUseCase,
 } from '../application/index.js';
 import {
   getNotificationResponseSchema,
   listNotificationsQuerySchema,
   listNotificationsResponseSchema,
+  markNotificationsReadResponseSchema,
   notificationIdParamsSchema,
 } from './schemas.js';
 
 export interface NotificationsUseCases {
   listNotifications: ReturnType<typeof createListNotificationsUseCase>;
   getNotification: ReturnType<typeof createGetNotificationUseCase>;
+  markNotificationsRead: ReturnType<typeof createMarkNotificationsReadUseCase>;
 }
 
 function serializeNotification(notification: Notification) {
@@ -32,6 +35,7 @@ function serializeNotification(notification: Notification) {
     type: notification.type,
     payload: notification.payload,
     status: notification.status,
+    readAt: notification.readAt?.toISOString() ?? null,
     sentAt: notification.sentAt?.toISOString() ?? null,
     failureReason: notification.failureReason,
     createdAt: notification.createdAt.toISOString(),
@@ -40,6 +44,23 @@ function serializeNotification(notification: Notification) {
 
 export function createNotificationsRoutes(useCases: NotificationsUseCases): FastifyPluginAsyncZod {
   return async function notificationsRoutes(app) {
+    app.post(
+      '/notifications/mark-read',
+      {
+        onRequest: [authenticate],
+        schema: {
+          security: [{ bearerAuth: [] }],
+          response: { 200: markNotificationsReadResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        const result = await useCases.markNotificationsRead({
+          userId: requireUser(request).id,
+        });
+        void reply.status(200).send(ok(result));
+      },
+    );
+
     app.get(
       '/notifications',
       {

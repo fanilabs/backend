@@ -24,6 +24,11 @@ The live, authoritative reference is generated from the same Zod schemas that va
 | `POST` | `/api/v1/auth/verify-email` | Consume an email verification token (idempotent) |
 | `POST` | `/api/v1/auth/request-password-reset` | Always returns success — no user enumeration; sends a reset email only if the address is registered |
 | `POST` | `/api/v1/auth/reset-password` | Consume a password reset token, set a new password, revoke all existing sessions |
+| `GET` | `/api/v1/notifications` | List the authenticated user's notifications, including nullable `readAt` |
+| `GET` | `/api/v1/notifications/:id` | Get one of the authenticated user's notifications |
+| `POST` | `/api/v1/notifications/mark-read` | Mark all unread notifications for the authenticated user as read; returns `{ "data": { "count": 5 } }` |
+
+All `/api/v1/notifications*` routes require authentication. The mark-read endpoint scopes updates to the authenticated user and does not change notification delivery status.
 
 All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate email), `401 UNAUTHORIZED` (bad credentials / invalid or expired token), `400 VALIDATION_ERROR` (malformed request body). See `AUTHENTICATION.md` for the full design (token formats, rotation, password-reset fingerprinting).
 

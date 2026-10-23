@@ -9,6 +9,7 @@ function toDomain(record: PrismaNotification): Notification {
     type: record.type,
     payload: record.payload as Record<string, unknown>,
     status: record.status,
+    readAt: record.readAt,
     sentAt: record.sentAt,
     failureReason: record.failureReason,
     attempts: record.attempts,
@@ -46,6 +47,14 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
         take: filter.limit,
       });
       return records.map(toDomain);
+    },
+
+    async markAllRead(userId) {
+      const result = await prisma.notification.updateMany({
+        where: { userId, readAt: null },
+        data: { readAt: new Date() },
+      });
+      return result.count;
     },
 
     async markSent(id, sentAt) {

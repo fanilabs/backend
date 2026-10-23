@@ -29,6 +29,7 @@ export interface NotificationRepository {
   create(input: CreateNotificationInput): Promise<Notification>;
   findById(id: string): Promise<Notification | null>;
   listByUserId(userId: string, filter: ListNotificationsFilter): Promise<Notification[]>;
+  markAllRead(userId: string): Promise<number>;
   markSent(id: string, sentAt: Date): Promise<void>;
   markFailed(id: string, reason?: string): Promise<void>;
 }

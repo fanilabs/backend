@@ -33,6 +33,7 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
         type: input.type,
         payload: input.payload,
         status: 'PENDING',
+        readAt: null,
         sentAt: null,
         failureReason: null,
         attempts: 0,
@@ -50,6 +51,17 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
         .filter((n) => !filter.status || n.status === filter.status)
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, filter.limit);
+    },
+    async markAllRead(userId) {
+      const readAt = new Date();
+      let count = 0;
+      for (const [id, notification] of notifications) {
+        if (notification.userId === userId && notification.readAt === null) {
+          notifications.set(id, { ...notification, readAt });
+          count += 1;
+        }
+      }
+      return count;
     },
     async markSent(id, sentAt) {
       const existing = notifications.get(id);
@@ -149,6 +161,7 @@ export function buildNotification(overrides: Partial<Notification> = {}): Notifi
     type: 'delivery.driver_assigned',
     payload: {},
     status: 'PENDING',
+    readAt: null,
     sentAt: null,
     failureReason: null,
     attempts: 0,
