@@ -111,6 +111,21 @@ export function handleError(
       void reply.status(409).send(body);
       return;
     }
+    if (error.code === 'P2004' || error.code === 'P2011') {
+      const body: ErrorResponseBody = {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message:
+            error.code === 'P2011'
+              ? 'Null constraint violation on a required field'
+              : 'Database constraint check failed',
+          details: error.meta,
+        },
+        requestId,
+      };
+      void reply.status(400).send(body);
+      return;
+    }
     if (error.code === 'P2000') {
       const body: ErrorResponseBody = {
         error: {
