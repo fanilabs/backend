@@ -53,3 +53,22 @@ describe('metrics plugin', () => {
     await app.close();
   });
 });
+
+describe('metricsPlugin operational route exclusion (#415)', () => {
+  it('does not record /metrics or /health scrapes in http_requests_total', async () => {
+    const Fastify = (await import('fastify')).default;
+    const { registry } = await import('../../metrics/index.js');
+    const app = Fastify();
+    await app.register(metricsPlugin);
+    app.get('/metrics', async () => 'ok');
+    app.get('/health', async () => ({ status: 'ok' }));
+
+    await app.inject({ method: 'GET', url: '/metrics' });
+    await app.inject({ method: 'GET', url: '/health' });
+
+    const output = await registry.metrics();
+    expect(output).not.toContain('route="/metrics"');
+    expect(output).not.toContain('route="/health"');
+    await app.close();
+  });
+});
