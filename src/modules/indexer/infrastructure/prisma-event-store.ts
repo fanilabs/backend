@@ -41,5 +41,14 @@ export function createPrismaEventStore(prisma: PrismaClient): EventStore {
         throw error;
       }
     },
+    async remove(event) {
+      await prisma.blockchainEvent.deleteMany({
+        where: {
+          contractName: event.contractName,
+          network: event.network,
+          rpcEventId: event.rpcEventId,
+        },
+      });
+    },
   };
 }

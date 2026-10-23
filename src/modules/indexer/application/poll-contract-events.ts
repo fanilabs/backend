@@ -90,14 +90,13 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
 
       const inserted = await deps.eventStore.tryInsert(stored);
       if (inserted) {
-        eventsInserted += 1;
-        // Await every subscriber for this event (the in-process bus bounds
-        // their concurrency) before the next event is published, before the
-        // checkpoint below advances, and therefore before the next poll
-        // cycle starts — fire-and-forget publishing here is what let
-        // catch-up batches pile up unbounded parallel database writes
-        // (issue #349).
-        await deps.eventPublisher.publish(stored);
+        try {
+          await deps.eventPublisher.publish(stored);
+          eventsInserted += 1;
+        } catch (err: unknown) {
+          await deps.eventStore.remove?.(stored);
+          throw err;
+        }
       }
     }
 

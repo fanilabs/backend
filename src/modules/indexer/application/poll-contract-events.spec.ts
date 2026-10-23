@@ -221,4 +221,38 @@ describe('pollContractEvents', () => {
       lastLedgerSeq: 1002n,
     });
   });
+
+  it('removes the inserted event if eventPublisher.publish throws so subsequent polls retry (#424)', async () => {
+    const checkpointRepository = createInMemoryCheckpointRepository();
+    const eventStore = createInMemoryEventStore();
+    const eventSource = createFakeEventSource();
+    let shouldFail = true;
+    const published: unknown[] = [];
+    const eventPublisher: EventPublisher = {
+      async publish(evt) {
+        if (shouldFail) {
+          shouldFail = false;
+          throw new Error('subscriber failure');
+        }
+        published.push(evt);
+      },
+    };
+    const poll = createPollContractEventsUseCase({
+      checkpointRepository,
+      eventStore,
+      eventSource,
+      eventPublisher,
+    });
+    const raw = buildRawEvent({ rpcEventId: 'evt-retry-424' });
+    eventSource.queueResponse({ events: [raw], latestLedgerSeen: 1005 });
+
+    await expect(
+      poll({ contractName: 'escrow', contractId: 'C_ESCROW', network: 'testnet' }),
+    ).rejects.toThrow('subscriber failure');
+
+    eventSource.queueResponse({ events: [raw], latestLedgerSeen: 1005 });
+    const second = await poll({ contractName: 'escrow', contractId: 'C_ESCROW', network: 'testnet' });
+    expect(second.eventsInserted).toBe(1);
+    expect(published).toHaveLength(1);
+  });
 });
