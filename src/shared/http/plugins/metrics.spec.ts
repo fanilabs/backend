@@ -53,3 +53,21 @@ describe('metrics plugin', () => {
     await app.close();
   });
 });
+
+describe('createMetricsRoutes resilient external gauge refresh (#434)', () => {
+  it('returns 200 OK even when refreshExternalGauges rejects', async () => {
+    const Fastify = (await import('fastify')).default;
+    const { createMetricsRoutes } = await import('../routes/metrics.js');
+    const app = Fastify();
+    await app.register(
+      createMetricsRoutes({
+        refreshExternalGauges: async () => {
+          throw new Error('Redis down');
+        },
+      }),
+    );
+    const res = await app.inject({ method: 'GET', url: '/metrics' });
+    expect(res.statusCode).toBe(200);
+    await app.close();
+  });
+});
