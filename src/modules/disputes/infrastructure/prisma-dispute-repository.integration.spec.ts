@@ -169,4 +169,86 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
       }),
     ).rejects.toThrow();
   });
+
+  it('recordProposedSenderShareBps guards against overwriting a resolved dispute (backend issue #40)', async () => {
+    const chainDeliveryId = await nextChainId();
+    const raisedAt = new Date('2026-01-01T00:00:00Z');
+
+    // Create and resolve a dispute
+    await disputeRepository.upsert(chainDeliveryId, {
+      status: 'OPEN',
+      raisedBy: 'GRAISER',
+      raisedAt,
+    });
+
+    // Simulate on-chain resolution: transition from OPEN to SPLIT
+    const resolvedAt = new Date('2026-02-01T00:00:00Z');
+    await disputeRepository.upsert(chainDeliveryId, {
+      status: 'SPLIT',
+      raisedBy: 'GRAISER',
+      raisedAt,
+      resolvedBy: 'GADMIN',
+      resolvedAt,
+      senderShareBps: 7500, // The confirmed, on-chain split ratio
+    });
+
+    const resolved = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+    expect(resolved?.status).toBe('SPLIT');
+    expect(resolved?.senderShareBps).toBe(7500);
+
+    // Simulate an admin building a split-funds transaction *after* the
+    // dispute has already been resolved on-chain. This call must be a
+    // no-op: the proposed value (1000) must never overwrite the confirmed
+    // value (7500), even though recordProposedSenderShareBps is called.
+    await disputeRepository.recordProposedSenderShareBps(chainDeliveryId, 1000);
+
+    const stillResolved = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+    expect(stillResolved?.status).toBe('SPLIT');
+    expect(stillResolved?.senderShareBps).toBe(7500);
+  });
+
+  it('recordProposedSenderShareBps allows writes while dispute is OPEN', async () => {
+    const chainDeliveryId = await nextChainId();
+    const raisedAt = new Date('2026-01-01T00:00:00Z');
+
+    // Create an open dispute
+    await disputeRepository.upsert(chainDeliveryId, {
+      status: 'OPEN',
+      raisedBy: 'GRAISER',
+      raisedAt,
+    });
+
+    // Admin builds a split-funds transaction and proposes a 6000 bps split
+    await disputeRepository.recordProposedSenderShareBps(chainDeliveryId, 6000);
+
+    const updated = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+    expect(updated?.senderShareBps).toBe(6000);
+  });
+
+  it('recordProposedSenderShareBps skips all non-OPEN status values (resilience against off-by-one edge cases)', async () => {
+    const allResolutions = ['RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT'] as const;
+
+    for (const resolution of allResolutions) {
+      const chainDeliveryId = await nextChainId();
+      const raisedAt = new Date('2026-01-01T00:00:00Z');
+
+      // Create a dispute and immediately mark it as resolved
+      await disputeRepository.upsert(chainDeliveryId, {
+        status: resolution,
+        raisedBy: 'GRAISER',
+        raisedAt,
+        resolvedBy: 'GADMIN',
+        resolvedAt: new Date('2026-02-01T00:00:00Z'),
+        senderShareBps: 9999, // Confirmed on-chain value
+      });
+
+      // Attempt to record a proposed value on this already-resolved dispute
+      await disputeRepository.recordProposedSenderShareBps(chainDeliveryId, 1111);
+
+      // Confirmed value must be preserved, not overwritten
+      const dispute = await disputeRepository.findByChainDeliveryId(chainDeliveryId);
+      expect(dispute?.status).toBe(resolution);
+      expect(dispute?.senderShareBps).toBe(9999);
+    }
+  });
 });
