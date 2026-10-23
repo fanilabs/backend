@@ -45,7 +45,7 @@ export async function scheduleFraudActivityCleanup(): Promise<void> {
 export function createFraudActivityCleanupWorker(prisma: PrismaClient): Worker {
   const activityRepository = createPrismaActorActivityRepository(prisma);
 
-  return new Worker(
+  const worker = new Worker(
     QueueName.FraudActivityCleanup,
     async () => {
       const retentionDays = getConfig().FRAUD_ACTIVITY_RETENTION_DAYS;
@@ -56,4 +56,9 @@ export function createFraudActivityCleanupWorker(prisma: PrismaClient): Worker {
     },
     { connection: getQueueConnection() },
   );
+  worker.on('error', (err) => log.error({ err }, 'Fraud activity cleanup worker error'));
+  worker.on('failed', (job, err) =>
+    log.error({ jobId: job?.id, err }, 'Fraud activity cleanup job failed'),
+  );
+  return worker;
 }
