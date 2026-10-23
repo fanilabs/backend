@@ -84,7 +84,7 @@ describe('uploadEvidence', () => {
     const dispute = buildDispute({ chainDeliveryId: 1n, status: 'OPEN' });
     disputeRepository.seed(dispute);
     walletOwnershipRepository.seed('user-1', 'GSENDER');
-    const bytes = Buffer.from('evidence-file-contents');
+    const bytes = Buffer.from('%PDF-1.4 evidence-file-contents');
     const expectedHash = createHash('sha256').update(bytes).digest('hex');
 
     const result = await uploadEvidence({
@@ -110,7 +110,7 @@ describe('uploadEvidence', () => {
       chainDeliveryId: 1n,
       contentType: 'application/pdf',
       uploadedBy: 'GSENDER',
-      bytes: Buffer.from('evidence-file-contents'),
+      bytes: Buffer.from('%PDF-1.4 evidence-file-contents'),
       requesterId: 'user-1',
     });
 
@@ -118,5 +118,33 @@ describe('uploadEvidence', () => {
     expect((await evidenceRepository.findById(result.evidence.id))?.uploadedByUserId).toBe(
       'user-1',
     );
+  });
+
+  it('deletes the stored file from evidenceStorage when evidenceRepository.create fails (#431)', async () => {
+    const { disputeRepository, walletOwnershipRepository, evidenceRepository, evidenceStorage, uploadEvidence } =
+      setup();
+    disputeRepository.seed(buildDispute({ chainDeliveryId: 1n, status: 'OPEN' }));
+    walletOwnershipRepository.seed('user-1', 'GSENDER');
+    evidenceRepository.create = async () => {
+      throw new Error('DB insert failed');
+    };
+    let deletedUrl: string | null = null;
+    const origDelete = evidenceStorage.delete.bind(evidenceStorage);
+    evidenceStorage.delete = async (url) => {
+      deletedUrl = url;
+      await origDelete(url);
+    };
+
+    await expect(
+      uploadEvidence({
+        chainDeliveryId: 1n,
+        contentType: 'application/pdf',
+        uploadedBy: 'GSENDER',
+        bytes: Buffer.from('%PDF-1.4 rollback-test'),
+        requesterId: 'user-1',
+      }),
+    ).rejects.toThrow('DB insert failed');
+
+    expect(deletedUrl).not.toBeNull();
   });
 });
