@@ -362,6 +362,7 @@ model FleetDriver {
   // (fleetId, driverAddress) key can only narrow to the fleet's rows and
   // then filter status in a heap fetch.
   @@index([fleetId, status])
+  @@index([fleetId, invitedAt(sort: Desc)])
   @@map("fleet_drivers")
 }
 
