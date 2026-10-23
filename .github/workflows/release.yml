@@ -20,6 +20,9 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
       - run: pnpm build
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3.0.3
