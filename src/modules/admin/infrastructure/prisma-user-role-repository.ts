@@ -22,6 +22,9 @@ export function createPrismaUserRoleRepository(
     },
 
     async countByRole(role) {
+      if (role === 'ADMIN' && '$queryRaw' in prisma && typeof prisma.$queryRaw === 'function') {
+        await prisma.$queryRaw`SELECT 1 FROM users WHERE role = 'ADMIN' FOR UPDATE`;
+      }
       return prisma.user.count({ where: { role } });
     },
   };
