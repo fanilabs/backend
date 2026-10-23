@@ -12,4 +12,26 @@ describe('getPayoutAddress', () => {
 
     expect(result).toBe('GTREASURY');
   });
+
+  it('caches resolved payout addresses within the 5-minute TTL (#397)', async () => {
+    let calls = 0;
+    const contractReader = {
+      async getFleet() {
+        throw new Error('unused');
+      },
+      async getDriverFleetRecord() {
+        throw new Error('unused');
+      },
+      async getPayoutAddress() {
+        calls += 1;
+        return 'GCACHED_PAYOUT';
+      },
+    };
+    const getPayoutAddress = createGetPayoutAddressUseCase({ contractReader });
+    const first = await getPayoutAddress({ chainFleetId: 1n, driverAddress: 'GDRIVER' });
+    const second = await getPayoutAddress({ chainFleetId: 1n, driverAddress: 'GDRIVER' });
+    expect(first).toBe('GCACHED_PAYOUT');
+    expect(second).toBe('GCACHED_PAYOUT');
+    expect(calls).toBe(1);
+  });
 });

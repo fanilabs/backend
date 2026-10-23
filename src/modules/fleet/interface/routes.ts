@@ -76,7 +76,15 @@ export function createFleetRoutes(useCases: FleetUseCases): FastifyPluginAsyncZo
     app.get(
       '/fleets/:chainFleetId/payout-address/:driverAddress',
       {
+        preHandler: authenticate,
+        config: {
+          rateLimit: {
+            max: 10,
+            timeWindow: '1 minute',
+          },
+        },
         schema: {
+          security: [{ bearerAuth: [] }],
           params: payoutAddressParamsSchema,
           response: { 200: payoutAddressResponseSchema },
         },
