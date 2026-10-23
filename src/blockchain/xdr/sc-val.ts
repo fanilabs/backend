@@ -117,7 +117,13 @@ export function u64ToScVal(value: bigint | number): xdr.ScVal {
  * `scValToNative`, including negative amounts). FaniLab escrow amounts are
  * always non-negative in practice, but the Rust type is signed (`i128`), so
  * this accepts any bigint rather than assuming non-negativity. */
+export const MIN_I128 = -(1n << 127n);
+export const MAX_I128 = (1n << 127n) - 1n;
+
 export function i128ToScVal(value: bigint): xdr.ScVal {
+  if (value < MIN_I128 || value > MAX_I128) {
+    throw new RangeError(`Value ${value.toString()} is outside signed 128-bit integer bounds`);
+  }
   const mask64 = (1n << 64n) - 1n;
   const lo = value & mask64;
   const hi = value >> 64n;
