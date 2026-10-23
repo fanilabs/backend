@@ -28,6 +28,8 @@ describe('createNotificationJobScheduler (#358)', () => {
         jobId: 'send-notif-123',
         attempts: 5,
         backoff: { type: 'exponential', delay: 2_000 },
+        removeOnComplete: true,
+        removeOnFail: true,
       },
     );
   });
