@@ -29,11 +29,16 @@ export interface RecordActorActivityFromEventDeps {
  * posture `reputation` already applies elsewhere in this backend).
  */
 export function createRecordActorActivityFromEventUseCase(deps: RecordActorActivityFromEventDeps) {
+  const seenEventIds = new Set<string>();
   return async function recordActorActivityFromEvent(
     event: BlockchainEventEnvelope,
   ): Promise<void> {
     const activity = resolveActivity(event);
     if (!activity) return;
+    const dedupKey =
+      event.id || `${event.txHash}:${event.contractName}:${event.topic.join(':')}:${activity.address}`;
+    if (seenEventIds.has(dedupKey)) return;
+    seenEventIds.add(dedupKey);
     await deps.activityRepository.record(activity);
   };
 }

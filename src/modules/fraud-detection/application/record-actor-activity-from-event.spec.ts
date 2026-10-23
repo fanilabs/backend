@@ -113,3 +113,18 @@ describe('recordActorActivityFromEvent', () => {
     expect(activityRepository.all()).toHaveLength(0);
   });
 });
+
+describe('recordActorActivityFromEvent event deduplication (#442)', () => {
+  it('ignores duplicate redeliveries of the same blockchain event envelope', async () => {
+    const { activityRepository, recordActorActivityFromEvent } = setup();
+    const ev = buildBlockchainEvent({
+      id: 'ev-dup-1',
+      contractName: 'delivery',
+      topic: ['delivery_created'],
+      payload: ['1', testAddress('sender')],
+    });
+    await recordActorActivityFromEvent(ev);
+    await recordActorActivityFromEvent(ev);
+    expect(activityRepository.all()).toHaveLength(1);
+  });
+});
