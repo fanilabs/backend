@@ -1,3 +1,4 @@
+import { DriverProfileNotFoundError } from '../domain/index.js';
 import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import { addressToScVal, scValToNative, u64ToScVal } from '../../../blockchain/xdr/sc-val.js';
@@ -81,5 +82,12 @@ describe('nativeToChainDriverProfile', () => {
 
   it('throws on a structurally invalid profile rather than returning partial data', () => {
     expect(() => nativeToChainDriverProfile({ not: 'a driver profile' })).toThrow();
+  });
+});
+
+describe('nativeToChainDriverProfile null handling (#470)', () => {
+  it('throws DriverProfileNotFoundError when native value is null or undefined', () => {
+    expect(() => nativeToChainDriverProfile(null)).toThrow(DriverProfileNotFoundError);
+    expect(() => nativeToChainDriverProfile(undefined)).toThrow(DriverProfileNotFoundError);
   });
 });
