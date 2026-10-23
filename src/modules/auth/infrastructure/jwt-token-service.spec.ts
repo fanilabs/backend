@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
+import jwt from 'jsonwebtoken';
 import { describe, expect, it } from 'vitest';
 import { createJwtTokenService } from './jwt-token-service.js';
+import { getConfig } from '../../../shared/config/index.js';
 import { verifyAccessToken } from '../../../shared/jwt/index.js';
 import type { User } from '../domain/index.js';
 
@@ -29,7 +31,7 @@ describe('createJwtTokenService', () => {
     expect(claims.role).toBe('ADMIN');
   });
 
-  it('embeds the user\'s current tokenVersion in the access token (security issue #12)', () => {
+  it("embeds the user's current tokenVersion in the access token (security issue #12)", () => {
     const tokenService = createJwtTokenService();
     const user = testUser({ tokenVersion: 3 });
 
@@ -67,6 +69,20 @@ describe('createJwtTokenService', () => {
     expect(result.userId).toBe(user.id);
   });
 
+  it('rejects email verification tokens signed with the access secret', () => {
+    const tokenService = createJwtTokenService();
+    const user = testUser();
+    const config = getConfig();
+    const token = tokenService.issueEmailVerificationToken(user);
+    const accessSecretToken = jwt.sign(
+      { sub: user.id, purpose: 'email-verification' },
+      config.JWT_ACCESS_SECRET,
+    );
+
+    expect(() => jwt.verify(token, config.JWT_ACCESS_SECRET)).toThrow();
+    expect(() => tokenService.verifyEmailVerificationToken(accessSecretToken)).toThrow();
+  });
+
   it('rejects a password-reset token presented as an email-verification token (purpose confusion)', () => {
     const tokenService = createJwtTokenService();
     const user = testUser();
@@ -84,6 +100,20 @@ describe('createJwtTokenService', () => {
     const result = tokenService.verifyPasswordResetToken(token, 'hash-v1');
 
     expect(result.userId).toBe(user.id);
+  });
+
+  it('rejects password reset tokens signed with the access or verification secret', () => {
+    const tokenService = createJwtTokenService();
+    const user = testUser({ passwordHash: 'hash-v1' });
+    const config = getConfig();
+    const resetToken = tokenService.issuePasswordResetToken(user);
+    const accessSecretToken = jwt.sign(
+      { sub: user.id, purpose: 'password-reset' },
+      config.JWT_ACCESS_SECRET,
+    );
+
+    expect(() => jwt.verify(resetToken, config.JWT_VERIFICATION_SECRET)).toThrow();
+    expect(() => tokenService.verifyPasswordResetToken(accessSecretToken, 'hash-v1')).toThrow();
   });
 
   it('rejects a password reset token once the password hash has changed', () => {

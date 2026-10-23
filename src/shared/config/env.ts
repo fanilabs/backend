@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { z } from 'zod';
 
 /**
@@ -31,6 +32,14 @@ const baseEnvSchema = z.object({
 
   JWT_ACCESS_SECRET: z.string().min(32, 'JWT_ACCESS_SECRET must be at least 32 characters'),
   JWT_REFRESH_SECRET: z.string().min(32, 'JWT_REFRESH_SECRET must be at least 32 characters'),
+  JWT_VERIFICATION_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32, 'JWT_VERIFICATION_SECRET must be at least 32 characters').optional(),
+  ),
+  JWT_RESET_SECRET: z.preprocess(
+    (value) => (value === '' ? undefined : value),
+    z.string().min(32, 'JWT_RESET_SECRET must be at least 32 characters').optional(),
+  ),
   JWT_ACCESS_TTL: z.string().default('15m'),
   JWT_REFRESH_TTL: z.string().default('30d'),
 
@@ -171,5 +180,78 @@ const baseEnvSchema = z.object({
 
   /** Short-TTL cache for the ADMIN-only analytics endpoints
    * (src/modules/analytics/infrastructure/cached-anal
+   * yzer.ts) — each admin dashboard refresh would otherwise re-run full-table
+   * count/groupBy queries on every request. */
+  ANALYTICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
 
-/* … truncated 3243 chars — edit only what you need near the top … */
+  /** Short-TTL cache for the shared HTTP auth guard's per-user
+   * `{ role, tokenVersion }` row (#369, src/shared/cache/auth-context-
+   * cache.ts). Role changes evict the entry when they commit; this bounds
+   * staleness only for cache-eviction failures or a write path that forgets
+   * to evict. */
+  AUTH_CONTEXT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
+});
+
+/**
+ * A non-logger provider with no relay configured would otherwise only fail at
+ * first send — long after boot, deep inside a request or a queued BullMQ job.
+ * Failing here keeps the same fail-fast-at-boot contract the required
+ * connection strings above already establish (see docs/DEPLOYMENT.md).
+ */
+const envWithProviderChecks = baseEnvSchema.superRefine((env, ctx) => {
+  const providers: Array<[string, 'logger' | 'smtp' | 'sendgrid' | 'ses']> = [
+    ['MAIL_PROVIDER', env.MAIL_PROVIDER],
+    ['NOTIFICATION_PROVIDER', env.NOTIFICATION_PROVIDER],
+  ];
+  for (const [key, provider] of providers) {
+    if (provider === 'logger') continue;
+    const missing = (['SMTP_HOST', 'SMTP_FROM'] as const).filter((name) => !env[name]);
+    if (missing.length > 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key}=${provider} requires ${missing.join(' and ')} to be set (the SMTP relay this provider delivers through)`,
+      });
+    }
+    if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key}=${provider} requires SMTP_USER and SMTP_PASSWORD to be set together (or both unset for a relay that needs no AUTH)`,
+      });
+    }
+  }
+});
+
+/**
+ * `LOG_LEVEL`'s effective default depends on `NODE_ENV`: tests should be
+ * quiet unless a level is explicitly requested, everything else defaults to
+ * `info`. Purpose-specific JWT secrets are derived with independent HMAC
+ * labels when operators do not provide dedicated values.
+ */
+const envSchema = envWithProviderChecks.transform((env) => ({
+  ...env,
+  JWT_VERIFICATION_SECRET:
+    env.JWT_VERIFICATION_SECRET ??
+    createHmac('sha256', env.JWT_ACCESS_SECRET).update('jwt-verification').digest('hex'),
+  JWT_RESET_SECRET:
+    env.JWT_RESET_SECRET ??
+    createHmac('sha256', env.JWT_ACCESS_SECRET).update('jwt-password-reset').digest('hex'),
+  LOG_LEVEL: env.LOG_LEVEL ?? (env.NODE_ENV === 'test' ? ('silent' as const) : ('info' as const)),
+}));
+
+export type Env = z.infer<typeof envSchema>;
+
+/** Exposed only for the .env.example drift test — see env.test.ts. */
+export const envSchemaKeys = Object.keys(baseEnvSchema.shape);
+
+export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
+  const result = envSchema.safeParse(source);
+  if (!result.success) {
+    const issues = result.error.issues
+      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n');
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  return result.data;
+}
