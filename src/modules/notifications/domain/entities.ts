@@ -11,5 +11,7 @@ export interface Notification {
   status: NotificationStatus;
   readAt: Date | null;
   sentAt: Date | null;
+  failureReason: string | null;
+  attempts: number;
   createdAt: Date;
 }

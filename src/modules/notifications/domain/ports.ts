@@ -31,7 +31,7 @@ export interface NotificationRepository {
   listByUserId(userId: string, filter: ListNotificationsFilter): Promise<Notification[]>;
   markAllRead(userId: string): Promise<number>;
   markSent(id: string, sentAt: Date): Promise<void>;
-  markFailed(id: string): Promise<void>;
+  markFailed(id: string, reason?: string): Promise<void>;
 }
 
 export interface UserContact {

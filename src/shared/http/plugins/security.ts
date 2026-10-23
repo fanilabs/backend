@@ -42,6 +42,16 @@ export default fp(async function securityPlugin(app: FastifyInstance) {
     // needed here.
     origin: config.CORS_ORIGIN,
     credentials: true,
+    // Expose rate limit headers so frontend clients can read RateLimit-Limit,
+    // RateLimit-Remaining, and RateLimit-Reset for graceful backoff handling.
+    // Also expose Content-Disposition so evidence downloads preserve filenames.
+    // W3C CORS spec blocks access to non-simple headers unless explicitly listed.
+    exposedHeaders: [
+      'RateLimit-Limit',
+      'RateLimit-Remaining',
+      'RateLimit-Reset',
+      'Content-Disposition',
+    ],
   });
 
   await app.register(rateLimit, {

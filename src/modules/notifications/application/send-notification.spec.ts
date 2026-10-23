@@ -63,7 +63,10 @@ describe('sendNotification', () => {
 
     await sendNotification({ notificationId: notification.id });
 
-    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+    expect(await notificationRepository.findById(notification.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'No contact email found for notification recipient',
+    });
   });
 
   it('throws a retryable error when the contact is missing on a non-final attempt (issue #354)', async () => {
@@ -91,7 +94,10 @@ describe('sendNotification', () => {
     ).resolves.toBeUndefined();
 
     expect(sender.sent).toHaveLength(0);
-    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+    expect(await notificationRepository.findById(notification.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'No contact email found for notification recipient',
+    });
   });
 
   it('marks FAILED without touching the email sender for a persisted SMS row (issue #12)', async () => {
@@ -103,7 +109,10 @@ describe('sendNotification', () => {
     await sendNotification({ notificationId: notification.id });
 
     expect(sender.sent).toHaveLength(0);
-    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+    expect(await notificationRepository.findById(notification.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'No sender configured for channel SMS',
+    });
   });
 
   it('marks FAILED without touching the email sender for a persisted PUSH row', async () => {
@@ -115,7 +124,10 @@ describe('sendNotification', () => {
     await sendNotification({ notificationId: notification.id });
 
     expect(sender.sent).toHaveLength(0);
-    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+    expect(await notificationRepository.findById(notification.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'No sender configured for channel PUSH',
+    });
   });
 
   it('marks FAILED and rethrows when the sender itself fails', async () => {
@@ -129,6 +141,9 @@ describe('sendNotification', () => {
       'Simulated send failure',
     );
 
-    expect((await notificationRepository.findById(notification.id))?.status).toBe('FAILED');
+    expect(await notificationRepository.findById(notification.id)).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'Simulated send failure',
+    });
   });
 });

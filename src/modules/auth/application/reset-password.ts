@@ -63,7 +63,13 @@ export function createResetPasswordUseCase(deps: ResetPasswordDeps) {
     await deps.userRepository.updatePasswordHash(user.id, newHash);
 
     // A password reset is a strong signal to invalidate every existing
-    // session, not just issue the caller a new one.
+    // session, not just issue the caller a new one. Two paths invalidate
+    // sessions: (1) revokeAllForUser marks refresh_tokens as revoked so
+    // the token refresh endpoint rejects them, and (2) incrementTokenVersion
+    // invalidates already-issued access tokens on their next use (security
+    // issue #12), closing the ~15-minute window during which an attacker
+    // with a stolen session could continue making authenticated requests.
     await deps.refreshTokenRepository.revokeAllForUser(user.id);
+    await deps.userRepository.incrementTokenVersion(user.id);
   };
 }

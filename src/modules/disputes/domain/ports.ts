@@ -63,20 +63,89 @@ export interface DisputeRepository {
    * never run after that point in a way that could overwrite it with a
    * stale proposed value.
    *
+   * ## Safeguard: Status-gated write
+   *
+   * The implementation **must only write when `status === 'OPEN'`**. This
+   * guard is atomic and prevents two classes of race condition:
+   *
+   * 1. **Wallet rejection after build**: An admin builds a split-funds
+   *    transaction, proposes a value in the database, then rejects signing in
+   *    their wallet. Later, a different admin (or the same one) builds
+   *    another transaction with a different proposed split. Without the
+   *    guard, both values would write successfully, leaving ambiguous state.
+   *    With the guard: both writes target only OPEN disputes; both succeed as
+   *    proposed values; confirmed values (on resolved disputes) are never
+   *    touched.
+   *
+   * 2. **Confirmation race**: An admin builds a split-funds transaction, the
+   *    blockchain confirms it (this backend syncs `dispute_resolved_split`,
+   *    calling `upsert` with `status: 'SPLIT'` and the confirmed
+   *    `senderShareBps`), then a stray build-transaction call arrives (a
+   *    duplicate request, or an application bug). Without the guard, the
+   *    proposed value would overwrite the confirmed one. With the guard: the
+   *    stray write is a no-op, and the confirmed value is preserved.
+   *
    * A no-op/create-nothing case (no dispute row yet for this
    * `chainDeliveryId`) is expected to be unreachable in practice —
    * `resolve_dispute_split_funds` is only ever callable on-chain once a
    * dispute already exists and is `Paused`, which this backend always
-   * observes via `dispute_raised`/`delivery_disputed` first.
-   *
-   * Must only ever write while the dispute is still `OPEN` — once resolved
-   * (by `upsert`, from a confirmed event), that outcome is final, same rule
-   * `handleEscrowOnlyResolution` already applies to Layer A's ambiguous
-   * `dispute_resolved`. Otherwise a stray/duplicate call to build another
-   * split-funds transaction after the real resolution already synced could
-   * clobber the confirmed `senderShareBps` with an unconfirmed one.
+   * observes via `dispute_raised`/`delivery_disputed` first. Should it occur,
+   * a missing row is not an error (best-effort); the caller's transaction
+   * build request succeeds regardless.
    */
   recordProposedSenderShareBps(chainDeliveryId: bigint, senderShareBps: number): Promise<void>;
+}
+
+export type EscrowStatusForDispute = 'LOCKED' | 'RELEASED' | 'REFUNDED' | 'PAUSED';
+
+/**
+ * Reads `escrow_contract`'s own current status directly — added to
+ * disambiguate `escrow.dispute_resolved` (see `sync-dispute-from-event.ts`'s
+ * header comment for the full rationale). Mirrors `reputation`'s
+ * `LegacyDriverProfileReader`: a narrow port reading a single field off a
+ * second, genuinely different deployed contract (`escrow_contract`, not
+ * `dispute_resolution_contract`) rather than folding it into
+ * `DisputeContractReader` above.
+ */
+export interface DisputeEscrowStateReader {
+  getEscrowStatus(chainDeliveryId: bigint): Promise<EscrowStatusForDispute>;
+}
+
+export interface RaiseDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface AddEvidenceHashTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+  /** Hex-encoded 32-byte content hash. */
+  evidenceHash: string;
+}
+
+export interface ResolveDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface ResolveDisputeSplitFundsTxInput extends ResolveDisputeTxInput {
+  senderShareBps: number;
+}
+
+/**
+ * Builds unsigned XDR for `dispute_resolution_contract`'s five mutating
+ * calls (PHASE_1_DOMAIN_ANALYSIS.md §5). `escrow_contract`'s own
+ * `raise_dispute`/`resolve_dispute`/`resolve_dispute_split` (Layer A) are
+ * deliberately not exposed anywhere in this backend — `escrow`'s domain/ports.ts
+ * already documents that the full two-layer dispute/arbitration flow belongs
+ * here, in `disputes`, and this module owns only the richer Layer B contract.
+ */
+export interface DisputeTransactionBuilder {
+  buildRaiseDispute(input: RaiseDisputeTxInput): Promise<string>;
+  buildAddEvidenceHash(input: AddEvidenceHashTxInput): Promise<string>;
+  buildResolveDisputeRefundSender(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputePayDriver(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputeSplitFunds(input: ResolveDisputeSplitFundsTxInput): Promise<string>;
 }
 
 export interface EvidenceRepository {
@@ -154,8 +223,56 @@ export interface DisputeContractReader {
   getDispute(chainDeliveryId: bigint): Promise<ChainDisputeCase>;
 }
 
-/** Mirrors `escrow_contract`'s own `EscrowState` enum — only the variants
- * `handleEscrowEvent`'s `dispute_resolved` fallback needs to distinguish. */
-export type EscrowStat
+export type EscrowStatusForDispute = 'LOCKED' | 'RELEASED' | 'REFUNDED' | 'PAUSED';
 
-/* … truncated 2012 chars — edit only what you need near the top … */
+/**
+ * Reads `escrow_contract`'s own current status directly — added to
+ * disambiguate `escrow.dispute_resolved` (see `sync-dispute-from-event.ts`'s
+ * header comment for the full rationale). Mirrors `reputation`'s
+ * `LegacyDriverProfileReader`: a narrow port reading a single field off a
+ * second, genuinely different deployed contract (`escrow_contract`, not
+ * `dispute_resolution_contract`) rather than folding it into
+ * `DisputeContractReader` above.
+ */
+export interface DisputeEscrowStateReader {
+  getEscrowStatus(chainDeliveryId: bigint): Promise<EscrowStatusForDispute>;
+}
+
+export interface RaiseDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface AddEvidenceHashTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+  /** Hex-encoded 32-byte content hash. */
+  evidenceHash: string;
+}
+
+export interface ResolveDisputeTxInput {
+  callerAddress: string;
+  chainDeliveryId: bigint;
+}
+
+export interface ResolveDisputeSplitFundsTxInput extends ResolveDisputeTxInput {
+  senderShareBps: number;
+}
+
+/**
+ * Builds unsigned XDR for `dispute_resolution_contract`'s five mutating
+ * calls (PHASE_1_DOMAIN_ANALYSIS.md §5). `escrow_contract`'s own
+ * `raise_dispute`/`resolve_dispute`/`resolve_dispute_split` (Layer A) are
+ * deliberately not exposed anywhere in this backend — `escrow`'s domain/ports.ts
+ * already documents that the full two-layer dispute/arbitration flow belongs
+ * here, in `disputes`, and this module owns only the richer Layer B contract.
+ */
+export interface DisputeTransactionBuilder {
+  buildRaiseDispute(input: RaiseDisputeTxInput): Promise<string>;
+  buildAddEvidenceHash(input: AddEvidenceHashTxInput): Promise<string>;
+  buildResolveDisputeRefundSender(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputePayDriver(input: ResolveDisputeTxInput): Promise<string>;
+  buildResolveDisputeSplitFunds(input: ResolveDisputeSplitFundsTxInput): Promise<string>;
+}
+
+

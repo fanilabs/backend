@@ -132,4 +132,65 @@ describe('createBuildDisputeTransactionsUseCases', () => {
     const dispute = await disputeRepository.findByChainDeliveryId(6n);
     expect(dispute?.senderShareBps).toBe(7500);
   });
+
+  it('buildResolveDisputeSplitFundsTransaction: does not write when dispute is RESOLVED_REFUND', async () => {
+    const disputeRepository = createInMemoryDisputeRepository();
+    disputeRepository.seed(
+      buildDispute({ chainDeliveryId: 7n, status: 'RESOLVED_REFUND', senderShareBps: null }),
+    );
+    const useCases = createBuildDisputeTransactionsUseCases({
+      transactionBuilder: createFakeDisputeTransactionBuilder(),
+      disputeRepository,
+    });
+
+    // Even though the builder succeeds, recordProposedSenderShareBps is
+    // always a no-op for resolved disputes
+    await useCases.buildResolveDisputeSplitFundsTransaction({
+      callerAddress: 'GADMIN',
+      chainDeliveryId: 7n,
+      senderShareBps: 5000,
+    });
+
+    const dispute = await disputeRepository.findByChainDeliveryId(7n);
+    expect(dispute?.senderShareBps).toBeNull();
+  });
+
+  it('buildResolveDisputeSplitFundsTransaction: does not write when dispute is RESOLVED_PAYOUT', async () => {
+    const disputeRepository = createInMemoryDisputeRepository();
+    disputeRepository.seed(
+      buildDispute({ chainDeliveryId: 8n, status: 'RESOLVED_PAYOUT', senderShareBps: null }),
+    );
+    const useCases = createBuildDisputeTransactionsUseCases({
+      transactionBuilder: createFakeDisputeTransactionBuilder(),
+      disputeRepository,
+    });
+
+    await useCases.buildResolveDisputeSplitFundsTransaction({
+      callerAddress: 'GADMIN',
+      chainDeliveryId: 8n,
+      senderShareBps: 2500,
+    });
+
+    const dispute = await disputeRepository.findByChainDeliveryId(8n);
+    expect(dispute?.senderShareBps).toBeNull();
+  });
+
+  it('buildResolveDisputeSplitFundsTransaction: records proposed value only when dispute is OPEN', async () => {
+    const disputeRepository = createInMemoryDisputeRepository();
+    disputeRepository.seed(buildDispute({ chainDeliveryId: 9n, status: 'OPEN', senderShareBps: null }));
+    const useCases = createBuildDisputeTransactionsUseCases({
+      transactionBuilder: createFakeDisputeTransactionBuilder(),
+      disputeRepository,
+    });
+
+    await useCases.buildResolveDisputeSplitFundsTransaction({
+      callerAddress: 'GADMIN',
+      chainDeliveryId: 9n,
+      senderShareBps: 3333,
+    });
+
+    const dispute = await disputeRepository.findByChainDeliveryId(9n);
+    expect(dispute?.status).toBe('OPEN');
+    expect(dispute?.senderShareBps).toBe(3333);
+  });
 });

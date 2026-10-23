@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../../app.js';
 import { getPrismaClient, disconnectPrisma } from '../../../shared/database/index.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
+import { createPrismaNotificationRepository } from '../infrastructure/prisma-notification-repository.js';
 
 const dbAvailable = await isDatabaseAvailable();
 
@@ -178,6 +179,35 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
 
     expect(response.statusCode).toBe(200);
     expect(response.json<SuccessBody<{ type: string }>>().data.type).toBe('fleet.driver_invited');
+  });
+
+  it('returns the persisted failure reason for a failed notification', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    const created = await prisma.notification.create({
+      data: {
+        userId,
+        channel: 'EMAIL',
+        type: 'fleet.driver_invited',
+        payload: {},
+      },
+    });
+    const notificationRepository = createPrismaNotificationRepository(prisma);
+    await notificationRepository.markFailed(created.id, 'Invalid SMTP address');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/notifications/${created.id}`,
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(
+      response.json<SuccessBody<{ status: string; failureReason: string }>>().data,
+    ).toMatchObject({
+      status: 'FAILED',
+      failureReason: 'Invalid SMTP address',
+    });
   });
 
   it('returns 404 for an unknown notification id', async () => {

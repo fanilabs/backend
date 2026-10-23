@@ -27,6 +27,7 @@ const notificationDto = z.object({
   status: notificationStatus,
   readAt: z.string().datetime().nullable(),
   sentAt: z.string().datetime().nullable(),
+  failureReason: z.string().nullable(),
   createdAt: z.string().datetime(),
 });
 

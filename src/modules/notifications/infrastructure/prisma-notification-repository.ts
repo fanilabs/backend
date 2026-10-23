@@ -11,6 +11,8 @@ function toDomain(record: PrismaNotification): Notification {
     status: record.status,
     readAt: record.readAt,
     sentAt: record.sentAt,
+    failureReason: record.failureReason,
+    attempts: record.attempts,
     createdAt: record.createdAt,
   };
 }
@@ -59,8 +61,11 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
       await prisma.notification.update({ where: { id }, data: { status: 'SENT', sentAt } });
     },
 
-    async markFailed(id) {
-      await prisma.notification.update({ where: { id }, data: { status: 'FAILED' } });
+    async markFailed(id, reason) {
+      await prisma.notification.update({
+        where: { id },
+        data: { status: 'FAILED', failureReason: reason ?? null, attempts: { increment: 1 } },
+      });
     },
   };
 }
