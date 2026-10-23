@@ -222,3 +222,27 @@ describe('pollContractEvents', () => {
     });
   });
 });
+
+describe('pollContractEvents low-height network retentionFloor (#423)', () => {
+  it('clamps retentionFloor to >= 1 when latestLedger < retentionWindowLedgers', async () => {
+    const { checkpointRepository, eventSource, pollContractEvents } = setup({
+      retentionWindowLedgers: 17_280,
+    });
+    checkpointRepository.seed({
+      contractName: 'escrow',
+      network: 'testnet',
+      lastLedgerSeq: 0n,
+      updatedAt: new Date(),
+    });
+    eventSource.latestLedger = 100;
+    eventSource.queueResponse({ events: [], latestLedgerSeen: 100 });
+
+    await pollContractEvents({
+      contractName: 'escrow',
+      contractId: 'C_ESCROW',
+      network: 'testnet',
+    });
+
+    expect(eventSource.fetchEventsCalls).toMatchObject([{ startLedger: 1 }]);
+  });
+});
