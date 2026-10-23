@@ -107,6 +107,9 @@ export function createFakeEvidenceStorage(): EvidenceStorage & {
       if (!bytes) throw new Error(`No fake file at ${storageUrl}`);
       return bytes;
     },
+    async delete(storageUrl) {
+      files.delete(storageUrl);
+    },
   };
 }
 

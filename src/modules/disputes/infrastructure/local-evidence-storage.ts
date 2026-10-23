@@ -1,53 +1,63 @@
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { mkdir, readFile, rm, rmdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve, sep } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import type { EvidenceStorage } from '../domain/ports';
-
-export interface LocalEvidenceStorageOptions {
-  baseDir: string;
-}
+import type { EvidenceStorage } from '../domain/index.js';
+import { EvidenceNotFoundError } from '../domain/index.js';
 
 const STORAGE_URL_PREFIX = 'local://evidence/';
 
-export function createLocalEvidenceStorage(options: LocalEvidenceStorageOptions): EvidenceStorage {
-  const baseDir = resolve(options.baseDir);
+/** Local keys retain the original <disputeId>/<fileId> layout. Reads and
+ * deletes also accept keys written with the later local://evidence/ prefix;
+ * stored evidence references do not need rewriting. */
+export function createLocalEvidenceStorage(baseDir: string): EvidenceStorage {
+  const resolvedBaseDir = resolve(baseDir);
+  const basePrefix = resolvedBaseDir.endsWith(sep) ? resolvedBaseDir : `${resolvedBaseDir}${sep}`;
 
   function resolveStoragePath(storageUrl: string): string {
-    if (!storageUrl.startsWith(STORAGE_URL_PREFIX)) {
-      throw new Error(`Invalid evidence storage url: ${storageUrl}`);
+    if (storageUrl.includes('://') && !storageUrl.startsWith(STORAGE_URL_PREFIX)) {
+      throw new EvidenceNotFoundError();
     }
-    const relative = storageUrl.slice(STORAGE_URL_PREFIX.length);
-    const absolute = resolve(join(baseDir, relative));
-    if (absolute !== baseDir && !absolute.startsWith(`${baseDir}/`)) {
-      throw new Error(`Evidence storage url escapes base directory: ${storageUrl}`);
+    const relative = storageUrl.startsWith(STORAGE_URL_PREFIX)
+      ? storageUrl.slice(STORAGE_URL_PREFIX.length)
+      : storageUrl;
+    const absolute = resolve(resolvedBaseDir, relative);
+    if (absolute === resolvedBaseDir || !absolute.startsWith(basePrefix)) {
+      throw new EvidenceNotFoundError();
     }
     return absolute;
   }
 
   return {
-    async save(input) {
-      const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-      const relative = join(input.disputeId, `${randomUUID()}-${safeName}`);
-      const absolute = resolve(join(baseDir, relative));
+    async save({ disputeId, bytes }) {
+      const storageUrl = `${disputeId}/${randomUUID()}`;
+      const absolute = resolveStoragePath(storageUrl);
       await mkdir(dirname(absolute), { recursive: true });
-      await writeFile(absolute, input.data);
-      return { storageUrl: `${STORAGE_URL_PREFIX}${relative}` };
+      await writeFile(absolute, bytes);
+      return { storageUrl };
     },
 
     async read(storageUrl) {
       const absolute = resolveStoragePath(storageUrl);
-      return readFile(absolute);
+      try {
+        return await readFile(absolute);
+      } catch (error: unknown) {
+        if (error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+          throw new EvidenceNotFoundError();
+        }
+        throw error;
+      }
     },
 
     async delete(storageUrl) {
       const absolute = resolveStoragePath(storageUrl);
       await rm(absolute, { force: true });
 
-      // Remove now-empty dispute directories up to (but not including) the base dir.
+      // Remove only empty ancestors, preserving the configured base directory
+      // and directories containing other evidence.
       let current = dirname(absolute);
-      while (current !== baseDir && current.startsWith(`${baseDir}/`)) {
+      while (current !== resolvedBaseDir && current.startsWith(basePrefix)) {
         try {
-          await rm(current, { recursive: false });
+          await rmdir(current);
         } catch {
           break;
         }
