@@ -61,3 +61,14 @@ describe('pauseAllQueues / resumeAllQueues / drainAllQueues (#360)', () => {
     await closeAllQueues();
   });
 });
+
+describe('QueueName active queues only (#444)', () => {
+  it('excludes obsolete ReputationReconciliation constant', async () => {
+    const { QueueName } = await import('./queues.js');
+    expect(Object.values(QueueName)).toEqual([
+      'blockchain-indexer',
+      'notifications',
+      'fraud-activity-cleanup',
+    ]);
+  });
+});
