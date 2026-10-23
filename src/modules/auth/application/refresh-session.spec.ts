@@ -74,4 +74,20 @@ describe('refreshSession', () => {
       InvalidRefreshTokenError,
     );
   });
+
+  it('revokes all active user sessions when a revoked refresh token is replayed (RFC 6819 #428)', async () => {
+    const { issued, refreshTokenRepository, refreshSession } = await setupWithSession();
+
+    const rotated = await refreshSession({ refreshToken: issued.token });
+    const rotatedHash = `hash:${rotated.refreshToken}`;
+    expect((await refreshTokenRepository.findByTokenHash(rotatedHash))?.revokedAt).toBeNull();
+
+    // Replay the old, already-revoked refresh token
+    await expect(refreshSession({ refreshToken: issued.token })).rejects.toThrow(
+      InvalidRefreshTokenError,
+    );
+
+    // The newly rotated token must now also be revoked
+    expect((await refreshTokenRepository.findByTokenHash(rotatedHash))?.revokedAt).not.toBeNull();
+  });
 });

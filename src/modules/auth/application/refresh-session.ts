@@ -37,11 +37,16 @@ export function createRefreshSessionUseCase(deps: RefreshSessionDeps) {
     }
 
     const record = await deps.refreshTokenRepository.findByTokenHash(verified.tokenHash);
-    if (
-      !record ||
-      record.revokedAt !== null ||
-      record.expiresAt.getTime() < deps.clock.now().getTime()
-    ) {
+    if (!record) {
+      throw new InvalidRefreshTokenError();
+    }
+    if (record.revokedAt !== null) {
+      // RFC 6819 §5.2.2.3: reuse of an already-revoked refresh token indicates
+      // potential token theft — revoke all active refresh tokens for this user.
+      await deps.refreshTokenRepository.revokeAllForUser(record.userId);
+      throw new InvalidRefreshTokenError();
+    }
+    if (record.expiresAt.getTime() < deps.clock.now().getTime()) {
       throw new InvalidRefreshTokenError();
     }
 
