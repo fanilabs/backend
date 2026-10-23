@@ -120,7 +120,12 @@ export function createSyncEscrowFromEventUseCase(deps: SyncEscrowFromEventDeps) 
 function parseAmount(value: unknown): bigint | null {
   if (typeof value !== 'string' && typeof value !== 'number') return null;
   try {
-    return BigInt(value);
+    const amount = BigInt(value);
+    // Financial amounts must be non-negative integers per domain invariants.
+    // Reject negative values to prevent fee calculation corruption and metrics
+    // distortion if malformed events occur.
+    if (amount < 0n) return null;
+    return amount;
   } catch {
     return null;
   }

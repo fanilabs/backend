@@ -281,4 +281,63 @@ describe('syncEscrowFromEvent', () => {
       msg: expect.stringContaining('Unrecognized payment token'),
     });
   });
+
+  it('escrow_released: rejects negative platformFee from malformed events', async () => {
+    const { escrowRepository, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 1n, status: 'LOCKED' }));
+    const closedAt = new Date('2026-01-01T00:00:00Z');
+
+    await syncEscrowFromEvent(
+      buildEscrowEvent({
+        topic: ['escrow_released', '1'],
+        payload: [testAddress('driver'), '950000', '-50000'],
+        closedAt,
+      }),
+    );
+
+    const stored = await escrowRepository.findByChainDeliveryId(1n);
+    expect(stored?.status).toBe('RELEASED');
+    // platformFee must remain null (not updated) if the parsed value is negative
+    expect(stored?.platformFee).toBeNull();
+    expect(stored?.releasedAt).toEqual(closedAt);
+  });
+
+  it('escrow_released: rejects negative platformFee as a negative number', async () => {
+    const { escrowRepository, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 1n, status: 'LOCKED' }));
+    const closedAt = new Date('2026-01-01T00:00:00Z');
+
+    await syncEscrowFromEvent(
+      buildEscrowEvent({
+        topic: ['escrow_released', '1'],
+        payload: [testAddress('driver'), '950000', -50000],
+        closedAt,
+      }),
+    );
+
+    const stored = await escrowRepository.findByChainDeliveryId(1n);
+    expect(stored?.status).toBe('RELEASED');
+    // platformFee must remain null (not updated) if the parsed value is negative
+    expect(stored?.platformFee).toBeNull();
+    expect(stored?.releasedAt).toEqual(closedAt);
+  });
+
+  it('escrow_released: accepts zero platformFee', async () => {
+    const { escrowRepository, syncEscrowFromEvent } = setup();
+    escrowRepository.seed(buildEscrow({ chainDeliveryId: 1n, status: 'LOCKED' }));
+    const closedAt = new Date('2026-01-01T00:00:00Z');
+
+    await syncEscrowFromEvent(
+      buildEscrowEvent({
+        topic: ['escrow_released', '1'],
+        payload: [testAddress('driver'), '1000000', '0'],
+        closedAt,
+      }),
+    );
+
+    const stored = await escrowRepository.findByChainDeliveryId(1n);
+    expect(stored?.status).toBe('RELEASED');
+    expect(stored?.platformFee).toBe(0n);
+    expect(stored?.releasedAt).toEqual(closedAt);
+  });
 });
