@@ -119,6 +119,13 @@ export function createUploadEvidenceUseCase(deps: UploadEvidenceDeps) {
     assertMagicBytesMatch(input.contentType, input.bytes);
 
     const hash = createHash('sha256').update(input.bytes).digest('hex');
+    const existing = deps.evidenceRepository.findByDisputeIdAndHash
+      ? await deps.evidenceRepository.findByDisputeIdAndHash(dispute.id, hash)
+      : (await deps.evidenceRepository.listByDisputeId(dispute.id)).find((e) => e.hash === hash) ?? null;
+    if (existing) {
+      return { evidence: existing };
+    }
+
     const { storageUrl } = await deps.evidenceStorage.save({
       disputeId: dispute.id,
       contentType: input.contentType,

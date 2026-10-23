@@ -84,7 +84,7 @@ describe('uploadEvidence', () => {
     const dispute = buildDispute({ chainDeliveryId: 1n, status: 'OPEN' });
     disputeRepository.seed(dispute);
     walletOwnershipRepository.seed('user-1', 'GSENDER');
-    const bytes = Buffer.from('evidence-file-contents');
+    const bytes = Buffer.from('%PDF-1.4 evidence-file-contents');
     const expectedHash = createHash('sha256').update(bytes).digest('hex');
 
     const result = await uploadEvidence({
@@ -110,7 +110,7 @@ describe('uploadEvidence', () => {
       chainDeliveryId: 1n,
       contentType: 'application/pdf',
       uploadedBy: 'GSENDER',
-      bytes: Buffer.from('evidence-file-contents'),
+      bytes: Buffer.from('%PDF-1.4 evidence-file-contents'),
       requesterId: 'user-1',
     });
 
@@ -118,5 +118,32 @@ describe('uploadEvidence', () => {
     expect((await evidenceRepository.findById(result.evidence.id))?.uploadedByUserId).toBe(
       'user-1',
     );
+  });
+
+  it('returns existing evidence record without writing duplicate file when identical hash is re-uploaded (#454)', async () => {
+    const { disputeRepository, walletOwnershipRepository, evidenceRepository, uploadEvidence } =
+      setup();
+    const dispute = buildDispute({ chainDeliveryId: 1n, status: 'OPEN' });
+    disputeRepository.seed(dispute);
+    walletOwnershipRepository.seed('user-1', 'GSENDER');
+    const bytes = Buffer.from('%PDF-1.4 duplicate-test');
+
+    const first = await uploadEvidence({
+      chainDeliveryId: 1n,
+      contentType: 'application/pdf',
+      uploadedBy: 'GSENDER',
+      bytes,
+      requesterId: 'user-1',
+    });
+    const second = await uploadEvidence({
+      chainDeliveryId: 1n,
+      contentType: 'application/pdf',
+      uploadedBy: 'GSENDER',
+      bytes,
+      requesterId: 'user-1',
+    });
+
+    expect(second.evidence.id).toBe(first.evidence.id);
+    expect(await evidenceRepository.listByDisputeId(dispute.id)).toHaveLength(1);
   });
 });

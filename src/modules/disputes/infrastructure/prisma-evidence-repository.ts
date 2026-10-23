@@ -21,6 +21,11 @@ export function createPrismaEvidenceRepository(prisma: PrismaClient): EvidenceRe
       return record ? toDomain(record) : null;
     },
 
+    async findByDisputeIdAndHash(disputeId, hash) {
+      const record = await prisma.evidence.findFirst({ where: { disputeId, hash } });
+      return record ? toDomain(record) : null;
+    },
+
     async listByDisputeId(disputeId) {
       const records = await prisma.evidence.findMany({
         where: { disputeId },
