@@ -1,4 +1,4 @@
-import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { AppError, ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
 
 export class DisputeNotFoundError extends NotFoundError {
   constructor() {
@@ -38,5 +38,17 @@ export class ForbiddenEvidenceUploadError extends ForbiddenError {
 export class ForbiddenEvidenceAccessError extends ForbiddenError {
   constructor() {
     super('You do not have access to this evidence');
+  }
+}
+
+export class EvidenceIntegrityError extends AppError {
+  constructor(evidenceId?: string) {
+    super(
+      evidenceId
+        ? `Stored evidence bytes for ${evidenceId} failed SHA-256 integrity verification`
+        : 'Stored evidence bytes failed SHA-256 integrity verification',
+      500,
+      'EVIDENCE_INTEGRITY_ERROR',
+    );
   }
 }
