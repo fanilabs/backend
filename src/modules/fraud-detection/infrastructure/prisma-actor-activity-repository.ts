@@ -1,26 +1,18 @@
-import type { PrismaClient, ActorActivity, ActorActivityCategory } from '@prisma/client';
-import type { ActorActivityRepository } from '../domain/ports';
+import type { PrismaClient, ActorActivityCategory } from '@prisma/client';
+import type { ActorActivityRepository } from '../domain/ports.js';
 
-export function createPrismaActorActivityRepository(
-  prisma: PrismaClient,
-): ActorActivityRepository {
+const DEFAULT_DELETE_BATCH_SIZE = 1_000;
+const DEFAULT_MAX_DELETE_ITERATIONS = 50;
+
+export function createPrismaActorActivityRepository(prisma: PrismaClient): ActorActivityRepository {
   return {
-    async record(activity: ActorActivity): Promise<ActorActivity> {
-      return prisma.actorActivity.create({ data: activity });
-    },
-
-    async findByAddress(
-      address: string,
-      category?: ActorActivityCategory,
-      since?: Date,
-    ): Promise<ActorActivity[]> {
-      return prisma.actorActivity.findMany({
-        where: {
-          address,
-          ...(category ? { category } : {}),
-          ...(since ? { occurredAt: { gte: since } } : {}),
+    async record(input) {
+      await prisma.actorActivity.create({
+        data: {
+          address: input.address,
+          category: input.category,
+          occurredAt: input.occurredAt,
         },
-        orderBy: { occurredAt: 'desc' },
       });
     },
 
@@ -44,11 +36,28 @@ export function createPrismaActorActivityRepository(
       return rows.length;
     },
 
-    async deleteOlderThan(cutoff: Date): Promise<number> {
-      const result = await prisma.actorActivity.deleteMany({
-        where: { occurredAt: { lt: cutoff } },
-      });
-      return result.count;
+    async deleteOlderThan(
+      olderThan: Date,
+      batchSize: number = DEFAULT_DELETE_BATCH_SIZE,
+      maxIterations: number = DEFAULT_MAX_DELETE_ITERATIONS,
+    ): Promise<number> {
+      let totalDeleted = 0;
+      for (let iteration = 0; iteration < maxIterations; iteration += 1) {
+        const batch = await prisma.actorActivity.findMany({
+          where: { occurredAt: { lt: olderThan } },
+          select: { id: true },
+          take: batchSize,
+        });
+        if (batch.length === 0) break;
+
+        const { count } = await prisma.actorActivity.deleteMany({
+          where: { id: { in: batch.map((row) => row.id) } },
+        });
+        totalDeleted += count;
+
+        if (batch.length < batchSize) break;
+      }
+      return totalDeleted;
     },
   };
 }

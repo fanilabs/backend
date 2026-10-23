@@ -33,18 +33,16 @@ export interface ActorActivityRepository {
   ): Promise<number>;
   /**
    * Deletes rows with `occurredAt` older than `olderThan`, in batches of at
-   * most `batchSize`, returning the total number of rows removed. Used by
-   * the scheduled retention job (`../infrastructure/cleanup-queue.ts`) —
-   * batched so a large backlog can't hold a single long-running delete
-   * that locks the table, see `prisma/schema.prisma`'s `ActorActivity`
-   * comment and `FRAUD_ACTIVITY_RETENTION_DAYS` in `shared/config/env.ts`.
+   * most `batchSize` for at most `maxIterations` batches per invocation,
+   * returning the total number of rows removed. Used by the scheduled
+   * retention job (`../infrastructure/cleanup-queue.ts`) — bounded both per
+   * batch and per run so a large backlog cannot hold long table locks or
+   * exceed BullMQ worker lock duration (issue #469).
    */
-  deleteOlderThan(olderThan: Date, batchSize: number): Promise<number>;
+  deleteOlderThan(olderThan: Date, batchSize: number, maxIterations?: number): Promise<number>;
   /**
-   * Purges every row with `occurredAt` older than `cutoff`, returning the
-   * number of rows deleted. Filters solely on `occurredAt` so the purge can
-   * use the `(occurredAt)` index scan rather than a sequential scan — see
-   * issue #406 on unbounded `actor_activities` growth.
+   * Purges rows with `occurredAt` older than `cutoff` using default batch and
+   * iteration bounds, returning the number of rows deleted.
    */
   deleteOlderThan(cutoff: Date): Promise<number>;
 }
