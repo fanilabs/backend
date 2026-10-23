@@ -1,5 +1,5 @@
 import { logger } from '../../../shared/logger/index.js';
-import { NotificationNotFoundError } from '../domain/index.js';
+import { NotificationNotFoundError, RecipientContactNotFoundError } from '../domain/index.js';
 import type {
   NotificationRepository,
   NotificationSender,
@@ -97,7 +97,7 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
         { notificationId: notification.id, userId: notification.userId },
         'No contact email found for notification recipient — retrying',
       );
-      throw new Error(`User contact email not found for notification ${notification.id}; retrying`);
+      throw new RecipientContactNotFoundError(notification.id);
     }
 
     try {

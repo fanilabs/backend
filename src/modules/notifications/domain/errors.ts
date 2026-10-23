@@ -18,3 +18,9 @@ export class ForbiddenNotificationAccessError extends ForbiddenError {
 // implementation" shape. `sendNotification` still catches and marks
 // `FAILED` on whatever a real `NotificationSender.send` throws — reintroduce
 // a dedicated error type only once a real implementation needs one.
+
+export class RecipientContactNotFoundError extends NotFoundError {
+  constructor(notificationId: string) {
+    super(`User contact email not found for notification ${notificationId}; retrying`);
+  }
+}
