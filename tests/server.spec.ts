@@ -121,4 +121,20 @@ describe('server configuration and shutdown', () => {
       expect(signalEvents).toContain('SIGTERM');
     });
   });
+
+    it('times out hanging app.close() and closeAllQueues() so database/Redis teardown still runs (#458)', async () => {
+      const deps = {
+        app: { close: vi.fn().mockImplementation(() => new Promise(() => {})) },
+        closeAllQueues: vi.fn().mockImplementation(() => new Promise(() => {})),
+        disconnectPrisma: vi.fn().mockResolvedValue(undefined),
+        disconnectRedis: vi.fn().mockResolvedValue(undefined),
+        disconnectQueueConnection: vi.fn().mockResolvedValue(undefined),
+        disconnectTimeoutMs: 40,
+      };
+
+      const errors = await executeShutdownSteps(deps);
+      expect(errors).toHaveLength(2);
+      expect(deps.disconnectPrisma).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectRedis).toHaveBeenCalledTimes(1);
+    });
 });
