@@ -52,4 +52,9 @@ describe('notification response schemas', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('accepts array and primitive JSON payloads without failing serialization (#451)', () => {
+    const withArray = { ...notificationDto('EMAIL'), payload: ['delivery-101', 'shipped'] };
+    expect(getNotificationResponseSchema.safeParse({ data: withArray }).success).toBe(true);
+  });
 });

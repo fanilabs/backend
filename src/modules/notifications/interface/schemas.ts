@@ -23,7 +23,7 @@ const notificationDto = z.object({
   id: z.string().uuid(),
   channel: notificationChannel,
   type: z.string().max(100),
-  payload: z.record(z.unknown()),
+  payload: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string(), z.number(), z.boolean(), z.null()]),
   status: notificationStatus,
   readAt: z.string().datetime().nullable(),
   sentAt: z.string().datetime().nullable(),
