@@ -132,6 +132,37 @@ describe('authenticate — tokenVersion check', () => {
     await expect(authenticate(request, fakeReply)).rejects.toBeInstanceOf(UnauthorizedError);
     expect(spy).not.toHaveBeenCalled();
   });
+  it("accepts lowercase bearer, uppercase BEARER, and mixed-case Bearer tokens (RFC 6750 §2.1)", async () => {
+    vi.spyOn(getPrismaClient().user, "findUnique").mockResolvedValue({
+      role: "CUSTOMER",
+      tokenVersion: 1,
+    } as never);
+
+    const token = signAccessToken({ sub: "user-case-test", role: "CUSTOMER", tokenVersion: 1 });
+
+    // Lowercase "bearer <token>"
+    const reqLower = fakeRequest(`bearer ${token}`);
+    await authenticate(reqLower, fakeReply);
+    expect(reqLower.user).toEqual({ id: "user-case-test", role: "CUSTOMER" });
+
+    // Uppercase "BEARER <token>"
+    const reqUpper = fakeRequest(`BEARER ${token}`);
+    await authenticate(reqUpper, fakeReply);
+    expect(reqUpper.user).toEqual({ id: "user-case-test", role: "CUSTOMER" });
+
+    // Extra whitespace between scheme and token
+    const reqSpaces = fakeRequest(`bearer   ${token}  `);
+    await authenticate(reqSpaces, fakeReply);
+    expect(reqSpaces.user).toEqual({ id: "user-case-test", role: "CUSTOMER" });
+  });
+
+  it("rejects non-bearer authorization schemes", async () => {
+    const reqBasic = fakeRequest("Basic dXNlcjpwYXNz");
+    await expect(authenticate(reqBasic, fakeReply)).rejects.toBeInstanceOf(UnauthorizedError);
+
+    const reqMalformed = fakeRequest("bearer");
+    await expect(authenticate(reqMalformed, fakeReply)).rejects.toBeInstanceOf(UnauthorizedError);
+  });
 });
 
 describe('authenticate — auth context cache (#369)', () => {
