@@ -123,6 +123,30 @@ export function handleError(
       void reply.status(400).send(body);
       return;
     }
+    if (error.code === 'P2004') {
+      const body: ErrorResponseBody = {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A database check constraint failed on the provided data',
+          details: error.meta,
+        },
+        requestId,
+      };
+      void reply.status(400).send(body);
+      return;
+    }
+    if (error.code === 'P2011') {
+      const body: ErrorResponseBody = {
+        error: {
+          code: 'VALIDATION_ERROR',
+          message: 'A required field cannot be null',
+          details: error.meta,
+        },
+        requestId,
+      };
+      void reply.status(400).send(body);
+      return;
+    }
     if (error.code === 'P2025') {
       const body: ErrorResponseBody = {
         error: { code: 'NOT_FOUND', message: 'Resource not found' },
