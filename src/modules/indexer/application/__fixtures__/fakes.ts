@@ -96,7 +96,7 @@ export function createFakeEventSource(): EventSource & {
 
 export function buildRawEvent(overrides: Partial<RawContractEvent> = {}): RawContractEvent {
   return {
-    contractId: 'CONTRACT_ID',
+    contractId: 'C_ESCROW',
     rpcEventId: `${Math.random()}`,
     ledgerSeq: 1001,
     txHash: 'tx-hash',

@@ -146,3 +146,35 @@ cleanup remain gated. The new completion table is per consumer only; aggregate
 processing status remains conservatively blocked. There is no automatic retry
 runner or durable failed-attempt journal in this slice. M16/M17 still block full
 migration readiness; the new migration is additive and does no historical backfill.
+
+## M10 creation evidence and durable blocking (repair branch)
+
+Creation still has no approved historical hydration source. The reference
+contract source at commit `12cc0e04cc667f9a210eabde1dda29f6c0bb3330` emits a named
+`DeliveryCreatedEvent { delivery_id, sender }`; the legacy backend assumes a
+2-element tuple. The reference contract also permits metadata updates, so current
+origin/destination/cargo data cannot be assumed to equal creation-time data.
+Neither that source commit nor locally encoded fixtures prove the deployed ABI.
+
+New event admission can retain the RPC-observed contract address atomically with
+the raw event and obligations. RPC decoding and polling reject missing/mismatched
+contract origins instead of substituting request configuration. Duplicates cannot
+overwrite a conflicting observed origin; historical rows are not backfilled.
+This is an observation binding, not a cryptographic network/ABI/state proof.
+
+`createBlockedDeliveryCreationConsumer` validates admitted creation structure and
+configured/observed identity, then persists a specific deliveries-obligation block
+reason. It accepts no current-state reader or caller-supplied "trusted snapshot".
+Even matching origins and well-formed tuple/reference-map fields remain blocked
+by `delivery_creation_deployed_abi_and_historical_state_unverified`. Missing or
+wrong identity and malformed data have distinct reasons. No delivery, ordering
+position, completion, raw processedAt or checkpoint is created/changed by it.
+
+A verified deployed ABI/code identity and a retained authoritative event-time
+source are still required. Transaction metadata/state-change extraction may be
+an option, but no approved archive provider, metadata verifier or proof of
+availability is installed here. Current simulation/getLedgerEntries calls do not
+select a historical ledger. Do not treat self-reported fixture provenance as an
+approval to create records. The new entry is available for controlled assessment;
+it does not scan or activate pending/historical processing. All production,
+notification-delivery, historical-replay and retention gates remain closed.

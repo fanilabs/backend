@@ -442,24 +442,25 @@ model BlockchainCheckpoint {
 }
 
 model BlockchainEvent {
-  id                String                  @id @default(uuid())
-  contractName      String                  @map("contract_name") @db.VarChar(255)
-  network           String
+  id                  String                    @id @default(uuid())
+  contractName        String                    @map("contract_name") @db.VarChar(255)
+  network             String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
   /// network, so it's the idempotency key directly rather than a hand-rolled
   /// composite. See src/modules/indexer/infrastructure/soroban-event-source.ts.
-  rpcEventId        String                  @map("rpc_event_id")
-  ledgerSeq         BigInt                  @map("ledger_seq")
-  txHash            String                  @map("tx_hash")
-  topic             String[]
-  payload           Json
+  rpcEventId          String                    @map("rpc_event_id")
+  ledgerSeq           BigInt                    @map("ledger_seq")
+  txHash              String                    @map("tx_hash")
+  topic               String[]
+  payload             Json
   /// When this happened on-chain (ledger close time) — distinct from
   /// ingestedAt, which is when this backend observed/stored it.
-  ledgerClosedAt    DateTime                @map("ledger_closed_at")
-  ingestedAt        DateTime                @default(now()) @map("ingested_at")
-  processedAt       DateTime?               @map("processed_at")
-  processingReceipt EventProcessingReceipt?
+  ledgerClosedAt      DateTime                  @map("ledger_closed_at")
+  ingestedAt          DateTime                  @default(now()) @map("ingested_at")
+  processedAt         DateTime?                 @map("processed_at")
+  processingReceipt   EventProcessingReceipt?
+  contractObservation EventContractObservation?
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])
@@ -559,4 +560,14 @@ model DeliveryConsumerPosition {
   delivery        Delivery @relation(fields: [chainDeliveryId], references: [chainDeliveryId], onDelete: Restrict, map: "delivery_consumer_positions_delivery_fkey")
 
   @@map("delivery_consumer_positions")
+}
+
+/// Observed RPC origin, not proof of deployed ABI or historical state.
+/// Existing events deliberately remain unbound unless independently reconciled.
+model EventContractObservation {
+  eventId    String          @id @map("event_id")
+  contractId String          @map("contract_id")
+  event      BlockchainEvent @relation(fields: [eventId], references: [id], onDelete: Restrict)
+
+  @@map("event_contract_observations")
 }
