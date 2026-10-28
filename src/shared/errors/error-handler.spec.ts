@@ -217,4 +217,45 @@ describe('error-handler', () => {
     expect(sendArg.error.details).toEqual({ column_name: 'recipient_address' });
     expect(sendArg.requestId).toBe('req-123');
   });
+  it("maps Prisma P2004 check constraint violation to HTTP 400 VALIDATION_ERROR", () => {
+    const reply = createMockReply();
+    const request = createMockRequest(() => {});
+
+    const prismaError = {
+      code: "P2004",
+      message: "A constraint failed on the database: check constraint violation",
+      meta: { database_error: "check constraint failed" },
+    } as any;
+
+    handleError(prismaError, request, reply);
+
+    expect((reply.status as any).mock.calls[0]?.[0]).toBe(400);
+
+    const sendArg = (reply.send as any).mock.calls[0]?.[0];
+    expect(sendArg.error.code).toBe("VALIDATION_ERROR");
+    expect(sendArg.error.message).toBe("A database check constraint failed on the provided data");
+    expect(sendArg.error.details).toEqual({ database_error: "check constraint failed" });
+    expect(sendArg.requestId).toBe("req-123");
+  });
+
+  it("maps Prisma P2011 null constraint violation to HTTP 400 VALIDATION_ERROR", () => {
+    const reply = createMockReply();
+    const request = createMockRequest(() => {});
+
+    const prismaError = {
+      code: "P2011",
+      message: "Null constraint violation on the constraint: users_email_key",
+      meta: { constraint: ["users_email_key"] },
+    } as any;
+
+    handleError(prismaError, request, reply);
+
+    expect((reply.status as any).mock.calls[0]?.[0]).toBe(400);
+
+    const sendArg = (reply.send as any).mock.calls[0]?.[0];
+    expect(sendArg.error.code).toBe("VALIDATION_ERROR");
+    expect(sendArg.error.message).toBe("A required field cannot be null");
+    expect(sendArg.error.details).toEqual({ constraint: ["users_email_key"] });
+    expect(sendArg.requestId).toBe("req-123");
+  });
 });
