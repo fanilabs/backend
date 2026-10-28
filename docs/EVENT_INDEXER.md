@@ -86,3 +86,31 @@ notifications with ambiguous SMTP outcomes based on this admission foundation.
 
 The additive migration does not repair existing M16/M17 migration-chain failures;
 full empty-chain replay and deployment-history reconciliation remain open.
+
+## M10 worker registry and execution gate (repair branch)
+
+The production worker now constructs all seven implemented event consumers via
+public worker-only module composition entries (`event-consumer.ts`). These build
+real handlers without HTTP routes, storage-directory setup, or subscriptions to
+the legacy process-local bus. The registry uses the same IDs as durable admission
+obligations, rejects duplicate/missing registrations, and reports the unimplemented
+users projection separately. Each registered consumer remains explicitly blocked
+by its transaction, ordering, idempotency or outbox prerequisites. Registration
+never establishes completion or enables replay.
+
+The indexer worker checks the registry before fetching events or entering the
+legacy poll path. Poll jobs currently fail visibly with the blocked prerequisites;
+no ingestion or checkpoint progress is made while this gate is closed. This
+operational pause prevents worker registration from activating unsafe processing.
+Raw admission remains separately available; historical completion stays unknown.
+The existing API-local legacy subscriptions are unchanged and are not a durable
+processing acknowledgement.
+
+Production startup logs the registration/prerequisite snapshot. It starts the
+indexer worker with that same registry and the fail-closed retention worker.
+Notification delivery workers are deliberately not started: pending email jobs
+must not be consumed before ambiguous-send recovery and notification outbox work
+are verified. The former entry referenced this worker without importing it;
+starting it during the registry repair would activate previously broken startup
+behavior. Pending mail needs explicit operational review before resuming delivery.
+Retention deletion stays suspended; M10 completion/recovery, M11 and M34 remain open.

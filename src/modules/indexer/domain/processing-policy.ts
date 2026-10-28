@@ -58,3 +58,14 @@ export function missingRequiredConsumers(
 ): ConsumerId[] {
   return required.filter((id) => !registered.includes(id));
 }
+
+/** Validate contract-wide requirements before the legacy poll can fetch/write. */
+export function requiredConsumersForContract(contract: string): ConsumerId[] {
+  return [
+    ...new Set(
+      Object.entries(requiredByEvent)
+        .filter(([eventType]) => eventType.startsWith(`${contract}.`))
+        .flatMap(([, consumers]) => consumers),
+    ),
+  ];
+}

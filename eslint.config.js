@@ -40,6 +40,9 @@ export default tseslint.config(
         // it wires infrastructure adapters into application use cases and
         // hands the interface layer a ready-to-register Fastify plugin.
         { type: 'module-root', pattern: 'src/modules/*/index.ts', mode: 'file' },
+        // Explicit public worker composition entries, with the same boundary
+        // permissions as each module's HTTP composition root.
+        { type: 'module-root', pattern: 'src/modules/*/event-consumer.ts', mode: 'file' },
       ],
     },
     rules: {
