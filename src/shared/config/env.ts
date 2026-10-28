@@ -169,8 +169,8 @@ const baseEnvSchema = z.object({
    * mirror the previously hardcoded RULES constants so behaviour is
    * unchanged when nothing is configured; operators can tune them per
    * environment (local dev, testnet staging, high-traffic production)
-   * without a rebuild. Thresholds are the number of matching activities
-   * within the window that trigger a flag; windows are in hours. */
+   * without a rebuild. A rule triggers when the number of matching activities
+   * within the window exceeds its threshold; windows are in hours. */
   FRAUD_DELIVERY_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
   FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS: z.coerce.number().int().positive().default(1),
   FRAUD_ESCROW_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
