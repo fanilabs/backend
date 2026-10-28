@@ -199,6 +199,23 @@ const baseEnvSchema = z.object({
  * connection strings above already establish (see docs/DEPLOYMENT.md).
  */
 const envWithProviderChecks = baseEnvSchema.superRefine((env, ctx) => {
+  // All three current fraud rules are enabled. Their inclusive lookbacks must
+  // fit in retention; reject conflicts rather than changing either setting.
+  const ruleWindows = [
+    ['FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS', env.FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS],
+    ['FRAUD_ESCROW_VELOCITY_WINDOW_HOURS', env.FRAUD_ESCROW_VELOCITY_WINDOW_HOURS],
+    ['FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS', env.FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS],
+  ] as const;
+  for (const [key, hours] of ruleWindows) {
+    if (hours / 24 > env.FRAUD_ACTIVITY_RETENTION_DAYS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key}=${hours} hours exceeds FRAUD_ACTIVITY_RETENTION_DAYS=${env.FRAUD_ACTIVITY_RETENTION_DAYS} days; increase retention or explicitly configure a shorter rule window`,
+      });
+    }
+  }
+
   const providers: Array<[string, 'logger' | 'smtp' | 'sendgrid' | 'ses']> = [
     ['MAIL_PROVIDER', env.MAIL_PROVIDER],
     ['NOTIFICATION_PROVIDER', env.NOTIFICATION_PROVIDER],

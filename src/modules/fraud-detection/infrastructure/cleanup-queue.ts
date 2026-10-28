@@ -3,13 +3,8 @@ import { Worker } from 'bullmq';
 import { getConfig } from '../../../shared/config/index.js';
 import { logger } from '../../../shared/logger/index.js';
 import { getQueue, getQueueConnection, QueueName } from '../../../shared/queue/index.js';
-import { createPrismaActorActivityRepository } from './prisma-actor-activity-repository.js';
 
 const log = logger.child({ module: 'fraud-activity-cleanup-queue' });
-
-/** Rows are deleted in batches of at most this size per iteration — see
- * `ActorActivityRepository.deleteOlderThan`'s header comment for why. */
-const DELETE_BATCH_SIZE = 1_000;
 
 const CLEANUP_JOB_ID = 'fraud-activity-cleanup';
 /** Once a day is comfortably frequent enough for a retention window
@@ -25,34 +20,38 @@ const CLEANUP_INTERVAL_MS = 24 * 60 * 60 * 1000;
  */
 export async function scheduleFraudActivityCleanup(): Promise<void> {
   const queue = getQueue(QueueName.FraudActivityCleanup);
-  await queue.add(
-    'cleanup',
-    {},
-    { jobId: CLEANUP_JOB_ID, repeat: { every: CLEANUP_INTERVAL_MS } },
-  );
+  await queue.add('cleanup', {}, { jobId: CLEANUP_JOB_ID, repeat: { every: CLEANUP_INTERVAL_MS } });
   log.info('Scheduled fraud activity retention cleanup');
 }
 
 /**
- * BullMQ Worker that deletes `actor_activities` rows older than
- * `FRAUD_ACTIVITY_RETENTION_DAYS` — runs in the worker process
- * (src/workers/index.ts), not the API process. Deletion is batched
- * (`ActorActivityRepository.deleteOlderThan`) so it can't hold a long
- * table lock, and the retention window is always comfortably wider than
- * every current rule window (max 24h, see `application/assess-actor.ts`),
- * so scheduled deletion never affects a live assessment.
+ * Fail closed until the indexer supplies a reliable durable processing frontier.
+ * Existing checkpoints can advance past unread pages or failed subscribers;
+ * blockchain_events.processedAt has no production writer. The evaluator's
+ * latest-observed-event clock is also not proof of successful processing.
+ * None is safe evidence that deleting activity preserves active evaluations.
+ *
+ * Keep the factory's Prisma argument for production composition compatibility,
+ * but deliberately perform no query or deletion. Re-enabling cleanup requires
+ * a verified frontier and the bounded batch/progress/continuation contract,
+ * not merely adding a database timestamp or trusting job-supplied metadata.
  */
-export function createFraudActivityCleanupWorker(prisma: PrismaClient): Worker {
-  const activityRepository = createPrismaActorActivityRepository(prisma);
+export function createFraudActivityCleanupWorker(_prisma: PrismaClient): Worker {
+  // Validate retention/window configuration before creating a worker.
+  getConfig();
 
   return new Worker(
     QueueName.FraudActivityCleanup,
     async () => {
-      const retentionDays = getConfig().FRAUD_ACTIVITY_RETENTION_DAYS;
-      const olderThan = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
-      const deletedCount = await activityRepository.deleteOlderThan(olderThan, DELETE_BATCH_SIZE);
-      log.info({ deletedCount, retentionDays }, 'Fraud activity retention cleanup complete');
-      return { deletedCount };
+      const result = {
+        status: 'skipped',
+        reason: 'reliable_processing_watermark_unavailable',
+        deletedCount: 0,
+        backlog: 'unknown',
+        cutoff: null,
+      } as const;
+      log.warn(result, 'Fraud activity cleanup skipped: no trustworthy processing watermark');
+      return result;
     },
     { connection: getQueueConnection() },
   );
