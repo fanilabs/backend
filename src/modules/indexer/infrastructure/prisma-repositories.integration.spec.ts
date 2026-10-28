@@ -15,6 +15,10 @@ describe.skipIf(!dbAvailable)('Prisma indexer repositories (integration)', () =>
   const network = 'testnet';
 
   afterAll(async () => {
+    await prisma.$executeRaw`DELETE FROM event_consumer_obligations WHERE event_id IN
+      (SELECT id FROM blockchain_events WHERE contract_name = ${contractName})`;
+    await prisma.$executeRaw`DELETE FROM event_processing_receipts WHERE event_id IN
+      (SELECT id FROM blockchain_events WHERE contract_name = ${contractName})`;
     await prisma.blockchainEvent.deleteMany({ where: { contractName } });
     await prisma.blockchainCheckpoint.deleteMany({ where: { contractName } });
     await prisma.$disconnect();

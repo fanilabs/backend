@@ -59,3 +59,30 @@ No FaniLab contracts are deployed anywhere reachable from this repository's own 
 ## Status
 
 Implemented (Phase 5). Verified against the real public Soroban testnet RPC (not just fakes) for `getLatestLedger`/`getEvents` connectivity and XDR decoding — there being no deployed FaniLab contracts to fetch real business events from is a deployment-environment fact, not a testing gap; the request/response/decode pipeline itself is proven against a live network. Checkpoint/event-store idempotency is verified against a real Postgres database (CI) or skipped honestly where none is reachable.
+
+## M10 processing foundation (repair branch)
+
+`createPrismaEventStore.tryInsert` now atomically persists each new raw event,
+versioned admission metadata and one blocked obligation per required consumer.
+Requirements come from `domain/processing-policy.ts`, independently of listener
+registration. Existing events without admission metadata remain
+`historical_unknown`, including events with a legacy `processedAt` value.
+Duplicate receipt preserves that uncertainty and never initiates replay.
+
+`eventProcessingStatus` reports blocked requirements and missing registrations.
+Every supported consumer remains blocked by `consumer_recovery_not_verified`;
+unknown event policies and the unimplemented users projection are explicitly
+unresolved. This foundation offers no successful-completion transition and
+executes no consumer effects. Empty requirements do not imply completion.
+
+The checkpointing/idempotent-ingestion claims earlier in this historical document
+are not established by the legacy poll/bus implementation: a resolved publish can
+include subscriber failures, and an existing raw event is skipped on retry.
+The current checkpoint is not a successful-processing frontier. Worker consumer
+wiring, durable execution/completion, transaction-scoped effects and ordering,
+M34 fraud identity, notification outbox and M11 pagination remain prerequisites.
+Retention deletion stays suspended. Do not replay historical events or resend
+notifications with ambiguous SMTP outcomes based on this admission foundation.
+
+The additive migration does not repair existing M16/M17 migration-chain failures;
+full empty-chain replay and deployment-history reconciliation remain open.

@@ -441,23 +441,24 @@ model BlockchainCheckpoint {
 }
 
 model BlockchainEvent {
-  id             String    @id @default(uuid())
-  contractName   String    @map("contract_name") @db.VarChar(255)
-  network        String
+  id                String                  @id @default(uuid())
+  contractName      String                  @map("contract_name") @db.VarChar(255)
+  network           String
   /// The Soroban RPC's own event id (a monotonic "total order id" encoding
   /// ledger/tx/operation/event position) — already globally unique on the
   /// network, so it's the idempotency key directly rather than a hand-rolled
   /// composite. See src/modules/indexer/infrastructure/soroban-event-source.ts.
-  rpcEventId     String    @map("rpc_event_id")
-  ledgerSeq      BigInt    @map("ledger_seq")
-  txHash         String    @map("tx_hash")
-  topic          String[]
-  payload        Json
+  rpcEventId        String                  @map("rpc_event_id")
+  ledgerSeq         BigInt                  @map("ledger_seq")
+  txHash            String                  @map("tx_hash")
+  topic             String[]
+  payload           Json
   /// When this happened on-chain (ledger close time) — distinct from
   /// ingestedAt, which is when this backend observed/stored it.
-  ledgerClosedAt DateTime  @map("ledger_closed_at")
-  ingestedAt     DateTime  @default(now()) @map("ingested_at")
-  processedAt    DateTime? @map("processed_at")
+  ledgerClosedAt    DateTime                @map("ledger_closed_at")
+  ingestedAt        DateTime                @default(now()) @map("ingested_at")
+  processedAt       DateTime?               @map("processed_at")
+  processingReceipt EventProcessingReceipt?
 
   @@unique([contractName, network, rpcEventId])
   @@index([contractName, ledgerSeq])
@@ -510,4 +511,27 @@ model AuditLog {
   @@index([actorId])
   @@index([createdAt(sort: Desc)])
   @@map("audit_logs")
+}
+
+/// Admission metadata; absence means historical completion is unknown.
+/// This foundation deliberately supports no successful-completion transition.
+model EventProcessingReceipt {
+  eventId       String                    @id @map("event_id")
+  policyVersion Int                       @map("policy_version")
+  blockedReason String                    @map("blocked_reason")
+  createdAt     DateTime                  @default(now()) @map("created_at")
+  event         BlockchainEvent           @relation(fields: [eventId], references: [id], onDelete: Restrict)
+  obligations   EventConsumerObligation[]
+
+  @@map("event_processing_receipts")
+}
+
+model EventConsumerObligation {
+  eventId       String                 @map("event_id")
+  consumerId    String                 @map("consumer_id")
+  blockedReason String                 @map("blocked_reason")
+  receipt       EventProcessingReceipt @relation(fields: [eventId], references: [eventId], onDelete: Restrict)
+
+  @@id([eventId, consumerId])
+  @@map("event_consumer_obligations")
 }
