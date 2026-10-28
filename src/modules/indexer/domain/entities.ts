@@ -20,6 +20,9 @@ export interface RawContractEvent {
 }
 
 export interface StoredEvent {
+  /** Observed RPC contract identity. Absent on legacy/manual events; never
+   * backfill it from current configuration or infer historical provenance. */
+  contractId?: string;
   contractName: string;
   network: string;
   rpcEventId: string;

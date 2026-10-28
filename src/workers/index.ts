@@ -1,3 +1,9 @@
+import { createWorkerEventConsumers } from './event-consumers.js';
+import type { ConsumerRegistry } from '../modules/indexer/index.js';
+import {
+  createFraudDetectionCleanupBackgroundWorker,
+  scheduleFraudDetectionCleanup,
+} from '../modules/fraud-detection/index.js';
 import type { Worker } from 'bullmq';
 import closeWithGrace from 'close-with-grace';
 import { logger } from '../shared/logger/index.js';
@@ -17,19 +23,24 @@ const log = logger.child({ process: 'worker' });
  * or scale horizontally). Each module contributes its own worker(s) here as
  * it's implemented in Phase 5.
  */
-export const registerWorkers: Array<() => Worker> = [
-  () => createIndexerBackgroundWorker(getPrismaClient()),
-  () => createNotificationsBackgroundWorker(getPrismaClient()),
+export const registerWorkers: Array<(consumers: ConsumerRegistry) => Worker> = [
+  (consumers) => createIndexerBackgroundWorker(getPrismaClient(), consumers),
+  // Notification delivery remains gated: ambiguous SMTP outcomes lack recovery.
   () => createFraudDetectionCleanupBackgroundWorker(getPrismaClient()),
 ];
 
 async function main(): Promise<void> {
+  const consumers = createWorkerEventConsumers(getPrismaClient());
+  log.warn(
+    { eventConsumers: consumers.describe() },
+    'Event consumers registered; execution blocked',
+  );
   // Repeatable job registration is idempotent (BullMQ upserts by
   // name+repeat+jobId) — safe to call on every worker-process start.
   await scheduleIndexer();
   await scheduleFraudDetectionCleanup();
 
-  const workers = registerWorkers.map((register) => register());
+  const workers = registerWorkers.map((register) => register(consumers));
 
   // Every teardown step runs with its own timeout and best-effort, so a Redis
   // that died alongside this container can't hang `worker.close()`/`queue.close()`

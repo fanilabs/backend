@@ -59,3 +59,122 @@ No FaniLab contracts are deployed anywhere reachable from this repository's own 
 ## Status
 
 Implemented (Phase 5). Verified against the real public Soroban testnet RPC (not just fakes) for `getLatestLedger`/`getEvents` connectivity and XDR decoding — there being no deployed FaniLab contracts to fetch real business events from is a deployment-environment fact, not a testing gap; the request/response/decode pipeline itself is proven against a live network. Checkpoint/event-store idempotency is verified against a real Postgres database (CI) or skipped honestly where none is reachable.
+
+## M10 processing foundation (repair branch)
+
+`createPrismaEventStore.tryInsert` now atomically persists each new raw event,
+versioned admission metadata and one blocked obligation per required consumer.
+Requirements come from `domain/processing-policy.ts`, independently of listener
+registration. Existing events without admission metadata remain
+`historical_unknown`, including events with a legacy `processedAt` value.
+Duplicate receipt preserves that uncertainty and never initiates replay.
+
+`eventProcessingStatus` reports blocked requirements and missing registrations.
+Every supported consumer remains blocked by `consumer_recovery_not_verified`;
+unknown event policies and the unimplemented users projection are explicitly
+unresolved. This foundation offers no successful-completion transition and
+executes no consumer effects. Empty requirements do not imply completion.
+
+The checkpointing/idempotent-ingestion claims earlier in this historical document
+are not established by the legacy poll/bus implementation: a resolved publish can
+include subscriber failures, and an existing raw event is skipped on retry.
+The current checkpoint is not a successful-processing frontier. Worker consumer
+wiring, durable execution/completion, transaction-scoped effects and ordering,
+M34 fraud identity, notification outbox and M11 pagination remain prerequisites.
+Retention deletion stays suspended. Do not replay historical events or resend
+notifications with ambiguous SMTP outcomes based on this admission foundation.
+
+The additive migration does not repair existing M16/M17 migration-chain failures;
+full empty-chain replay and deployment-history reconciliation remain open.
+
+## M10 worker registry and execution gate (repair branch)
+
+The production worker now constructs all seven implemented event consumers via
+public worker-only module composition entries (`event-consumer.ts`). These build
+real handlers without HTTP routes, storage-directory setup, or subscriptions to
+the legacy process-local bus. The registry uses the same IDs as durable admission
+obligations, rejects duplicate/missing registrations, and reports the unimplemented
+users projection separately. Each registered consumer remains explicitly blocked
+by its transaction, ordering, idempotency or outbox prerequisites. Registration
+never establishes completion or enables replay.
+
+The indexer worker checks the registry before fetching events or entering the
+legacy poll path. Poll jobs currently fail visibly with the blocked prerequisites;
+no ingestion or checkpoint progress is made while this gate is closed. This
+operational pause prevents worker registration from activating unsafe processing.
+Raw admission remains separately available; historical completion stays unknown.
+The existing API-local legacy subscriptions are unchanged and are not a durable
+processing acknowledgement.
+
+Production startup logs the registration/prerequisite snapshot. It starts the
+indexer worker with that same registry and the fail-closed retention worker.
+Notification delivery workers are deliberately not started: pending email jobs
+must not be consumed before ambiguous-send recovery and notification outbox work
+are verified. The former entry referenced this worker without importing it;
+starting it during the registry repair would activate previously broken startup
+behavior. Pending mail needs explicit operational review before resuming delivery.
+Retention deletion stays suspended; M10 completion/recovery, M11 and M34 remain open.
+
+## M10 atomic deliveries status adapter (repair branch)
+
+`createAtomicDeliveryStatusConsumer` accepts an admitted raw-event ID and writes
+one `deliveries` consumer completion in the **same PostgreSQL transaction** as
+its actual delivery-repository mutation and aggregate ordering position. It
+locks the consumer obligation and delivery row; committed duplicates return
+without repeating effects. Failures roll back the whole unit. It does not set
+the raw event's `processedAt`, complete other consumers, or advance checkpoints.
+
+This adapter supports `driver_assigned`, `DeliveryInTransit`,
+`delivery_confirmed`, `delivery_cancelled`, and `delivery_disputed`. The existing
+status/timestamp/driver patch semantics are shared with the legacy handler.
+`delivery_created` remains blocked: its current-state RPC hydration does not
+provide an event-time snapshot. No network call is performed in the transaction.
+
+Ordering is per delivery, not global: proven network-bound ordering provenance
+must already exist. Existing rows are not automatically adopted. Stale and
+ambiguous same-ledger events fail without acknowledgement; known earlier
+unfinished events for the same aggregate block later application. The ordering
+probe reads at most 1,001 pending candidates and refuses to infer coverage when
+its 1,000-candidate budget is exceeded. It uses the existing ID parser rather
+than assuming RPC-ID lexical order or changing supported ID encodings.
+
+This does not establish that all earlier events have been fetched: M11 and
+same-ledger ordering remain unresolved. Pinned creation hydration/provenance
+initialization and historical reconciliation are prerequisites. Production
+registry execution, notification delivery, historical replay and retention
+cleanup remain gated. The new completion table is per consumer only; aggregate
+processing status remains conservatively blocked. There is no automatic retry
+runner or durable failed-attempt journal in this slice. M16/M17 still block full
+migration readiness; the new migration is additive and does no historical backfill.
+
+## M10 creation evidence and durable blocking (repair branch)
+
+Creation still has no approved historical hydration source. The reference
+contract source at commit `12cc0e04cc667f9a210eabde1dda29f6c0bb3330` emits a named
+`DeliveryCreatedEvent { delivery_id, sender }`; the legacy backend assumes a
+2-element tuple. The reference contract also permits metadata updates, so current
+origin/destination/cargo data cannot be assumed to equal creation-time data.
+Neither that source commit nor locally encoded fixtures prove the deployed ABI.
+
+New event admission can retain the RPC-observed contract address atomically with
+the raw event and obligations. RPC decoding and polling reject missing/mismatched
+contract origins instead of substituting request configuration. Duplicates cannot
+overwrite a conflicting observed origin; historical rows are not backfilled.
+This is an observation binding, not a cryptographic network/ABI/state proof.
+
+`createBlockedDeliveryCreationConsumer` validates admitted creation structure and
+configured/observed identity, then persists a specific deliveries-obligation block
+reason. It accepts no current-state reader or caller-supplied "trusted snapshot".
+Even matching origins and well-formed tuple/reference-map fields remain blocked
+by `delivery_creation_deployed_abi_and_historical_state_unverified`. Missing or
+wrong identity and malformed data have distinct reasons. No delivery, ordering
+position, completion, raw processedAt or checkpoint is created/changed by it.
+
+A verified deployed ABI/code identity and a retained authoritative event-time
+source are still required. Transaction metadata/state-change extraction may be
+an option, but no approved archive provider, metadata verifier or proof of
+availability is installed here. Current simulation/getLedgerEntries calls do not
+select a historical ledger. Do not treat self-reported fixture provenance as an
+approval to create records. The new entry is available for controlled assessment;
+it does not scan or activate pending/historical processing. All production,
+notification-delivery, historical-replay and retention gates remain closed.

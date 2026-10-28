@@ -49,15 +49,21 @@ async function runGetEvents(
     filters: [{ type: 'contract', contractIds: [contractId] }],
   });
 
-  const events: RawContractEvent[] = response.events.map((event) => ({
-    contractId: event.contractId?.contractId() ?? contractId,
-    rpcEventId: event.id,
-    ledgerSeq: event.ledger,
-    txHash: event.txHash,
-    topic: event.topic.map((segment) => stringifyTopicSegment(scValToNative(segment))),
-    value: scValToNative(event.value),
-    closedAt: new Date(event.ledgerClosedAt),
-  }));
+  const events: RawContractEvent[] = response.events.map((event) => {
+    const observedContractId = event.contractId?.contractId();
+    if (!observedContractId || observedContractId !== contractId) {
+      throw new BlockchainError('RPC event contract identity missing or mismatched');
+    }
+    return {
+      contractId: observedContractId,
+      rpcEventId: event.id,
+      ledgerSeq: event.ledger,
+      txHash: event.txHash,
+      topic: event.topic.map((segment) => stringifyTopicSegment(scValToNative(segment))),
+      value: scValToNative(event.value),
+      closedAt: new Date(event.ledgerClosedAt),
+    };
+  });
 
   return { events, latestLedgerSeen: response.latestLedger };
 }

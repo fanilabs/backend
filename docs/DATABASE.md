@@ -23,7 +23,33 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 
 `actor_activities` is also not a read model of on-chain state — it's a durable, append-only log the `fraud-detection` module writes to itself (one row per relevant blockchain event, see `EVENT_INDEXER.md`), never mutated afterward. Deliberately not a pre-computed risk-score table: rule thresholds are evaluated fresh against this log on every `GET /fraud-detection/actors/:address` call rather than maintaining incrementally-updated derived state that could drift — see `src/modules/fraud-detection/domain/ports.ts`'s `ActorActivityRepository` header comment.
 
-**Retention**: rows are kept for `FRAUD_ACTIVITY_RETENTION_DAYS` (default 30 — comfortably above the widest current rule window, 24h, to leave room for future longer-window rules and for forensic/manual review) before a scheduled BullMQ job (`fraud-activity-cleanup` queue, `src/modules/fraud-detection/infrastructure/cleanup-queue.ts`) deletes them, running once a day in the worker process. Deletion is batched (1,000 rows per iteration, `ActorActivityRepository.deleteOlderThan`) so it never holds a long lock over the whole matching range. Because the retention window is always wider than every rule window, this never affects a live assessment — only rows already outside every rule's lookback are ever eligible for deletion.
+**Retention policy**: `FRAUD_ACTIVITY_RETENTION_DAYS` defaults to 30 days.
+Configuration is rejected when retention is shorter than any enabled rule's
+configured lookback (all three current velocity rules are enabled; windows are
+in hours). Equality is allowed because evaluation includes the cutoff boundary
+and deletion must preserve records exactly on that boundary. Settings are never
+silently extended or evaluation windows shortened.
+
+**Cleanup is currently suspended for data safety.** The daily BullMQ
+`fraud-activity-cleanup` schedule remains, but jobs persist a `status: skipped`
+result with `reason: reliable_processing_watermark_unavailable`, zero deleted
+rows, unknown backlog and no cutoff. A completed BullMQ job in this state does
+not mean cleanup completed or that there is no expired backlog. Monitor these
+skipped results and storage growth; automatic reclamation is not operational.
+
+Cleanup must eventually satisfy both wall-clock retention age and protection of
+ledger-time evaluation data, using the more conservative cutoff derived from a
+reliable, durable, successfully processed frontier. Existing indexer checkpoints
+can skip unread pages and advance after subscriber failures; `processedAt` is not
+written by production code. Neither those checkpoints nor the latest observed
+event is sufficient protection. Missing/unreliable/unreadable protective state
+must skip deletion, without substituting wall time or job-provided metadata.
+
+Re-enabling deletion requires verified processing completion/checkpoint
+semantics, bounded database batches and per-job work, truthful backlog/progress
+and durable continuation tested through failure/retry/restart/concurrent jobs.
+The current repository's legacy unbounded `deleteOlderThan` method is not called
+by the cleanup worker and is not an approved safe retention implementation.
 
 ## Blockchain Indexer Tables
 

@@ -18,6 +18,8 @@ export interface AssessActorDeps {
    * the `occurredAt` values they're compared against, immune to indexer lag.
    */
   clock?: Clock;
+  /** Optional environment-configured rules; omitted callers retain RULES. */
+  ruleDefinitions?: RuleDefinition[];
   /**
    * Optional alert publisher invoked whenever an assessment flags an actor.
    * Receives the full {@link ActorAssessment} (address + per-rule signals) so

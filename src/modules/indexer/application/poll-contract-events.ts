@@ -77,8 +77,12 @@ export function createPollContractEventsUseCase(deps: PollContractEventsDeps) {
 
     let eventsInserted = 0;
     for (const event of events) {
+      if (event.contractId !== input.contractId) {
+        throw new Error('RPC event contract identity does not match the requested contract');
+      }
       const stored = {
         contractName: input.contractName,
+        contractId: event.contractId,
         network: input.network,
         rpcEventId: event.rpcEventId,
         ledgerSeq: BigInt(event.ledgerSeq),

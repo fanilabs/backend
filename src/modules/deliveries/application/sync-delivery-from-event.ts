@@ -1,5 +1,6 @@
+import { deliveryMutation } from './delivery-mutation.js';
 import type { BlockchainEventEnvelope } from '../../../shared/events/index.js';
-import { parseAddress, parseBigIntId } from '../../../shared/events/index.js';
+import { parseBigIntId } from '../../../shared/events/index.js';
 import { ContractName } from '../../../shared/events/contract-names.js';
 import type { DeliveryContractReader, DeliveryRepository } from '../domain/index.js';
 
@@ -29,68 +30,15 @@ export function createSyncDeliveryFromEventUseCase(deps: SyncDeliveryFromEventDe
     const topic = event.topic[0];
     const payload = Array.isArray(event.payload) ? event.payload : [];
 
-    switch (topic) {
-      case 'delivery_created': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        if (chainDeliveryId === null) return;
-        const record = await deps.contractReader.getDelivery(chainDeliveryId);
-        await deps.deliveryRepository.create(record);
-        return;
-      }
-
-      case 'driver_assigned': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        const driverAddress = parseAddress(payload[1]);
-        if (chainDeliveryId === null || driverAddress === null) return;
-        await deps.deliveryRepository.updateStatus(chainDeliveryId, {
-          status: 'ACTIVE',
-          driverAddress,
-        });
-        return;
-      }
-
-      case 'DeliveryInTransit': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        if (chainDeliveryId === null) return;
-        await deps.deliveryRepository.updateStatus(chainDeliveryId, {
-          status: 'IN_TRANSIT',
-          transitStartedAt: event.closedAt,
-        });
-        return;
-      }
-
-      case 'delivery_confirmed': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        if (chainDeliveryId === null) return;
-        // The on-chain event carries no timestamp of its own — the
-        // indexer's ledger-close time is the best available on-chain
-        // timing signal (accurate to within one ledger's close interval).
-        await deps.deliveryRepository.updateStatus(chainDeliveryId, {
-          status: 'DELIVERED',
-          deliveredAt: event.closedAt,
-        });
-        return;
-      }
-
-      case 'delivery_cancelled': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        if (chainDeliveryId === null) return;
-        await deps.deliveryRepository.updateStatus(chainDeliveryId, { status: 'CANCELLED' });
-        return;
-      }
-
-      case 'delivery_disputed': {
-        const chainDeliveryId = parseBigIntId(payload[0]);
-        if (chainDeliveryId === null) return;
-        await deps.deliveryRepository.updateStatus(chainDeliveryId, { status: 'DISPUTED' });
-        return;
-      }
-
-      default:
-        // Other delivery_contract events (none currently) or a future
-        // addition this handler doesn't know about yet — ignored, not an
-        // error (docs/EVENT_INDEXER.md's malformed/unknown-event handling).
-        return;
+    if (topic === 'delivery_created') {
+      const chainDeliveryId = parseBigIntId(payload[0]);
+      if (chainDeliveryId === null) return;
+      const record = await deps.contractReader.getDelivery(chainDeliveryId);
+      await deps.deliveryRepository.create(record);
+      return;
     }
+    const mutation = deliveryMutation(event);
+    if (mutation)
+      await deps.deliveryRepository.updateStatus(mutation.chainDeliveryId, mutation.patch);
   };
 }

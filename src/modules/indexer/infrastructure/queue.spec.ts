@@ -1,3 +1,4 @@
+import { createConsumerRegistry } from '../application/consumer-registry.js';
 import type { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -44,7 +45,7 @@ describe('createIndexerWorker configuration', () => {
   });
 
   it('constructs the BullMQ Worker with those options and the shared connection (issue #356)', () => {
-    createIndexerWorker({} as PrismaClient);
+    createIndexerWorker({} as PrismaClient, createConsumerRegistry([]));
 
     expect(Worker).toHaveBeenCalledTimes(1);
     const [queueName, processor, opts] = vi.mocked(Worker).mock.calls[0]!;
@@ -63,7 +64,7 @@ describe('createIndexerWorker configuration', () => {
   });
 
   it('keeps concurrency strictly at 1 so poll ticks never overlap', () => {
-    createIndexerWorker({} as PrismaClient);
+    createIndexerWorker({} as PrismaClient, createConsumerRegistry([]));
 
     const [, , opts] = vi.mocked(Worker).mock.calls[0]!;
     // Concurrent polls against the same Soroban RPC can ingest events out

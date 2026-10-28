@@ -169,8 +169,8 @@ const baseEnvSchema = z.object({
    * mirror the previously hardcoded RULES constants so behaviour is
    * unchanged when nothing is configured; operators can tune them per
    * environment (local dev, testnet staging, high-traffic production)
-   * without a rebuild. Thresholds are the number of matching activities
-   * within the window that trigger a flag; windows are in hours. */
+   * without a rebuild. A rule triggers when the number of matching activities
+   * within the window exceeds its threshold; windows are in hours. */
   FRAUD_DELIVERY_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
   FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS: z.coerce.number().int().positive().default(1),
   FRAUD_ESCROW_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
@@ -199,6 +199,23 @@ const baseEnvSchema = z.object({
  * connection strings above already establish (see docs/DEPLOYMENT.md).
  */
 const envWithProviderChecks = baseEnvSchema.superRefine((env, ctx) => {
+  // All three current fraud rules are enabled. Their inclusive lookbacks must
+  // fit in retention; reject conflicts rather than changing either setting.
+  const ruleWindows = [
+    ['FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS', env.FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS],
+    ['FRAUD_ESCROW_VELOCITY_WINDOW_HOURS', env.FRAUD_ESCROW_VELOCITY_WINDOW_HOURS],
+    ['FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS', env.FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS],
+  ] as const;
+  for (const [key, hours] of ruleWindows) {
+    if (hours / 24 > env.FRAUD_ACTIVITY_RETENTION_DAYS) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [key],
+        message: `${key}=${hours} hours exceeds FRAUD_ACTIVITY_RETENTION_DAYS=${env.FRAUD_ACTIVITY_RETENTION_DAYS} days; increase retention or explicitly configure a shorter rule window`,
+      });
+    }
+  }
+
   const providers: Array<[string, 'logger' | 'smtp' | 'sendgrid' | 'ses']> = [
     ['MAIL_PROVIDER', env.MAIL_PROVIDER],
     ['NOTIFICATION_PROVIDER', env.NOTIFICATION_PROVIDER],

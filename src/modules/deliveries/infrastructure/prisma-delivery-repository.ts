@@ -66,6 +66,22 @@ function toDomain(record: PrismaDelivery): Delivery {
 }
 
 export function createPrismaDeliveryRepository(prisma: PrismaClient): DeliveryRepository {
+  return createRepository(prisma, withTransientRetry);
+}
+
+/** Uses exactly the caller's transaction client. A failed transaction is not
+ * retried internally: the caller must retry the entire effect/completion unit.
+ */
+export function createTransactionalDeliveryRepository(
+  tx: Prisma.TransactionClient,
+): DeliveryRepository {
+  return createRepository(tx, (operation) => operation());
+}
+
+function createRepository(
+  prisma: Prisma.TransactionClient,
+  updateOperation: <T>(operation: () => Promise<T>) => Promise<T>,
+): DeliveryRepository {
   return {
     async findByChainId(chainDeliveryId) {
       const record = await prisma.delivery.findUnique({ where: { chainDeliveryId } });
@@ -108,7 +124,7 @@ export function createPrismaDeliveryRepository(prisma: PrismaClient): DeliveryRe
     },
 
     async updateStatus(chainDeliveryId, patch) {
-      await withTransientRetry(async () => {
+      await updateOperation(async () => {
         const existing = await prisma.delivery.findUnique({ where: { chainDeliveryId } });
         if (!existing) throw new DeliveryNotFoundError();
 

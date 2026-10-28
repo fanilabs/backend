@@ -10,8 +10,8 @@ import {
   DisputeNotFoundError,
   DisputeNotOpenError,
   ForbiddenEvidenceUploadError,
-  ValidationError,
 } from '../domain/index.js';
+import { ValidationError } from '../../../shared/errors/app-error.js';
 
 export interface UploadEvidenceDeps {
   disputeRepository: DisputeRepository;
@@ -68,8 +68,7 @@ function assertMagicBytesMatch(contentType: string, bytes: Buffer): void {
   const header = bytes.subarray(0, 16);
   const matches = signatures.some(
     (signature) =>
-      header.length >= signature.length &&
-      signature.every((byte, index) => header[index] === byte),
+      header.length >= signature.length && signature.every((byte, index) => header[index] === byte),
   );
 
   if (!matches) {

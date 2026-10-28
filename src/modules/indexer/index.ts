@@ -1,3 +1,10 @@
+import type { ConsumerRegistry } from './application/consumer-registry.js';
+export { createConsumerRegistry } from './application/consumer-registry.js';
+export type {
+  ConsumerRegistry,
+  BlockedConsumerRegistration,
+} from './application/consumer-registry.js';
+export { CONSUMER_IDS } from './domain/processing-policy.js';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { PrismaClient } from '@prisma/client';
 import type { Worker } from 'bullmq';
@@ -56,8 +63,11 @@ export async function scheduleIndexer(): Promise<void> {
 
 /** Called once at worker-process startup to create the BullMQ Worker that
  * actually runs the scheduled polls — see src/workers/index.ts. */
-export function createIndexerBackgroundWorker(prisma: PrismaClient): Worker {
-  return createIndexerWorker(prisma);
+export function createIndexerBackgroundWorker(
+  prisma: PrismaClient,
+  consumers: ConsumerRegistry,
+): Worker {
+  return createIndexerWorker(prisma, consumers);
 }
 
 /**

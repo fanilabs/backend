@@ -1,3 +1,4 @@
+import type { ConsumerRegistry } from '../application/consumer-registry.js';
 import type { PrismaClient } from '@prisma/client';
 import { Worker } from 'bullmq';
 import { getConfig } from '../../../shared/config/index.js';
@@ -88,7 +89,7 @@ export const indexerWorkerOptions = {
  * BullMQ Worker that processes the repeatable polling jobs — runs in the
  * worker process (src/workers/index.ts), not the API process.
  */
-export function createIndexerWorker(prisma: PrismaClient): Worker {
+export function createIndexerWorker(prisma: PrismaClient, consumers: ConsumerRegistry): Worker {
   const pollContractEvents = createPollContractEventsUseCase({
     checkpointRepository: createPrismaCheckpointRepository(prisma),
     eventStore: createPrismaEventStore(prisma),
@@ -100,6 +101,9 @@ export function createIndexerWorker(prisma: PrismaClient): Worker {
   return new Worker<PollJobData>(
     QueueName.BlockchainIndexer,
     async (job) => {
+      // Fail before fetching, publication or checkpoint writes. The legacy bus
+      // cannot acknowledge required consumers and must not bypass this gate.
+      consumers.assertCanProcessContract(job.data.contractName);
       const result = await pollContractEvents(job.data);
       log.debug(
         {

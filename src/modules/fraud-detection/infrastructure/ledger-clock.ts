@@ -1,5 +1,5 @@
-import { PrismaClient } from '@prisma/client';
-import { Clock } from '../domain/clock';
+import type { PrismaClient } from '@prisma/client';
+import type { Clock } from '../domain/clock.js';
 
 const LEDGER_CACHE_TTL_MS = 5_000;
 
