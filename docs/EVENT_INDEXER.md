@@ -114,3 +114,35 @@ are verified. The former entry referenced this worker without importing it;
 starting it during the registry repair would activate previously broken startup
 behavior. Pending mail needs explicit operational review before resuming delivery.
 Retention deletion stays suspended; M10 completion/recovery, M11 and M34 remain open.
+
+## M10 atomic deliveries status adapter (repair branch)
+
+`createAtomicDeliveryStatusConsumer` accepts an admitted raw-event ID and writes
+one `deliveries` consumer completion in the **same PostgreSQL transaction** as
+its actual delivery-repository mutation and aggregate ordering position. It
+locks the consumer obligation and delivery row; committed duplicates return
+without repeating effects. Failures roll back the whole unit. It does not set
+the raw event's `processedAt`, complete other consumers, or advance checkpoints.
+
+This adapter supports `driver_assigned`, `DeliveryInTransit`,
+`delivery_confirmed`, `delivery_cancelled`, and `delivery_disputed`. The existing
+status/timestamp/driver patch semantics are shared with the legacy handler.
+`delivery_created` remains blocked: its current-state RPC hydration does not
+provide an event-time snapshot. No network call is performed in the transaction.
+
+Ordering is per delivery, not global: proven network-bound ordering provenance
+must already exist. Existing rows are not automatically adopted. Stale and
+ambiguous same-ledger events fail without acknowledgement; known earlier
+unfinished events for the same aggregate block later application. The ordering
+probe reads at most 1,001 pending candidates and refuses to infer coverage when
+its 1,000-candidate budget is exceeded. It uses the existing ID parser rather
+than assuming RPC-ID lexical order or changing supported ID encodings.
+
+This does not establish that all earlier events have been fetched: M11 and
+same-ledger ordering remain unresolved. Pinned creation hydration/provenance
+initialization and historical reconciliation are prerequisites. Production
+registry execution, notification delivery, historical replay and retention
+cleanup remain gated. The new completion table is per consumer only; aggregate
+processing status remains conservatively blocked. There is no automatic retry
+runner or durable failed-attempt journal in this slice. M16/M17 still block full
+migration readiness; the new migration is additive and does no historical backfill.

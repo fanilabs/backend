@@ -24,3 +24,7 @@ export function createDeliveryEventConsumer(prisma: PrismaClient) {
     contractReader,
   });
 }
+
+// Verified status-mutation adapter is available for a future durable executor.
+// Exporting it does not approve execution or creation hydration in the registry.
+export { createAtomicDeliveryStatusConsumer } from './infrastructure/atomic-delivery-consumer.js';
