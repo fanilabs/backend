@@ -7,7 +7,10 @@ export class FleetNotFoundError extends AppError {
 }
 
 export class DriverPayoutAddressNotFoundError extends AppError {
+  readonly statusCode = 404;
+  readonly code = 'DRIVER_NOT_FOUND';
+
   constructor(message = 'Driver payout address not found') {
-    super(message, 404, 'DRIVER_NOT_FOUND');
+    super(message);
   }
 }
