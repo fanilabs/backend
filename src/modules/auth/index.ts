@@ -48,9 +48,9 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
     }),
     login: createLoginUseCase({
       userRepository,
+      unitOfWork: createPrismaAuthUnitOfWork(prisma),
       passwordHasher,
       tokenService,
-      refreshTokenRepository,
     }),
     refreshSession: createRefreshSessionUseCase({
       unitOfWork: createPrismaAuthUnitOfWork(prisma),
@@ -65,10 +65,9 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
       mailer,
     }),
     resetPassword: createResetPasswordUseCase({
-      userRepository,
+      unitOfWork: createPrismaAuthUnitOfWork(prisma),
       passwordHasher,
       tokenService,
-      refreshTokenRepository,
     }),
   };
 

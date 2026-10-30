@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createRefreshSessionUseCase } from '../application/refresh-session.js';
@@ -65,6 +66,38 @@ describe('persistent session family rotation', () => {
       revokedAt: expect.any(Date),
     });
     await expect(restarted({ refreshToken: second.refreshToken })).rejects.toThrow();
+  });
+
+  it('rejects a revoked successor in a completely new process', async () => {
+    const { issued, refresh } = await session();
+    const successor = await refresh({ refreshToken: issued.token });
+    await expect(refresh({ refreshToken: issued.token })).rejects.toThrow();
+    const output = execFileSync(
+      process.execPath,
+      [
+        '--import',
+        'tsx',
+        '--input-type=module',
+        '-e',
+        `
+      const { PrismaClient } = await import('@prisma/client');
+      const { createPrismaAuthUnitOfWork } = await import('./src/modules/auth/infrastructure/prisma-auth-unit-of-work.ts');
+      const { createRefreshSessionUseCase } = await import('./src/modules/auth/application/refresh-session.ts');
+      const { createJwtTokenService } = await import('./src/modules/auth/infrastructure/jwt-token-service.ts');
+      const prisma = new PrismaClient();
+      try {
+        const refresh = createRefreshSessionUseCase({ unitOfWork: createPrismaAuthUnitOfWork(prisma), tokenService: createJwtTokenService(), clock: { now: () => new Date() } });
+        await refresh({ refreshToken: process.env.SECURITY_TEST_REFRESH });
+        process.exitCode = 1;
+      } catch (error) {
+        if (error.code !== 'UNAUTHORIZED' || error.message !== 'Refresh token is invalid, expired, or has been revoked') throw error;
+        console.log('revoked');
+      } finally { await prisma.$disconnect(); }
+    `,
+      ],
+      { env: { ...process.env, SECURITY_TEST_REFRESH: successor.refreshToken }, encoding: 'utf8' },
+    );
+    expect(output.trim()).toBe('revoked');
   });
 
   it('rolls back consumption if successor persistence fails', async () => {
