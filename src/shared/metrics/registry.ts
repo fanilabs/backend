@@ -50,3 +50,21 @@ export const workerHeartbeatFailuresTotal = new Counter({
   help: 'Worker heartbeat file write failures since process start',
   registers: [registry],
 });
+
+/**
+ * Incremented every time a registered blockchain-event subscriber
+ * (`subscribeBlockchainEventHandler`, src/shared/events) fails while handling
+ * an event. The catch block that logs the failure used to do nothing else,
+ * so read models could drift permanently from on-chain state with no signal
+ * for Prometheus/Grafana alert rules — only raw stdout logs (docs/OBSERVABILITY.md).
+ * Labels mirror the envelope so an alert can identify what stopped syncing:
+ * `contract` (event.contractName), `event` (first topic segment), and
+ * `subscriber` (the module's own error-message string, one fixed value per
+ * registered handler — deliberately low-cardinality).
+ */
+export const eventSubscriberErrorsTotal = new Counter({
+  name: 'event_subscriber_errors_total',
+  help: 'Total blockchain event subscriber handler failures by contract, event and subscriber',
+  labelNames: ['contract', 'event', 'subscriber'],
+  registers: [registry],
+});
