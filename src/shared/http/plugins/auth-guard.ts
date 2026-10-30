@@ -49,12 +49,15 @@ declare module 'fastify' {
  */
 export const authGuard = {
   async authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
-    const header = request.headers.authorization;
-    if (!header?.startsWith('Bearer ')) {
+    // RFC 7235 §2.1 / RFC 6750 §2.1: the auth scheme is case-insensitive, so
+    // `bearer`, `BEARER` and `Bearer` are all accepted. The capture group is
+    // guarded explicitly (`noUncheckedIndexedAccess`), and an empty or
+    // whitespace-only token is rejected as malformed.
+    const match = /^bearer[ \t]+(\S+)[ \t]*$/i.exec(request.headers.authorization ?? '');
+    const token = match?.[1];
+    if (!token) {
       throw new UnauthorizedError('Missing or malformed Authorization header');
     }
-
-    const token = header.slice('Bearer '.length);
 
     let claims;
     try {
@@ -63,17 +66,17 @@ export const authGuard = {
       throw new UnauthorizedError('Invalid or expired access token');
     }
 
-  let currentUser = await readAuthContext(claims.sub);
-  if (!currentUser) {
-    const row = await getPrismaClient().user.findUnique({
-      where: { id: claims.sub },
-      select: { role: true, tokenVersion: true },
-    });
-    if (row) {
-      currentUser = { role: row.role, tokenVersion: row.tokenVersion };
-      await writeAuthContext(claims.sub, currentUser);
+    let currentUser = await readAuthContext(claims.sub);
+    if (!currentUser) {
+      const row = await getPrismaClient().user.findUnique({
+        where: { id: claims.sub },
+        select: { role: true, tokenVersion: true },
+      });
+      if (row) {
+        currentUser = { role: row.role, tokenVersion: row.tokenVersion };
+        await writeAuthContext(claims.sub, currentUser);
+      }
     }
-  }
 
     // Tokens issued before `tokenVersion` existed carry no such claim —
     // treated as version 0 (the column's default) so they keep working
