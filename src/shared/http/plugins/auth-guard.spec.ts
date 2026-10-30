@@ -134,6 +134,58 @@ describe('authenticate — tokenVersion check', () => {
   });
 });
 
+describe('authenticate — Authorization scheme parsing', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each(['Bearer', 'bearer', 'BEARER', 'bEaReR'])(
+    'accepts the %s scheme (case-insensitive, RFC 6750 §2.1)',
+    async (scheme) => {
+      vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
+        role: 'CUSTOMER',
+        tokenVersion: 1,
+      } as never);
+      const token = signAccessToken({ sub: 'user-scheme', role: 'CUSTOMER', tokenVersion: 1 });
+
+      const request = fakeRequest(`${scheme} ${token}`);
+      await authenticate(request, fakeReply);
+
+      expect(request.user).toEqual({ id: 'user-scheme', role: 'CUSTOMER' });
+    },
+  );
+
+  it('tolerates extra spaces between the scheme and the token and trailing whitespace', async () => {
+    vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
+      role: 'CUSTOMER',
+      tokenVersion: 1,
+    } as never);
+    const token = signAccessToken({ sub: 'user-spaces', role: 'CUSTOMER', tokenVersion: 1 });
+
+    const request = fakeRequest(`bearer   ${token}  `);
+    await authenticate(request, fakeReply);
+
+    expect(request.user).toEqual({ id: 'user-spaces', role: 'CUSTOMER' });
+  });
+
+  it.each([
+    ['an empty header', ''],
+    ['a whitespace-only header', '   '],
+    ['the scheme without a token', 'Bearer'],
+    ['the scheme followed only by spaces', 'Bearer    '],
+    ['a non-bearer scheme', 'Basic dXNlcjpwYXNz'],
+    ['a scheme glued to the token', `Bearer${'x'.repeat(20)}`],
+    ['a token containing whitespace', 'Bearer abc def'],
+  ])('rejects %s as malformed without touching the database', async (_label, header) => {
+    const spy = vi.spyOn(getPrismaClient().user, 'findUnique');
+
+    await expect(authenticate(fakeRequest(header), fakeReply)).rejects.toThrow(
+      'Missing or malformed Authorization header',
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('authenticate — auth context cache (#369)', () => {
   it('serves the second request from the cache — one database read for two requests', async () => {
     const spy = vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
