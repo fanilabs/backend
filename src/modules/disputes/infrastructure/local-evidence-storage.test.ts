@@ -2,7 +2,7 @@ import { mkdtemp, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { createLocalEvidenceStorage } from './local-evidence-storage';
+import { createLocalEvidenceStorage } from './local-evidence-storage.js';
 
 describe('createLocalEvidenceStorage', () => {
   let baseDir: string;
@@ -16,14 +16,13 @@ describe('createLocalEvidenceStorage', () => {
   });
 
   it('saves, reads, and deletes evidence files from disk', async () => {
-    const storage = createLocalEvidenceStorage({ baseDir });
+    const storage = createLocalEvidenceStorage(baseDir);
     const data = Buffer.from('evidence-bytes');
 
     const { storageUrl } = await storage.save({
       disputeId: 'dispute-1',
-      fileName: 'photo.png',
       contentType: 'image/png',
-      data,
+      bytes: data,
     });
 
     const absolute = join(baseDir, storageUrl.replace('local://evidence/', ''));
@@ -36,13 +35,12 @@ describe('createLocalEvidenceStorage', () => {
   });
 
   it('removes empty dispute directories on delete', async () => {
-    const storage = createLocalEvidenceStorage({ baseDir });
+    const storage = createLocalEvidenceStorage(baseDir);
 
     const { storageUrl } = await storage.save({
       disputeId: 'dispute-2',
-      fileName: 'video.mp4',
       contentType: 'video/mp4',
-      data: Buffer.from('video-bytes'),
+      bytes: Buffer.from('video-bytes'),
     });
 
     const disputeDir = join(baseDir, 'dispute-2');
@@ -54,10 +52,8 @@ describe('createLocalEvidenceStorage', () => {
   });
 
   it('is idempotent when deleting a missing file', async () => {
-    const storage = createLocalEvidenceStorage({ baseDir });
+    const storage = createLocalEvidenceStorage(baseDir);
 
-    await expect(
-      storage.delete('local://evidence/dispute-3/missing.png'),
-    ).resolves.toBeUndefined();
+    await expect(storage.delete('local://evidence/dispute-3/missing.png')).resolves.toBeUndefined();
   });
 });
