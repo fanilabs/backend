@@ -17,6 +17,7 @@ export interface User {
 }
 
 export interface RefreshTokenRecord {
+  familyId: string | null;
   id: string;
   userId: string;
   tokenHash: string;

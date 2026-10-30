@@ -5,3 +5,4 @@ export { createSmtpMailer } from './smtp-mailer.js';
 export { selectMailer } from './select-mailer.js';
 export { createPrismaUserRepository } from './prisma-user-repository.js';
 export { createPrismaRefreshTokenRepository } from './prisma-refresh-token-repository.js';
+export { createPrismaAuthUnitOfWork } from './prisma-auth-unit-of-work.js';
