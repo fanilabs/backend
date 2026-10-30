@@ -1,16 +1,10 @@
-import type {
-  PasswordHasher,
-  RefreshTokenRepository,
-  TokenService,
-  UserRepository,
-} from '../domain/index.js';
+import type { PasswordHasher, AuthUnitOfWork, TokenService } from '../domain/index.js';
 import { InvalidPasswordResetTokenError } from '../domain/index.js';
 
 export interface ResetPasswordDeps {
-  userRepository: UserRepository;
+  unitOfWork: AuthUnitOfWork;
   passwordHasher: PasswordHasher;
   tokenService: TokenService;
-  refreshTokenRepository: RefreshTokenRepository;
 }
 
 export interface ResetPasswordInput {
@@ -18,24 +12,9 @@ export interface ResetPasswordInput {
   newPassword: string;
 }
 
-/**
- * Creates the reset-password use case.
- *
- * The returned function completes a password reset for a user who presents a
- * valid reset token: it resolves the token's subject, verifies the token
- * against the user's current password hash, stores the new password hash, and
- * revokes all of the user's existing refresh tokens.
- *
- * @param deps - Collaborators required by the use case:
- *   - `userRepository`: looks up the user and persists the new password hash.
- *   - `passwordHasher`: hashes the new password before it is stored.
- *   - `tokenService`: peeks the token subject and verifies the reset token.
- *   - `refreshTokenRepository`: revokes every refresh token for the user.
- * @returns An async function that accepts a {@link ResetPasswordInput}
- *   (`token` and `newPassword`) and resolves once the password has been
- *   updated and all sessions invalidated. It rejects with
- *   {@link InvalidPasswordResetTokenError} when the token is missing, unknown,
- *   or no longer matches the user's current password hash.
+/** Password, refresh families and access-token version commit together.
+ * Authentication reads the authoritative DB version on every request; Redis is
+ * not an authorization source, so failed eviction or stale refill cannot extend access.
  */
 export function createResetPasswordUseCase(deps: ResetPasswordDeps) {
   return async function resetPassword(input: ResetPasswordInput): Promise<void> {
@@ -44,32 +23,18 @@ export function createResetPasswordUseCase(deps: ResetPasswordDeps) {
       throw new InvalidPasswordResetTokenError();
     }
 
-    const user = await deps.userRepository.findById(claimedUserId);
-    if (!user) {
-      throw new InvalidPasswordResetTokenError();
-    }
-
-    try {
-      // The token embeds a fingerprint of the password hash that was
-      // current when it was issued — verifying against the *current* hash
-      // means a token becomes invalid the instant the password changes,
-      // without needing a revocation table (docs/AUTHENTICATION.md).
-      deps.tokenService.verifyPasswordResetToken(input.token, user.passwordHash);
-    } catch {
-      throw new InvalidPasswordResetTokenError();
-    }
-
-    const newHash = await deps.passwordHasher.hash(input.newPassword);
-    await deps.userRepository.updatePasswordHash(user.id, newHash);
-
-    // A password reset is a strong signal to invalidate every existing
-    // session, not just issue the caller a new one. Two paths invalidate
-    // sessions: (1) revokeAllForUser marks refresh_tokens as revoked so
-    // the token refresh endpoint rejects them, and (2) incrementTokenVersion
-    // invalidates already-issued access tokens on their next use (security
-    // issue #12), closing the ~15-minute window during which an attacker
-    // with a stolen session could continue making authenticated requests.
-    await deps.refreshTokenRepository.revokeAllForUser(user.id);
-    await deps.userRepository.incrementTokenVersion(user.id);
+    await deps.unitOfWork.run(claimedUserId, async ({ userRepository, refreshTokenRepository }) => {
+      const user = await userRepository.findById(claimedUserId);
+      if (!user) throw new InvalidPasswordResetTokenError();
+      try {
+        deps.tokenService.verifyPasswordResetToken(input.token, user.passwordHash);
+      } catch {
+        throw new InvalidPasswordResetTokenError();
+      }
+      const newHash = await deps.passwordHasher.hash(input.newPassword);
+      await userRepository.updatePasswordHash(user.id, newHash);
+      await refreshTokenRepository.revokeAllForUser(user.id);
+      await userRepository.incrementTokenVersion(user.id);
+    });
   };
 }

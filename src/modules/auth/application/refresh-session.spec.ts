@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createRefreshSessionUseCase } from './refresh-session.js';
 import { InvalidRefreshTokenError } from '../domain/index.js';
 import {
+  createFakeAuthUnitOfWork,
   buildUser,
   createFakeClock,
   createFakeTokenService,
@@ -26,8 +27,7 @@ async function setupWithSession() {
   });
 
   const refreshSession = createRefreshSessionUseCase({
-    userRepository,
-    refreshTokenRepository,
+    unitOfWork: createFakeAuthUnitOfWork(userRepository, refreshTokenRepository),
     tokenService,
     clock,
   });

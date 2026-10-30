@@ -1,4 +1,5 @@
 import { Address, xdr } from '@stellar/stellar-sdk';
+import { assertI128 } from '../../shared/validation/i128.js';
 
 /**
  * Converts a Soroban `xdr.ScVal` into a plain JS value. Covers the variants
@@ -118,6 +119,7 @@ export function u64ToScVal(value: bigint | number): xdr.ScVal {
  * always non-negative in practice, but the Rust type is signed (`i128`), so
  * this accepts any bigint rather than assuming non-negativity. */
 export function i128ToScVal(value: bigint): xdr.ScVal {
+  assertI128(value);
   const mask64 = (1n << 64n) - 1n;
   const lo = value & mask64;
   const hi = value >> 64n;

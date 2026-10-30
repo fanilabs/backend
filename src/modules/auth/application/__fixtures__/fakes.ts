@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type {
+  AuthUnitOfWork,
   Clock,
   IssuedRefreshToken,
   Mailer,
@@ -68,11 +69,13 @@ export function createInMemoryUserRepository(): UserRepository & { seed(user: Us
 
 export function createInMemoryRefreshTokenRepository(): RefreshTokenRepository {
   const records = new Map<string, RefreshTokenRecord>();
+  const revokedFamilies = new Set<string>();
 
   return {
     async create(input) {
       const record: RefreshTokenRecord = {
         id: randomUUID(),
+        familyId: input.familyId ?? randomUUID(),
         userId: input.userId,
         tokenHash: input.tokenHash,
         expiresAt: input.expiresAt,
@@ -91,6 +94,14 @@ export function createInMemoryRefreshTokenRepository(): RefreshTokenRepository {
     async revoke(id) {
       const record = records.get(id);
       if (record) record.revokedAt = new Date();
+    },
+    async isFamilyActive(familyId) {
+      return !revokedFamilies.has(familyId);
+    },
+    async revokeFamily(familyId) {
+      revokedFamilies.add(familyId);
+      for (const record of records.values())
+        if (record.familyId === familyId) record.revokedAt = new Date();
     },
     async revokeAllForUser(userId) {
       for (const record of records.values()) {
@@ -237,5 +248,16 @@ export function buildUser(overrides: Partial<User> = {}): User {
     emailVerifiedAt: null,
     createdAt: new Date(),
     ...overrides,
+  };
+}
+
+export function createFakeAuthUnitOfWork(
+  userRepository: UserRepository,
+  refreshTokenRepository: RefreshTokenRepository,
+): AuthUnitOfWork {
+  return {
+    async run(_userId, work) {
+      return work({ userRepository, refreshTokenRepository });
+    },
   };
 }

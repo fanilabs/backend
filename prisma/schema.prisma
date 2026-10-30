@@ -138,6 +138,7 @@ model User {
 
   wallets          WalletAddress[]
   refreshTokens    RefreshToken[]
+  sessionFamilies  SessionFamily[]
   notifications    Notification[]
   auditLogs        AuditLog[]
   ownedFleets      Fleet[]
@@ -147,18 +148,32 @@ model User {
   @@map("users")
 }
 
+model SessionFamily {
+  id        String         @id @default(uuid())
+  userId    String         @map("user_id")
+  revokedAt DateTime?      @map("revoked_at")
+  user      User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokens    RefreshToken[]
+
+  @@index([userId])
+  @@map("session_families")
+}
+
 model RefreshToken {
-  id        String    @id @default(uuid())
-  userId    String    @map("user_id")
-  tokenHash String    @unique @map("token_hash")
-  expiresAt DateTime  @map("expires_at")
-  revokedAt DateTime? @map("revoked_at")
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  familyId  String?        @map("family_id")
+  family    SessionFamily? @relation(fields: [familyId], references: [id], onDelete: Cascade)
+  id        String         @id @default(uuid())
+  userId    String         @map("user_id")
+  tokenHash String         @unique @map("token_hash")
+  expiresAt DateTime       @map("expires_at")
+  revokedAt DateTime?      @map("revoked_at")
+  createdAt DateTime       @default(now()) @map("created_at")
+  updatedAt DateTime       @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+  @@index([familyId])
   @@map("refresh_tokens")
 }
 

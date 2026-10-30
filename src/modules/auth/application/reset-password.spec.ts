@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createResetPasswordUseCase } from './reset-password.js';
 import { InvalidPasswordResetTokenError } from '../domain/index.js';
 import {
+  createFakeAuthUnitOfWork,
   buildUser,
   createFakePasswordHasher,
   createFakeTokenService,
@@ -15,10 +16,9 @@ function setup() {
   const tokenService = createFakeTokenService();
   const refreshTokenRepository = createInMemoryRefreshTokenRepository();
   const resetPassword = createResetPasswordUseCase({
-    userRepository,
+    unitOfWork: createFakeAuthUnitOfWork(userRepository, refreshTokenRepository),
     passwordHasher,
     tokenService,
-    refreshTokenRepository,
   });
   return { userRepository, tokenService, refreshTokenRepository, resetPassword };
 }

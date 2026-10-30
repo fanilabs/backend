@@ -16,13 +16,16 @@ import { createPrismaUserRoleRepository } from './prisma-user-role-repository.js
 export function createPrismaAdminUnitOfWork(prisma: PrismaClient): AdminUnitOfWork {
   return {
     async run(work) {
-      return prisma.$transaction(async (tx) =>
-        work({
+      return prisma.$transaction(async (tx) => {
+        // Serialize the global administrator set before reading its count.
+        // Transaction-scoped: rollback/crash releases the lock automatically.
+        await tx.$queryRaw`SELECT pg_advisory_xact_lock(1835101729, 1)::text`;
+        return work({
           userRoleRepository: createPrismaUserRoleRepository(tx),
           auditLogRepository: createPrismaAuditLogRepository(tx),
           sessionRevoker: createPrismaSessionRevoker(tx),
-        }),
-      );
+        });
+      });
     },
   };
 }

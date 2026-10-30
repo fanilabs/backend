@@ -1,4 +1,4 @@
-import { ValidationError } from '../../../shared/errors.js';
+import { ValidationError } from '../../../shared/errors/app-error.js';
 
 const MAGIC_BYTE_LENGTH = 16;
 
@@ -38,10 +38,7 @@ const SIGNATURE_CHECKS: Record<string, (buffer: Buffer) => boolean> = {
   'video/mp4': matchesMp4,
 };
 
-export function assertFileSignatureMatchesContentType(
-  buffer: Buffer,
-  contentType: string,
-): void {
+export function assertFileSignatureMatchesContentType(buffer: Buffer, contentType: string): void {
   const check = SIGNATURE_CHECKS[contentType];
   if (!check) {
     return;
