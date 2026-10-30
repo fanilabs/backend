@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { I128_MAX } from '../../../shared/validation/i128.js';
 import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 import { tokenAddress } from '../../../shared/validation/token-address.js';
@@ -14,12 +15,12 @@ const amount = z
   .refine(
     (val) => {
       try {
-        return BigInt(val) > 0n;
+        return BigInt(val) > 0n && BigInt(val) <= I128_MAX;
       } catch {
         return false;
       }
     },
-    { message: 'amount must be greater than zero' },
+    { message: 'amount must be greater than zero and within signed 128-bit bounds' },
   );
 const escrowStatus = z.enum(['LOCKED', 'RELEASED', 'REFUNDED', 'PAUSED']);
 

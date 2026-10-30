@@ -1,4 +1,4 @@
-import { ValidationError } from '../../../shared/errors/index.js';
+import { assertEscrowAmount } from '../../../shared/validation/i128.js';
 import { InvalidEscrowStateError } from '../domain/errors.js';
 import type {
   CreateEscrowTxInput,
@@ -32,9 +32,7 @@ const REFUNDABLE_STATUSES: readonly EscrowStatus[] = ['LOCKED', 'PAUSED'];
 export function createBuildEscrowTransactionsUseCases(deps: BuildEscrowTransactionsDeps) {
   return {
     buildCreateEscrowTransaction: async (input: CreateEscrowTxInput): Promise<string> => {
-      if (input.amount <= 0n) {
-        throw new ValidationError('Escrow amount must be greater than zero');
-      }
+      assertEscrowAmount(input.amount);
       return deps.transactionBuilder.buildCreateEscrow(input);
     },
 

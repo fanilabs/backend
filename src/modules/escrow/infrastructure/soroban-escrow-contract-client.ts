@@ -1,3 +1,4 @@
+import { assertEscrowAmount } from '../../../shared/validation/i128.js';
 import {
   addressToScVal,
   buildInvokeTransaction,
@@ -5,7 +6,7 @@ import {
   u64ToScVal,
   type SorobanClient,
 } from '../../../blockchain/index.js';
-import { InsufficientFundsError, ValidationError } from '../../../shared/errors/index.js';
+import { InsufficientFundsError } from '../../../shared/errors/index.js';
 import type {
   ChainEscrowRecord,
   EscrowContractReader,
@@ -66,9 +67,7 @@ export function createSorobanEscrowContractClient(
     },
 
     async buildCreateEscrow(input) {
-      if (input.amount <= 0n) {
-        throw new ValidationError('Escrow amount must be greater than zero');
-      }
+      assertEscrowAmount(input.amount);
 
       const balance = await getTokenBalance(client, input.token, input.senderAddress);
       if (balance !== null && balance < input.amount) {
