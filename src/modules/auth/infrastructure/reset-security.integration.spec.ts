@@ -16,13 +16,17 @@ import { getRedisClient } from '../../../shared/cache/redis-client.js';
 
 vi.mock('../../../shared/cache/redis-client.js', async () => {
   const { default: Redis } = await import('ioredis');
-  const redis = new Redis('/socket/redis.sock', {
-    maxRetriesPerRequest: 0,
-    retryStrategy: () => null,
-  });
+  const redis = new Redis(
+    process.env.SECURITY_TEST_REDIS_SOCKET ?? process.env.REDIS_URL ?? 'redis://localhost:6379',
+    {
+      maxRetriesPerRequest: 0,
+      retryStrategy: () => null,
+    },
+  );
   return { getRedisClient: () => redis, disconnectRedis: () => redis.disconnect() };
 });
 const prisma = new PrismaClient();
+const createdUserIds: string[] = [];
 const tokens = createJwtTokenService();
 const hasher = {
   async hash(value: string) {
@@ -41,6 +45,7 @@ const request = (token: string) =>
   ({ headers: { authorization: `Bearer ${token}` } }) as FastifyRequest;
 const reply = {} as FastifyReply;
 afterAll(async () => {
+  await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
   await prisma.$disconnect();
   await disconnectPrisma();
   getRedisClient().disconnect();
@@ -50,6 +55,7 @@ async function setup() {
   const user = await prisma.user.create({
     data: { email: `${randomUUID()}@reset.invalid`, passwordHash: 'hashed:old' },
   });
+  createdUserIds.push(user.id);
   const refresh = tokens.issueRefreshToken(user);
   const row = await createPrismaRefreshTokenRepository(prisma).create({
     userId: user.id,

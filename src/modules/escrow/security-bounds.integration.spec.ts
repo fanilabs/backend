@@ -21,7 +21,9 @@ vi.mock('../../shared/http/index.js', async () => ({
   ...(await import('../../shared/http/response-envelope.js')),
 }));
 const prisma = new PrismaClient();
+const createdUserIds: string[] = [];
 afterAll(async () => {
+  await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
   await prisma.$disconnect();
   await disconnectPrisma();
 });
@@ -109,6 +111,7 @@ describe('escrow amount bounds at callers', () => {
     const user = await prisma.user.create({
       data: { email: `${randomUUID()}@amount.invalid`, passwordHash: 'test' },
     });
+    createdUserIds.push(user.id);
     await app.register(
       createEscrowRoutes({
         getEscrow: async () => {

@@ -8,9 +8,11 @@ import { createPrismaRefreshTokenRepository } from './prisma-refresh-token-repos
 import { createJwtTokenService } from './jwt-token-service.js';
 
 const prisma = new PrismaClient();
+const createdUserIds: string[] = [];
 const tokens = createJwtTokenService();
 const clients: PrismaClient[] = [prisma];
 afterAll(async () => {
+  await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
   for (const client of clients) await client.$disconnect();
 });
 
@@ -18,6 +20,7 @@ async function session() {
   const user = await prisma.user.create({
     data: { email: `${randomUUID()}@security.invalid`, passwordHash: 'test-hash' },
   });
+  createdUserIds.push(user.id);
   const issued = tokens.issueRefreshToken(user);
   const repo = createPrismaRefreshTokenRepository(prisma);
   const row = await repo.create({ userId: user.id, ...issued });
