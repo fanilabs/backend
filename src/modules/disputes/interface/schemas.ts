@@ -5,10 +5,10 @@ import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
 const chainDeliveryId = chainId;
-const evidenceHash = z
+export const evidenceHash = z
   .string()
-  .max(64)
-  .regex(/^[0-9a-f]{64}$/, 'Must be a 32-byte hex-encoded hash');
+  .regex(/^[0-9a-fA-F]{64}$/, 'Must be a 64-character hex SHA-256 digest')
+  .transform((val) => val.toLowerCase());
 const disputeStatus = z.enum(['OPEN', 'RESOLVED_REFUND', 'RESOLVED_PAYOUT', 'SPLIT']);
 
 const allowedEvidenceContentTypes = [
@@ -66,9 +66,7 @@ export function matchesEvidenceMagicBytes(
   if (contentType === 'video/mp4') {
     return matchesSignature(header.subarray(4), [0x66, 0x74, 0x79, 0x70]);
   }
-  return evidenceMagicBytes[contentType].some((signature) =>
-    matchesSignature(header, signature),
-  );
+  return evidenceMagicBytes[contentType].some((signature) => matchesSignature(header, signature));
 }
 
 /**
