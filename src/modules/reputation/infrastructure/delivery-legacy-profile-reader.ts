@@ -23,7 +23,10 @@ export function createDeliveryLegacyProfileReader(
         method: 'get_driver_profile',
         args: [addressToScVal(address)],
       });
-      if (typeof native !== 'object' || native === null) {
+      if (native === null || native === undefined) {
+        return 0;
+      }
+      if (typeof native !== 'object') {
         throw new Error('Expected delivery_contract.get_driver_profile to return an object');
       }
       const deliveriesCompleted = (native as Record<string, unknown>).deliveries_completed;
