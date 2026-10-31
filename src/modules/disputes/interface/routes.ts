@@ -109,7 +109,7 @@ export function createDisputeRoutes(
       '/disputes/:chainDeliveryId/evidence',
       {
         preHandler: authenticate,
-        bodyLimit: EVIDENCE_UPLOAD_BODY_LIMIT,
+        bodyLimit: Math.max(EVIDENCE_UPLOAD_BODY_LIMIT, config.evidenceMaxBytes),
         schema: {
           security: [{ bearerAuth: [] }],
           params: disputeIdParamsSchema,
