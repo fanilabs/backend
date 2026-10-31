@@ -1,9 +1,10 @@
 import type { xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, boolToScVal } from '../../../blockchain/xdr/sc-val.js';
-import type {
-  ChainDriverProfile,
-  RegisterDriverTxInput,
-  UpdateDriverKycStatusTxInput,
+import {
+  type ChainDriverProfile,
+  DriverProfileNotFoundError,
+  type RegisterDriverTxInput,
+  type UpdateDriverKycStatusTxInput,
 } from '../domain/index.js';
 
 /**
@@ -77,6 +78,9 @@ function u64StringToDate(value: unknown): Date {
  * unlike those, `address` genuinely is part of the on-chain struct).
  */
 export function nativeToChainDriverProfile(native: unknown): ChainDriverProfile {
+  if (native === null || native === undefined) {
+    throw new DriverProfileNotFoundError();
+  }
   const record = requireRecord(native, 'DriverProfile');
 
   return {
