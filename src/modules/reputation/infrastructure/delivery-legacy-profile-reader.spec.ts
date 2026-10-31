@@ -45,13 +45,34 @@ describe('createDeliveryLegacyProfileReader', () => {
     expect(count).toBe(9);
   });
 
-  it('throws when simulation fails (e.g. driver has no legacy profile yet)', async () => {
+  it('returns 0 when get_driver_profile simulation returns void/null (driver has no legacy profile, issue #461)', async () => {
+    const client = new SorobanClient();
+    const driver = Keypair.random().publicKey();
+
+    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
+      id: '1',
+      latestLedger: 1000,
+      events: [],
+      transactionData: {} as never,
+      minResourceFee: '100',
+      cost: {} as never,
+      result: { auth: [], retval: xdr.ScVal.scvVoid() },
+      _parsed: true,
+    } satisfies rpc.Api.SimulateTransactionSuccessResponse);
+
+    const reader = createDeliveryLegacyProfileReader(client, CONTRACT_ID);
+    const count = await reader.getLegacyDeliveriesCompleted(driver);
+
+    expect(count).toBe(0);
+  });
+
+  it('throws when simulation fails due to an RPC error', async () => {
     const client = new SorobanClient();
     vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
       id: '1',
       latestLedger: 1000,
       events: [],
-      error: 'not found',
+      error: 'rpc network failure',
       _parsed: true,
     } satisfies rpc.Api.SimulateTransactionErrorResponse);
 
