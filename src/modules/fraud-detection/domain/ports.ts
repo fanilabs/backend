@@ -39,7 +39,7 @@ export interface ActorActivityRepository {
    * that locks the table, see `prisma/schema.prisma`'s `ActorActivity`
    * comment and `FRAUD_ACTIVITY_RETENTION_DAYS` in `shared/config/env.ts`.
    */
-  deleteOlderThan(olderThan: Date, batchSize: number): Promise<number>;
+  deleteOlderThan(olderThan: Date, batchSize: number, maxIterations?: number): Promise<number>;
   /**
    * Purges every row with `occurredAt` older than `cutoff`, returning the
    * number of rows deleted. Filters solely on `occurredAt` so the purge can
