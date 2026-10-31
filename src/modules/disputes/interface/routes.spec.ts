@@ -116,4 +116,38 @@ describe('disputeIdParamsSchema BigInt transform (#296)', () => {
     expect(capturedId).toBe(42n);
     expect(typeof capturedId).toBe('bigint');
   });
+
+  it('allows request body exceeding global default bodyLimit (256KB) on evidence upload route (issue #460)', async () => {
+    const app = Fastify({ bodyLimit: 256 * 1024 });
+    app.setValidatorCompiler(validatorCompiler);
+    app.setSerializerCompiler(serializerCompiler);
+
+    const useCases = {
+      getDispute: async () => ({ dispute: {} as never, evidence: [] }),
+      uploadEvidence: async () => ({ evidence: { id: 'e1', hash: 'h1' } as never }),
+      downloadEvidence: async () => ({ contentType: 'application/pdf', bytes: Buffer.from('') }),
+      buildTransactions: {} as never,
+    } as unknown as DisputeUseCases;
+
+    await app.register(createDisputeRoutes(useCases, { evidenceMaxBytes: 10 * 1024 * 1024 }));
+
+    // Send a 300KB payload (exceeds global 256KB bodyLimit)
+    const largeBody = JSON.stringify({
+      uploadedBy: RAISER,
+      contentType: 'image/png',
+      base64Content: 'a'.repeat(300 * 1024),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/disputes/42/evidence',
+      headers: { 'content-type': 'application/json' },
+      payload: largeBody,
+    });
+
+    await app.close();
+
+    // Must NOT be rejected with 413 Payload Too Large because of route-level bodyLimit override
+    expect(response.statusCode).not.toBe(413);
+  });
 });

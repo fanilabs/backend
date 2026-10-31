@@ -7,8 +7,8 @@ import {
 } from 'fastify-type-provider-zod';
 import { logger } from './shared/logger/index.js';
 import { handleError } from './shared/errors/index.js';
-import { getConfig } from './shared/config/index.js';
 import {
+  DEFAULT_BODY_LIMIT,
   securityPlugin,
   docsPlugin,
   metricsPlugin,
@@ -43,12 +43,13 @@ import { createAdminModule } from './modules/admin/index.js';
  * Module route registration is added here incrementally as each module
  * ships in Phase 5 — see ROADMAP.md §5 for what's left.
  */
+export { DEFAULT_BODY_LIMIT };
+
 export async function buildApp() {
-  const config = getConfig();
   const app = Fastify({
     loggerInstance: logger,
     trustProxy: true,
-    bodyLimit: config.EVIDENCE_MAX_BYTES,
+    bodyLimit: DEFAULT_BODY_LIMIT,
   }).withTypeProvider<ZodTypeProvider>();
 
   // Ensure native BigInt values serialize cleanly to strings across all Fastify JSON responses

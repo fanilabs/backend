@@ -5,3 +5,4 @@ export { default as healthRoutes } from './routes/health.js';
 export { createMetricsRoutes, type MetricsRoutesDeps } from './routes/metrics.js';
 export { ok, type SuccessResponse } from './response-envelope.js';
 export { authenticate, requireRole, requireUser } from './plugins/auth-guard.js';
+export { DEFAULT_BODY_LIMIT } from './constants.js';

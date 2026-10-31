@@ -184,4 +184,20 @@ describe.skipIf(!dbAvailable)('auth routes (integration)', () => {
     expect(response.statusCode).toBe(401);
     expect(response.json<ErrorBody>().error.code).toBe('UNAUTHORIZED');
   });
+
+  it('rejects oversized JSON payloads exceeding 256KB with HTTP 413 (issue #460)', async () => {
+    const largePayload = JSON.stringify({
+      email: uniqueEmail(),
+      password: 'p'.repeat(300 * 1024),
+    });
+
+    const response = await app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/login',
+      headers: { 'content-type': 'application/json' },
+      payload: largePayload,
+    });
+
+    expect(response.statusCode).toBe(413);
+  });
 });
