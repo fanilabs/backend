@@ -64,10 +64,17 @@ export function scValToNative(scVal: xdr.ScVal): unknown {
   }
 }
 
+export const MIN_I128 = -(1n << 127n);
+export const MAX_I128 = (1n << 127n) - 1n;
+const MASK64 = (1n << 64n) - 1n;
+
 /** hi is the signed/unsigned upper 64 bits, lo the unsigned lower 64 bits —
  * `hi * 2^64 + lo` is the standard, correct split-word reconstruction for
  * both u128 (hi unsigned) and i128 (hi signed two's-complement) layouts. */
-function combine128(hi: bigint, lo: bigint): string {
+export function combine128(hi: bigint, lo: bigint): string {
+  if (lo < 0n || lo > MASK64) {
+    throw new RangeError(`Lower word ${lo} is outside unsigned 64-bit range [0, 2^64 - 1]`);
+  }
   return (hi * 2n ** 64n + lo).toString();
 }
 
@@ -118,8 +125,12 @@ export function u64ToScVal(value: bigint | number): xdr.ScVal {
  * always non-negative in practice, but the Rust type is signed (`i128`), so
  * this accepts any bigint rather than assuming non-negativity. */
 export function i128ToScVal(value: bigint): xdr.ScVal {
-  const mask64 = (1n << 64n) - 1n;
-  const lo = value & mask64;
+  if (value < MIN_I128 || value > MAX_I128) {
+    throw new RangeError(
+      `Value ${value} is outside signed 128-bit integer range [${MIN_I128}, ${MAX_I128}]`,
+    );
+  }
+  const lo = value & MASK64;
   const hi = value >> 64n;
   return xdr.ScVal.scvI128(new xdr.Int128Parts({ hi: new xdr.Int64(hi), lo: new xdr.Uint64(lo) }));
 }
