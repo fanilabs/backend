@@ -12,6 +12,7 @@ import type { rpc } from '@stellar/stellar-sdk';
 import { describe, expect, it, vi } from 'vitest';
 import { SorobanClient } from '../../../blockchain/soroban-client.js';
 import { addressToScVal, scValToNative, u64ToScVal } from '../../../blockchain/xdr/sc-val.js';
+import { DriverProfileNotFoundError } from '../domain/index.js';
 import { createSorobanReputationContractClient } from './soroban-reputation-contract-client.js';
 
 const CONTRACT_ID = Address.contract(randomBytes(32)).toString();
@@ -121,5 +122,26 @@ describe('createSorobanReputationContractClient — getDriverProfile', () => {
     const contractClient = createSorobanReputationContractClient(client, CONTRACT_ID);
 
     await expect(contractClient.getDriverProfile('GUNKNOWN')).rejects.toThrow();
+  });
+
+  it('throws DriverProfileNotFoundError when simulation returns void for an unindexed driver (issue #470)', async () => {
+    const client = new SorobanClient();
+    const unregisteredDriver = Keypair.random().publicKey();
+    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
+      id: '1',
+      latestLedger: 1000,
+      events: [],
+      transactionData: {} as never,
+      minResourceFee: '100',
+      cost: {} as never,
+      result: { auth: [], retval: xdr.ScVal.scvVoid() },
+      _parsed: true,
+    } satisfies rpc.Api.SimulateTransactionSuccessResponse);
+
+    const contractClient = createSorobanReputationContractClient(client, CONTRACT_ID);
+
+    await expect(contractClient.getDriverProfile(unregisteredDriver)).rejects.toThrow(
+      DriverProfileNotFoundError,
+    );
   });
 });
