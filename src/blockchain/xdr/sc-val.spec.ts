@@ -3,6 +3,10 @@ import { describe, expect, it } from 'vitest';
 import {
   addressToScVal,
   boolToScVal,
+  combine128,
+  i128ToScVal,
+  MAX_I128,
+  MIN_I128,
   namedStructToScVal,
   scValToNative,
   stringToScVal,
@@ -153,6 +157,80 @@ describe('native -> ScVal encoders', () => {
       destination: 'Accra',
       estimated_delivery: '1700100000',
       origin: 'Lagos',
+    });
+  });
+
+  describe('i128ToScVal and 128-bit boundary checks (issue #468)', () => {
+    it('round-trips small positive, zero, and negative values through scValToNative', () => {
+      expect(scValToNative(i128ToScVal(0n))).toBe('0');
+      expect(scValToNative(i128ToScVal(1n))).toBe('1');
+      expect(scValToNative(i128ToScVal(-1n))).toBe('-1');
+      expect(scValToNative(i128ToScVal(100_000_000n))).toBe('100000000');
+      expect(scValToNative(i128ToScVal(-100_000_000n))).toBe('-100000000');
+    });
+
+    it('round-trips 64-bit boundary values', () => {
+      const maxI64 = (1n << 63n) - 1n;
+      const minI64 = -(1n << 63n);
+      const maxU64 = (1n << 64n) - 1n;
+      const minNegU64 = -(1n << 64n);
+
+      expect(scValToNative(i128ToScVal(maxI64))).toBe(maxI64.toString());
+      expect(scValToNative(i128ToScVal(minI64))).toBe(minI64.toString());
+      expect(scValToNative(i128ToScVal(maxU64))).toBe(maxU64.toString());
+      expect(scValToNative(i128ToScVal(minNegU64))).toBe(minNegU64.toString());
+    });
+
+    it('round-trips maximum signed 128-bit integer (2^127 - 1) with exact string equality', () => {
+      const maxI128 = (1n << 127n) - 1n;
+      expect(maxI128).toBe(MAX_I128);
+      const scVal = i128ToScVal(maxI128);
+      expect(scValToNative(scVal)).toBe('170141183460469231731687303715884105727');
+      expect(scValToNative(scVal)).toBe(maxI128.toString());
+    });
+
+    it('round-trips minimum signed 128-bit integer (-2^127) with exact string equality', () => {
+      const minI128 = -(1n << 127n);
+      expect(minI128).toBe(MIN_I128);
+      const scVal = i128ToScVal(minI128);
+      expect(scValToNative(scVal)).toBe('-170141183460469231731687303715884105728');
+      expect(scValToNative(scVal)).toBe(minI128.toString());
+    });
+
+    it('throws RangeError when input exceeds maximum signed 128-bit integer', () => {
+      const overflow = MAX_I128 + 1n;
+      expect(() => i128ToScVal(overflow)).toThrow(RangeError);
+      expect(() => i128ToScVal(overflow)).toThrow(/outside signed 128-bit integer range/);
+    });
+
+    it('throws RangeError when input is below minimum signed 128-bit integer', () => {
+      const underflow = MIN_I128 - 1n;
+      expect(() => i128ToScVal(underflow)).toThrow(RangeError);
+      expect(() => i128ToScVal(underflow)).toThrow(/outside signed 128-bit integer range/);
+    });
+
+    it('throws RangeError for large arbitrary out-of-bounds integers', () => {
+      expect(() => i128ToScVal(1n << 200n)).toThrow(RangeError);
+      expect(() => i128ToScVal(-(1n << 200n))).toThrow(RangeError);
+    });
+  });
+
+  describe('combine128 bounds validation', () => {
+    it('correctly combines valid hi and lo words', () => {
+      expect(combine128(0n, 0n)).toBe('0');
+      expect(combine128(1n, 500n)).toBe((2n ** 64n + 500n).toString());
+      expect(combine128(-1n, 0n)).toBe((-(2n ** 64n)).toString());
+    });
+
+    it('throws RangeError when lo word is negative', () => {
+      expect(() => combine128(0n, -1n)).toThrow(RangeError);
+      expect(() => combine128(0n, -1n)).toThrow(/outside unsigned 64-bit range/);
+    });
+
+    it('throws RangeError when lo word exceeds 64-bit unsigned integer', () => {
+      const invalidLo = 1n << 64n;
+      expect(() => combine128(0n, invalidLo)).toThrow(RangeError);
+      expect(() => combine128(0n, invalidLo)).toThrow(/outside unsigned 64-bit range/);
     });
   });
 });
