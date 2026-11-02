@@ -1,6 +1,7 @@
-import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
-import { authenticate, ok } from '../../../shared/http/index.js';
+import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
+import { ForbiddenError } from '../../../shared/errors/app-error.js';
+import type { WalletAddressRepository } from '../../users/domain/index.js';
 import { serializeDelivery } from '../domain/index.js';
 import type {
   createBuildDeliveryTransactionsUseCases,
@@ -27,7 +28,27 @@ export interface DeliveriesUseCases {
   buildTransactions: ReturnType<typeof createBuildDeliveryTransactionsUseCases>;
 }
 
-export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPluginAsyncZod {
+export interface DeliveriesRoutesConfig {
+  walletAddressRepository: WalletAddressRepository;
+}
+
+/** Ownership belongs to the shared wallet-linking repository. Check it before
+ * building the two caller-address transactions, as required by #381. */
+async function ensureCallerOwnedByUser(
+  config: DeliveriesRoutesConfig,
+  userId: string,
+  callerAddress: string,
+): Promise<void> {
+  const wallet = await config.walletAddressRepository.findByAddress(callerAddress);
+  if (!wallet || wallet.userId !== userId) {
+    throw new ForbiddenError('Caller address is not linked to your account');
+  }
+}
+
+export function createDeliveriesRoutes(
+  useCases: DeliveriesUseCases,
+  config: DeliveriesRoutesConfig,
+): FastifyPluginAsyncZod {
   return async function deliveriesRoutes(app) {
     app.get(
       '/deliveries',
@@ -86,7 +107,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
         schema: { body: assignDriverBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
-        await ensureCallerOwnedByUser(config, request);
+        await ensureCallerOwnedByUser(config, requireUser(request).id, request.body.callerAddress);
         const xdrEnvelope = await useCases.buildTransactions.buildAssignDriverTransaction({
           ...request.body,
           chainDeliveryId: BigInt(request.body.chainDeliveryId),
@@ -163,7 +184,7 @@ export function createDeliveriesRoutes(useCases: DeliveriesUseCases): FastifyPlu
         schema: { body: raiseDisputeBodySchema, response: { 200: transactionResponseSchema } },
       },
       async (request, reply) => {
-        await ensureCallerOwnedByUser(config, request);
+        await ensureCallerOwnedByUser(config, requireUser(request).id, request.body.callerAddress);
         const xdrEnvelope = await useCases.buildTransactions.buildRaiseDisputeTransaction({
           ...request.body,
           chainDeliveryId: BigInt(request.body.chainDeliveryId),
