@@ -1,4 +1,5 @@
 import { assertEscrowAmount } from '../../../shared/validation/i128.js';
+import { assertEscrowDeliveryId } from '../domain/identifiers.js';
 import type { EscrowStatus } from '@prisma/client';
 import type { xdr } from '@stellar/stellar-sdk';
 import { addressToScVal, i128ToScVal, u64ToScVal } from '../../../blockchain/xdr/sc-val.js';
@@ -36,6 +37,7 @@ const ESCROW_STATUS_FROM_RUST: Record<string, EscrowStatus> = {
 /** `create_escrow(sender, recipient, driver, delivery_id, token, amount)`. */
 export function createEscrowArgsToScVal(input: CreateEscrowTxInput): xdr.ScVal[] {
   assertEscrowAmount(input.amount);
+  assertEscrowDeliveryId(input.chainDeliveryId);
   return [
     addressToScVal(input.senderAddress),
     addressToScVal(input.recipientAddress),
