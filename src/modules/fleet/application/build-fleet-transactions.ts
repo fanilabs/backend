@@ -13,7 +13,7 @@ export interface BuildFleetTransactionsDeps {
   /** Optional read model used to reject duplicate driver invitations before
    * building an on-chain transaction. */
   fleetRepository?: {
-    isDriverActiveInFleet(chainFleetId: string, driverAddress: string): Promise<boolean>;
+    isDriverActiveInFleet(chainFleetId: bigint, driverAddress: string): Promise<boolean>;
   };
 }
 
