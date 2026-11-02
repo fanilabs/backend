@@ -81,6 +81,9 @@ describe.skipIf(!dbAvailable)('Prisma fleet repository (integration)', () => {
     const removedAt = new Date('2026-01-03T00:00:00Z');
     await fleetRepository.removeDriver(chainFleetId, 'GDRIVER', removedAt);
     found = await fleetRepository.findByChainFleetId(chainFleetId);
+    expect(found?.drivers).toEqual([]);
+    expect(found?.totalActiveDrivers).toBe(0);
+    found = await fleetRepository.findByChainFleetId(chainFleetId, { includeRemoved: true });
     expect(found?.drivers).toHaveLength(1);
     expect(found?.drivers[0]?.removedAt).toEqual(removedAt);
     expect(found?.totalActiveDrivers).toBe(0);
@@ -122,7 +125,8 @@ describe.skipIf(!dbAvailable)('Prisma fleet repository (integration)', () => {
 
     const removedAt = new Date('2026-01-03T00:00:00Z');
     await fleetRepository.removeDriver(chainFleetId, 'GDRIVER', removedAt);
-    let found = await fleetRepository.findByChainFleetId(chainFleetId);
+    expect((await fleetRepository.findByChainFleetId(chainFleetId))?.drivers).toEqual([]);
+    let found = await fleetRepository.findByChainFleetId(chainFleetId, { includeRemoved: true });
     expect(found?.drivers[0]?.removedAt).toEqual(removedAt);
 
     const reacceptedAt = new Date('2026-02-01T00:00:00Z');

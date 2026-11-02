@@ -1,5 +1,5 @@
-import type { FleetRepository, PaginationOptions } from "../domain/ports";
-import type { Fleet } from "../domain/fleet";
+import type { FleetRepository, PaginationOptions } from '../domain/ports.js';
+import type { Fleet } from '../domain/entities.js';
 
 export interface ListMyFleetsInput {
   ownerAddresses: string[];
@@ -13,19 +13,13 @@ export interface ListMyFleetsResult {
   pageSize: number;
 }
 
-export type ListMyFleetsUseCase = (
-  input: ListMyFleetsInput,
-) => Promise<ListMyFleetsResult>;
+export type ListMyFleetsUseCase = (input: ListMyFleetsInput) => Promise<ListMyFleetsResult>;
 
-export function createListMyFleetsUseCase(
-  fleetRepository: FleetRepository,
-): ListMyFleetsUseCase {
+export function createListMyFleetsUseCase(fleetRepository: FleetRepository): ListMyFleetsUseCase {
   return async ({ ownerAddresses, options }) => {
     const uniqueOwners = Array.from(
       new Set(
-        ownerAddresses
-          .map((address) => address.trim())
-          .filter((address) => address.length > 0),
+        ownerAddresses.map((address) => address.trim()).filter((address) => address.length > 0),
       ),
     );
 

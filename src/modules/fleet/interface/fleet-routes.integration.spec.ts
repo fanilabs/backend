@@ -20,6 +20,21 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   const prisma = new PrismaClient();
   const createdChainIds: bigint[] = [];
+  const createdUserIds: string[] = [];
+
+  async function authenticatedHeaders() {
+    const user = await prisma.user.create({
+      data: {
+        email: `${randomUUID()}@fleet-tests.invalid`,
+        passwordHash: 'fixture-only',
+        role: 'ADMIN',
+      },
+    });
+    createdUserIds.push(user.id);
+    return {
+      authorization: `Bearer ${signAccessToken({ sub: user.id, role: 'ADMIN', tokenVersion: 0 })}`,
+    };
+  }
 
   beforeAll(async () => {
     app = await buildApp();
@@ -27,6 +42,7 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
 
   afterAll(async () => {
     await app.close();
+    await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
     if (createdChainIds.length > 0) {
       await prisma.fleet.deleteMany({ where: { chainFleetId: { in: createdChainIds } } });
     }
@@ -58,6 +74,7 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
     const response = await app.inject({
       method: 'GET',
       url: `/api/v1/fleets/${chainFleetId.toString()}`,
+      headers: await authenticatedHeaders(),
     });
 
     expect(response.statusCode).toBe(200);
@@ -67,7 +84,11 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
   });
 
   it('returns 404 for an unknown fleet', async () => {
-    const response = await app.inject({ method: 'GET', url: '/api/v1/fleets/999999999999999' });
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/fleets/999999999999999',
+      headers: await authenticatedHeaders(),
+    });
 
     expect(response.statusCode).toBe(404);
     expect(response.json<ErrorBody>().error.code).toBe('NOT_FOUND');
@@ -99,12 +120,10 @@ describe.skipIf(!dbAvailable)('fleet routes (integration)', () => {
   // the createUnconfiguredContractClient() fallback in ../index.ts — rather
   // than a generic failure. Fails if that fallback wiring is removed.
   it('returns 502 BLOCKCHAIN_ERROR from a build endpoint when the contract id is unconfigured', async () => {
-    const token = signAccessToken({ sub: randomUUID(), role: 'ADMIN' });
-
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/transactions/build/register-fleet',
-      headers: { authorization: `Bearer ${token}` },
+      headers: await authenticatedHeaders(),
       payload: {
         ownerAddress: Keypair.random().publicKey(),
         treasuryAddress: Keypair.random().publicKey(),

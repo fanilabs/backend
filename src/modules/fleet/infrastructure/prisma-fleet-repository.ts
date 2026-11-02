@@ -4,6 +4,7 @@ import type {
   PrismaClient,
 } from '@prisma/client';
 import type { Fleet, FleetDriver, FleetRepository, FleetWithDrivers } from '../domain/index.js';
+import { ValidationError } from '../../../shared/errors/index.js';
 
 function toDriver(record: PrismaFleetDriver): FleetDriver {
   return {
@@ -90,11 +91,18 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
 
     async listFleetsByOwner(ownerAddress, options) {
       const limit = options?.limit ?? 20;
-      const offset = options?.offset ?? 0;
+      const page = options?.page ?? 1;
+      if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1) {
+        throw new ValidationError('Fleet page and limit must be positive safe integers');
+      }
+      const offset = (page - 1) * limit;
+      if (!Number.isSafeInteger(offset)) {
+        throw new ValidationError('Fleet pagination offset exceeds the safe integer range');
+      }
 
       const records = await prisma.fleet.findMany({
         where: { ownerAddress },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: limit,
         skip: offset,
         include: {

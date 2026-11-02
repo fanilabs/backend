@@ -30,14 +30,12 @@ export interface FleetRepository {
     chainFleetId: bigint,
     options?: FindFleetOptions,
   ): Promise<FleetWithDrivers | null>;
-  /** Lists every fleet whose `ownerAddress` matches one of the given
-   * addresses, newest first, paginated. Used by `GET /fleets` so a fleet
-   * manager can discover the fleets they own without knowing every
-   * `chainFleetId` out-of-band. */
-  listFleetsByOwner(
-    ownerAddress: string,
-    options?: PaginationOptions,
-  ): Promise<Fleet[]>;
+  /** Internal single-wallet read, scoped by exact on-chain owner address,
+   * not a local user ID. Newest first, with descending local ID breaking
+   * timestamp ties. Page is 1-based and limit defaults to 20; both must be
+   * positive safe integers. Returns this page only, not an unpaged total.
+   * No HTTP owner-list route currently wires this method. */
+  listFleetsByOwner(ownerAddress: string, options?: PaginationOptions): Promise<Fleet[]>;
   create(record: ChainFleetRecord): Promise<Fleet>;
   updateTreasury(chainFleetId: bigint, treasuryAddress: string): Promise<void>;
   inviteDriver(chainFleetId: bigint, driverAddress: string, invitedAt: Date): Promise<void>;
