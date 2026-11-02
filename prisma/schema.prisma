@@ -490,6 +490,7 @@ model Notification {
   type          String
   payload       Json
   status        NotificationStatus  @default(PENDING)
+  readAt        DateTime?           @map("read_at")
   sentAt        DateTime?           @map("sent_at")
   failureReason String?             @map("failure_reason")
   attempts      Int                 @default(0)
