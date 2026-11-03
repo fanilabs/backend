@@ -31,6 +31,8 @@ export interface Escrow {
   releasedAt: Date | null;
   refundedAt: Date | null;
   createdAtChain: Date;
+  /** Token accepted by ingestion policy, not email/wallet/KYC verification.
+   * False includes unknown historical state; only true contributes to GMV. */
   isVerified: boolean;
 }
 

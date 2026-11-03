@@ -259,6 +259,9 @@ model Escrow {
   releasedAt       DateTime?    @map("released_at")
   refundedAt       DateTime?    @map("refunded_at")
   createdAtChain   DateTime     @map("created_at_chain")
+  /// Token accepted by the ingestion allowlist policy; unrelated to user verification.
+  /// False also covers historical rows with no recorded verification evidence.
+  isVerified       Boolean      @default(false) @map("is_verified")
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
 

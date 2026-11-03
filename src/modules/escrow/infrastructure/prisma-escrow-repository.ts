@@ -91,6 +91,7 @@ export function createPrismaEscrowRepository(prisma: PrismaClientOrTx): EscrowRe
               disputedBy: record.disputedBy,
               disputedAt: record.disputedAt,
               createdAtChain: record.createdAtChain,
+              isVerified: record.isVerified ?? false,
             },
           });
           return toDomain(created);
