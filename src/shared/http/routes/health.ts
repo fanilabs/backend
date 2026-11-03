@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { getPrismaClient } from '../../database/index.js';
 import { getRedisClient } from '../../cache/index.js';
 import { getQueueHealth, type QueueCounts } from '../../queue/index.js';
+import { workerExecutionStatus } from '../../queue/worker-execution.js';
 import { withTimeout } from '../../shutdown/with-timeout.js';
 
 interface HealthStatus {
@@ -13,6 +14,7 @@ interface HealthStatus {
 interface QueueHealthStatus {
   status: 'ok' | 'degraded' | 'unavailable';
   queues: QueueCounts[];
+  workerExecution: typeof workerExecutionStatus;
 }
 
 /**
@@ -46,7 +48,10 @@ export default async function healthRoutes(app: FastifyInstance): Promise<void> 
         'database health check',
       ).catch(() => 'error' as const),
       withTimeout(
-        () => getRedisClient().ping().then(() => 'ok' as const),
+        () =>
+          getRedisClient()
+            .ping()
+            .then(() => 'ok' as const),
         HEALTH_CHECK_TIMEOUT_MS,
         'redis health check',
       ).catch(() => 'error' as const),
@@ -68,7 +73,8 @@ export default async function healthRoutes(app: FastifyInstance): Promise<void> 
    * `failed` reflects BullMQ's full failure history (jobs are retained for
    * up to 7 days, see `removeOnFail` in `shared/queue/queues.ts`), so it
    * never clears on its own after a single transient failure. `degraded`
-   * (200) means "there is failure history worth looking at"; `unavailable`
+   * (200) also reports the fixed worker execution restriction, even when
+   * queues are empty; `unavailable`
    * (503) means the queue backend itself couldn't be reached, which is the
    * only case that should be treated as a hard failure by anything acting
    * on the status code.
@@ -77,19 +83,30 @@ export default async function healthRoutes(app: FastifyInstance): Promise<void> 
     try {
       const queues = await getQueueHealth();
       const stalled = queues.some(isQueueStalled);
-      const hasHistoricalFailures = queues.some((queue) => queue.failed > 0);
 
       if (stalled) {
-        const body: QueueHealthStatus = { status: 'unavailable', queues };
+        const body: QueueHealthStatus = {
+          status: 'unavailable',
+          queues,
+          workerExecution: workerExecutionStatus,
+        };
         void reply.status(503).send(body);
         return;
       }
 
-      const status: QueueHealthStatus['status'] = hasHistoricalFailures ? 'degraded' : 'ok';
-      const body: QueueHealthStatus = { status, queues };
+      // Empty queues do not mean jobs are operational while execution is blocked.
+      const body: QueueHealthStatus = {
+        status: 'degraded',
+        queues,
+        workerExecution: workerExecutionStatus,
+      };
       void reply.status(200).send(body);
     } catch (error) {
-      const body: QueueHealthStatus = { status: 'unavailable', queues: [] };
+      const body: QueueHealthStatus = {
+        status: 'unavailable',
+        queues: [],
+        workerExecution: workerExecutionStatus,
+      };
       app.log.error({ err: error }, '[health/queue] failed to reach queue backend');
       void reply.status(503).send(body);
     }

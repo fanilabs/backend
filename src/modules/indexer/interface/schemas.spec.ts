@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { workerExecutionStatus } from '../../../shared/queue/worker-execution.js';
 import { indexerHealthResponseSchema } from './schemas.js';
 
 describe('indexerHealthResponseSchema', () => {
   it('limits contract names to 255 characters', () => {
     const response = {
-      status: 'ok',
+      status: 'degraded',
+      workerExecution: workerExecutionStatus,
       latestLedger: 1,
       contracts: [
         {
@@ -12,7 +14,7 @@ describe('indexerHealthResponseSchema', () => {
           configured: true,
           lastLedgerSeq: '1',
           lagLedgers: 0,
-          healthy: true,
+          healthy: false,
         },
       ],
     };

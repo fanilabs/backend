@@ -1,5 +1,6 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import type { createGetIndexerHealthUseCase, TrackedContract } from '../application/index.js';
+import { workerExecutionStatus } from '../../../shared/queue/worker-execution.js';
 import { indexerHealthResponseSchema } from './schemas.js';
 
 export interface IndexerRoutesDeps {
@@ -31,12 +32,13 @@ export function createIndexerHealthRoutes(deps: IndexerRoutesDeps): FastifyPlugi
         });
 
         const body = {
-          status: result.healthy ? ('ok' as const) : ('degraded' as const),
+          status: 'degraded' as const,
+          workerExecution: { ...workerExecutionStatus, jobs: [...workerExecutionStatus.jobs] },
           latestLedger: result.latestLedger,
-          contracts: result.contracts,
+          contracts: result.contracts.map((contract) => ({ ...contract, healthy: false })),
         };
 
-        void reply.status(result.healthy ? 200 : 503).send(body);
+        void reply.status(503).send(body);
       },
     );
   };

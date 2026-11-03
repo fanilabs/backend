@@ -1,34 +1,29 @@
+import { pathToFileURL } from 'node:url';
 import type { Worker } from 'bullmq';
 import closeWithGrace from 'close-with-grace';
 import { logger } from '../shared/logger/index.js';
-import { getPrismaClient, disconnectPrisma } from '../shared/database/index.js';
+import { disconnectPrisma } from '../shared/database/index.js';
 import { disconnectRedis } from '../shared/cache/index.js';
 import { disconnectQueueConnection, closeAllQueues } from '../shared/queue/index.js';
-import { createIndexerBackgroundWorker, scheduleIndexer } from '../modules/indexer/index.js';
+import { workerExecutionStatus } from '../shared/queue/worker-execution.js';
 import { HEARTBEAT_INTERVAL_MS, createHeartbeatController } from './heartbeat.js';
 import { executeWorkerShutdownSteps } from './shutdown.js';
 
 const log = logger.child({ process: 'worker' });
 
 /**
- * Registry of BullMQ Workers for the background-processing entrypoint
- * (ARCHITECTURE.md §4 — runs as a separate process/container from the API,
- * per the Phase 2 §5.3 lesson that in-process cron doesn't survive restarts
- * or scale horizontally). Each module contributes its own worker(s) here as
- * it's implemented in Phase 5.
+ * No service factories are constructed while execution is restricted.
+ * In particular, BullMQ Worker construction starts consumption immediately.
+ * Restoring the historical registry requires the prerequisites documented in
+ * docs/DEPLOYMENT.md; this empty registry is an explicit operational restriction.
  */
-export const registerWorkers: Array<() => Worker> = [
-  () => createIndexerBackgroundWorker(getPrismaClient()),
-  () => createNotificationsBackgroundWorker(getPrismaClient()),
-  () => createFraudDetectionCleanupBackgroundWorker(getPrismaClient()),
-];
+export const registerWorkers: ReadonlyArray<() => Worker> = Object.freeze([]);
 
-async function main(): Promise<void> {
-  // Repeatable job registration is idempotent (BullMQ upserts by
-  // name+repeat+jobId) — safe to call on every worker-process start.
-  await scheduleIndexer();
-  await scheduleFraudDetectionCleanup();
-
+export async function startWorkerProcess(): Promise<void> {
+  log.warn(
+    { workerExecution: workerExecutionStatus, workerCount: 0 },
+    'Worker execution blocked; polling, notification delivery and retention cleanup unavailable',
+  );
   const workers = registerWorkers.map((register) => register());
 
   // Every teardown step runs with its own timeout and best-effort, so a Redis
@@ -69,10 +64,16 @@ async function main(): Promise<void> {
     void heartbeat.write();
   }, HEARTBEAT_INTERVAL_MS);
 
-  log.info({ workerCount: workers.length }, 'Worker process started');
+  log.warn(
+    { workerCount: workers.length, workerExecution: workerExecutionStatus },
+    'Worker supervisor started for liveness only; no jobs are running',
+  );
 }
 
-main().catch((error: unknown) => {
-  log.error({ err: error }, 'Failed to start worker process');
-  process.exit(1);
-});
+// Importing this module must not start workers, schedulers or heartbeat timers.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  startWorkerProcess().catch((error: unknown) => {
+    log.error({ err: error }, 'Failed to start worker process');
+    process.exit(1);
+  });
+}
