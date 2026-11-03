@@ -1,6 +1,6 @@
 import type {
   PasswordHasher,
-  RefreshTokenRepository,
+  AuthUnitOfWork,
   TokenService,
   UserRepository,
   UserRole,
@@ -11,7 +11,7 @@ export interface LoginDeps {
   userRepository: UserRepository;
   passwordHasher: PasswordHasher;
   tokenService: TokenService;
-  refreshTokenRepository: RefreshTokenRepository;
+  unitOfWork: AuthUnitOfWork;
 }
 
 export interface LoginInput {
@@ -43,35 +43,39 @@ export interface LoginResult {
 export function createLoginUseCase(deps: LoginDeps) {
   return async function login(input: LoginInput): Promise<LoginResult> {
     const email = input.email.trim().toLowerCase();
-    const user = await deps.userRepository.findByEmail(email);
+    const candidate = await deps.userRepository.findByEmail(email);
 
     // Deliberately identical failure for "no such user" and "wrong password"
     // — distinguishing them lets an attacker enumerate registered emails.
-    if (!user) {
+    if (!candidate) {
       throw new InvalidCredentialsError();
     }
-    const passwordMatches = await deps.passwordHasher.compare(input.password, user.passwordHash);
-    if (!passwordMatches) {
-      throw new InvalidCredentialsError();
-    }
+    return deps.unitOfWork.run(candidate.id, async ({ userRepository, refreshTokenRepository }) => {
+      const user = await userRepository.findById(candidate.id);
+      if (!user) throw new InvalidCredentialsError();
+      const passwordMatches = await deps.passwordHasher.compare(input.password, user.passwordHash);
+      if (!passwordMatches) {
+        throw new InvalidCredentialsError();
+      }
 
-    const accessToken = deps.tokenService.issueAccessToken(user);
-    const issued = deps.tokenService.issueRefreshToken(user);
-    await deps.refreshTokenRepository.create({
-      userId: user.id,
-      tokenHash: issued.tokenHash,
-      expiresAt: issued.expiresAt,
+      const accessToken = deps.tokenService.issueAccessToken(user);
+      const issued = deps.tokenService.issueRefreshToken(user);
+      await refreshTokenRepository.create({
+        userId: user.id,
+        tokenHash: issued.tokenHash,
+        expiresAt: issued.expiresAt,
+      });
+
+      return {
+        accessToken,
+        refreshToken: issued.token,
+        user: {
+          id: user.id,
+          email: user.email,
+          role: user.role,
+          emailVerifiedAt: user.emailVerifiedAt,
+        },
+      };
     });
-
-    return {
-      accessToken,
-      refreshToken: issued.token,
-      user: {
-        id: user.id,
-        email: user.email,
-        role: user.role,
-        emailVerifiedAt: user.emailVerifiedAt,
-      },
-    };
   };
 }

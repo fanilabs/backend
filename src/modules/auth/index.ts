@@ -16,6 +16,7 @@ import {
   createJwtTokenService,
   createPrismaRefreshTokenRepository,
   createPrismaUserRepository,
+  createPrismaAuthUnitOfWork,
   selectMailer,
 } from './infrastructure/index.js';
 import { createAuthRoutes } from './interface/routes.js';
@@ -47,13 +48,12 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
     }),
     login: createLoginUseCase({
       userRepository,
+      unitOfWork: createPrismaAuthUnitOfWork(prisma),
       passwordHasher,
       tokenService,
-      refreshTokenRepository,
     }),
     refreshSession: createRefreshSessionUseCase({
-      userRepository,
-      refreshTokenRepository,
+      unitOfWork: createPrismaAuthUnitOfWork(prisma),
       tokenService,
       clock: { now: () => new Date() },
     }),
@@ -65,10 +65,9 @@ export function createAuthModule(prisma: PrismaClient): FastifyPluginAsyncZod {
       mailer,
     }),
     resetPassword: createResetPasswordUseCase({
-      userRepository,
+      unitOfWork: createPrismaAuthUnitOfWork(prisma),
       passwordHasher,
       tokenService,
-      refreshTokenRepository,
     }),
   };
 

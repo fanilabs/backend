@@ -9,7 +9,9 @@ import type {
   FleetRepository,
   FleetTransactionBuilder,
   FleetWithDrivers,
+  FindFleetOptions,
 } from '../../domain/index.js';
+import { ValidationError } from '../../../../shared/errors/index.js';
 
 interface FleetRow extends Fleet {
   drivers: FleetDriver[];
@@ -21,11 +23,14 @@ export function createInMemoryFleetRepository(): FleetRepository & {
   const fleets = new Map<string, FleetRow>();
   const key = (chainFleetId: bigint): string => chainFleetId.toString();
 
-  function toFleetWithDrivers(row: FleetRow): FleetWithDrivers {
-    const drivers = row.drivers;
-    const totalActiveDrivers = drivers.filter(
+  function toFleetWithDrivers(row: FleetRow, options?: FindFleetOptions): FleetWithDrivers {
+    const totalActiveDrivers = row.drivers.filter(
       (d) => d.status === 'ACTIVE' && d.removedAt === null,
     ).length;
+    const drivers = row.drivers
+      .filter((driver) => options?.includeRemoved || driver.removedAt === null)
+      .sort((a, b) => b.invitedAt.getTime() - a.invitedAt.getTime())
+      .slice(0, options?.driverLimit ?? 100);
     return { ...row, drivers, totalActiveDrivers };
   }
 
@@ -33,9 +38,32 @@ export function createInMemoryFleetRepository(): FleetRepository & {
     seed(fleet) {
       fleets.set(fleet.chainFleetId.toString(), { ...fleet, drivers: [...fleet.drivers] });
     },
-    async findByChainFleetId(chainFleetId) {
+    async findByChainFleetId(chainFleetId, options) {
       const row = fleets.get(key(chainFleetId));
-      return row ? toFleetWithDrivers(row) : null;
+      return row ? toFleetWithDrivers(row, options) : null;
+    },
+    async listFleetsByOwner(ownerAddress, options) {
+      const page = options?.page ?? 1;
+      const limit = options?.limit ?? 20;
+      const offset = (page - 1) * limit;
+      if (
+        !Number.isSafeInteger(page) ||
+        page < 1 ||
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        !Number.isSafeInteger(offset)
+      ) {
+        throw new ValidationError('Invalid fleet pagination');
+      }
+      return [...fleets.values()]
+        .filter((fleet) => fleet.ownerAddress === ownerAddress)
+        .sort(
+          (a, b) =>
+            b.createdAt.getTime() - a.createdAt.getTime() ||
+            (a.id < b.id ? 1 : a.id > b.id ? -1 : 0),
+        )
+        .slice(offset, offset + limit)
+        .map((fleet) => toFleetWithDrivers(fleet));
     },
     async create(record) {
       const fleet: FleetRow = {

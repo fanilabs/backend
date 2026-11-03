@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createLoginUseCase } from './login.js';
 import { InvalidCredentialsError } from '../domain/index.js';
 import {
+  createFakeAuthUnitOfWork,
   buildUser,
   createFakePasswordHasher,
   createFakeTokenService,
@@ -18,7 +19,7 @@ function setup() {
     userRepository,
     passwordHasher,
     tokenService,
-    refreshTokenRepository,
+    unitOfWork: createFakeAuthUnitOfWork(userRepository, refreshTokenRepository),
   });
   return { userRepository, refreshTokenRepository, login };
 }

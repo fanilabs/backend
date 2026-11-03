@@ -4,6 +4,7 @@ import type {
   PrismaClient,
 } from '@prisma/client';
 import type { Fleet, FleetDriver, FleetRepository, FleetWithDrivers } from '../domain/index.js';
+import { ValidationError } from '../../../shared/errors/index.js';
 
 function toDriver(record: PrismaFleetDriver): FleetDriver {
   return {
@@ -90,11 +91,18 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
 
     async listFleetsByOwner(ownerAddress, options) {
       const limit = options?.limit ?? 20;
-      const offset = options?.offset ?? 0;
+      const page = options?.page ?? 1;
+      if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1) {
+        throw new ValidationError('Fleet page and limit must be positive safe integers');
+      }
+      const offset = (page - 1) * limit;
+      if (!Number.isSafeInteger(offset)) {
+        throw new ValidationError('Fleet pagination offset exceeds the safe integer range');
+      }
 
       const records = await prisma.fleet.findMany({
         where: { ownerAddress },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: limit,
         skip: offset,
         include: {
@@ -209,6 +217,21 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
       const fleet = await prisma.fleet.findUnique({ where: { chainFleetId } });
       if (!fleet) {
         console.debug(
-          `[fleet] driver_removed skipped — no indexed fleet fo
+          `[fleet] driver_removed skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
+        );
+        return;
+      }
 
-/* … truncated 630 chars — edit only what you need near the top … */
+      // `upsert`, not `update` — same out-of-order rationale as
+      // `acceptInvite` above: `driver_removed` carries the full
+      // `(fleetId, driverAddress)` unique key, so a driver row that was
+      // never observed being invited/accepted can still be recorded as
+      // removed rather than throwing P2025.
+      await prisma.fleetDriver.upsert({
+        where: { fleetId_driverAddress: { fleetId: fleet.id, driverAddress } },
+        create: { fleetId: fleet.id, driverAddress, removedAt },
+        update: { removedAt },
+      });
+    },
+  };
+}

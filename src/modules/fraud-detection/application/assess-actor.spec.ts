@@ -1,19 +1,37 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createAssessActorUseCase } from './assess-actor.js';
+import { describe, it, expect, vi } from 'vitest';
+import { createAssessActorUseCase, RULES, type RuleDefinition } from './assess-actor.js';
 import { createFixedClock, createInMemoryActorActivityRepository } from './__fixtures__/fakes.js';
+import type { ActorAssessment, ActorActivityCategory } from '../domain/index.js';
+
+const now = new Date('2024-01-01T00:00:00.000Z');
+function makeRepository(count: number, category: ActorActivityCategory = 'DELIVERY_CREATED') {
+  const repository = createInMemoryActorActivityRepository();
+  for (let i = 0; i < count; i += 1) repository.seed('actor-1', category, now);
+  return repository;
+}
+
+describe('createAssessActorUseCase', () => {
+  it('uses default RULES when no ruleDefinitions are provided', async () => {
+    const activityRepository = makeRepository(11);
+    const assessActor = createAssessActorUseCase({
+      activityRepository,
+      clock: createFixedClock(now),
+    });
+    const result = await assessActor({ address: 'actor-1' });
 
     expect(result.flagged).toBe(true);
-    expect(result.triggeredRules).toContain('DELIVERY_CREATION_VELOCITY');
+    expect(result.signals).toContainEqual(
+      expect.objectContaining({ ruleType: 'DELIVERY_CREATION_VELOCITY', triggered: true }),
+    );
   });
 
   it('does not flag an actor below the default threshold', async () => {
-    const activities = Array.from({ length: 9 }, (_, i) =>
-      makeActivity({ id: `activity-${i}` }),
-    );
-    const repository = makeRepository(activities);
-    const assessActor = createAssessActorUseCase({ repository });
-
-    const result = await assessActor({ actorId: 'actor-1' });
+    const activityRepository = makeRepository(9);
+    const assessActor = createAssessActorUseCase({
+      activityRepository,
+      clock: createFixedClock(now),
+    });
+    const result = await assessActor({ address: 'actor-1' });
 
     expect(result.flagged).toBe(false);
   });
@@ -21,55 +39,192 @@ import { createFixedClock, createInMemoryActorActivityRepository } from './__fix
   it('flags an actor after 3 activities when a custom threshold of 2 is injected', async () => {
     const customRules: RuleDefinition[] = [
       {
-        name: 'DELIVERY_CREATION_VELOCITY',
-        activityType: 'DELIVERY_CREATION',
+        ruleType: 'DELIVERY_CREATION_VELOCITY',
+        category: 'DELIVERY_CREATED',
         windowHours: 1,
         threshold: 2,
       },
     ];
-    const activities = Array.from({ length: 3 }, (_, i) =>
-      makeActivity({
-        id: `activity-${i}`,
-        occurredAt: new Date('2024-01-01T00:00:00.000Z'),
-      }),
-    );
-    const repository = makeRepository(activities);
+    const activityRepository = makeRepository(3);
     const assessActor = createAssessActorUseCase({
-      repository,
+      activityRepository,
+      clock: createFixedClock(now),
       ruleDefinitions: customRules,
     });
-
-    const result = await assessActor({ actorId: 'actor-1' });
+    const result = await assessActor({ address: 'actor-1' });
 
     expect(result.flagged).toBe(true);
-    expect(result.triggeredRules).toContain('DELIVERY_CREATION_VELOCITY');
+    expect(result.signals).toContainEqual(
+      expect.objectContaining({ ruleType: 'DELIVERY_CREATION_VELOCITY', triggered: true }),
+    );
   });
 
-  it('does not flag an actor below a custom threshold', async () => {
+  it('does not flag an actor exactly at a custom threshold', async () => {
     const customRules: RuleDefinition[] = [
       {
-        name: 'DELIVERY_CREATION_VELOCITY',
-        activityType: 'DELIVERY_CREATION',
+        ruleType: 'DELIVERY_CREATION_VELOCITY',
+        category: 'DELIVERY_CREATED',
         windowHours: 1,
         threshold: 2,
       },
     ];
-    const activities = Array.from({ length: 2 }, (_, i) =>
-      makeActivity({ id: `activity-${i}` }),
-    );
-    const repository = makeRepository(activities);
+    const activityRepository = makeRepository(2);
     const assessActor = createAssessActorUseCase({
-      repository,
+      activityRepository,
+      clock: createFixedClock(now),
       ruleDefinitions: customRules,
     });
-
-    const result = await assessActor({ actorId: 'actor-1' });
+    const result = await assessActor({ address: 'actor-1' });
 
     expect(result.flagged).toBe(false);
   });
 
+  it.each(RULES)('uses a strict boundary for $ruleType', async (rule) => {
+    const activityRepository = makeRepository(rule.threshold - 1, rule.category);
+    const assessActor = createAssessActorUseCase({
+      activityRepository,
+      clock: createFixedClock(now),
+    });
+    const belowThreshold = await assessActor({ address: 'actor-1' });
+    expect(belowThreshold.flagged).toBe(false);
+    expect(belowThreshold.signals.find((signal) => signal.ruleType === rule.ruleType)).toEqual({
+      ...rule,
+      count: rule.threshold - 1,
+      triggered: false,
+    });
+    activityRepository.seed('actor-1', rule.category, now);
+    const atThreshold = await assessActor({ address: 'actor-1' });
+    expect(atThreshold.flagged).toBe(false);
+    expect(atThreshold.signals.find((signal) => signal.ruleType === rule.ruleType)).toEqual({
+      ...rule,
+      count: rule.threshold,
+      triggered: false,
+    });
+    activityRepository.seed('actor-1', rule.category, now);
+    const aboveThreshold = await assessActor({ address: 'actor-1' });
+    expect(aboveThreshold.flagged).toBe(true);
+    expect(aboveThreshold.signals.find((signal) => signal.ruleType === rule.ruleType)).toEqual({
+      ...rule,
+      count: rule.threshold + 1,
+      triggered: true,
+    });
+  });
+
+  it('queries each default category, address and window with a threshold-plus-one limit', async () => {
+    const activityRepository = makeRepository(20);
+    const countSince = vi.spyOn(activityRepository, 'countSince');
+    const record = vi.spyOn(activityRepository, 'record');
+    const deleteOlderThan = vi.spyOn(activityRepository, 'deleteOlderThan');
+    const assessActor = createAssessActorUseCase({
+      activityRepository,
+      clock: createFixedClock(now),
+    });
+    const result = await assessActor({ address: 'actor-1' });
+    expect(countSince).toHaveBeenCalledTimes(3);
+    for (const rule of RULES) {
+      expect(countSince).toHaveBeenCalledWith(
+        'actor-1',
+        rule.category,
+        new Date(now.getTime() - rule.windowHours * 60 * 60 * 1000),
+        rule.threshold + 1,
+      );
+    }
+    expect(result.signals[0]).toMatchObject({ count: 11, triggered: true });
+    expect(record).not.toHaveBeenCalled();
+    expect(deleteOlderThan).not.toHaveBeenCalled();
+  });
+
+  it('honors a custom window and excludes other actors and categories', async () => {
+    const activityRepository = makeRepository(0);
+    const since = new Date(now.getTime() - 2 * 60 * 60 * 1000);
+    activityRepository.seed('actor-1', 'ESCROW_RELEASED', since);
+    activityRepository.seed('actor-1', 'ESCROW_RELEASED', now);
+    activityRepository.seed('actor-1', 'ESCROW_RELEASED', new Date(since.getTime() - 1));
+    activityRepository.seed('other-actor', 'ESCROW_RELEASED', now);
+    activityRepository.seed('actor-1', 'DELIVERY_CREATED', now);
+    const countSince = vi.spyOn(activityRepository, 'countSince');
+    const rule: RuleDefinition = {
+      ruleType: 'ESCROW_RELEASE_VELOCITY',
+      category: 'ESCROW_RELEASED',
+      windowHours: 2,
+      threshold: 1,
+    };
+    const assessActor = createAssessActorUseCase({
+      activityRepository,
+      clock: createFixedClock(now),
+      ruleDefinitions: [rule],
+    });
+    const result = await assessActor({ address: 'actor-1' });
+    expect(countSince).toHaveBeenCalledExactlyOnceWith('actor-1', 'ESCROW_RELEASED', since, 2);
+    expect(result).toEqual({
+      address: 'actor-1',
+      flagged: true,
+      signals: [{ ...rule, count: 2, triggered: true }],
+    });
+  });
+
   it('exposes the default RULES with the documented thresholds', () => {
-    const byName = Object.fromEntries(RULES.map((rule) => [rule.name, rule]));
+    const byName = Object.fromEntries(RULES.map((rule) => [rule.ruleType, rule]));
+
+    expect(byName.DELIVERY_CREATION_VELOCITY).toMatchObject({
+      windowHours: 1,
+      threshold: 10,
+    });
+    expect(byName.ESCROW_RELEASE_VELOCITY).toMatchObject({
+      windowHours: 1,
+      threshold: 10,
+    });
+    expect(byName.DISPUTE_RAISE_VELOCITY).toMatchObject({
+      windowHours: 24,
+      threshold: 3,
+    });
+  });
+
+  it('returns not-flagged, zero counts for an actor with no activity', async () => {
+    const activityRepository = createInMemoryActorActivityRepository();
+    const assessActor = createAssessActorUseCase({ activityRepository });
+
+    const result = await assessActor({ address: 'GNEW' });
+
+    expect(result.flagged).toBe(false);
+    expect(result.signals).toHaveLength(3);
+    expect(result.signals.every((s) => s.count === 0 && !s.triggered)).toBe(true);
+  });
+
+  it('flags DELIVERY_CREATION_VELOCITY once the count exceeds the threshold within the window', async () => {
+    const activityRepository = createInMemoryActorActivityRepository();
+    for (let i = 0; i < 11; i += 1) {
+      activityRepository.seed('GBOT', 'DELIVERY_CREATED', new Date());
+    }
+    const assessActor = createAssessActorUseCase({ activityRepository });
+
+    const result = await assessActor({ address: 'GBOT' });
+
+    const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
+    expect(signal).toMatchObject({ count: 11, threshold: 10, triggered: true });
+    expect(result.flagged).toBe(true);
+  });
+
+  it('does not count activity outside the rule window', async () => {
+    const activityRepository = createInMemoryActorActivityRepository();
+    const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+    for (let i = 0; i < 20; i += 1) {
+      activityRepository.seed('GOLDACTIVITY', 'DELIVERY_CREATED', twoHoursAgo);
+    }
+    const assessActor = createAssessActorUseCase({ activityRepository });
+
+    const result = await assessActor({ address: 'GOLDACTIVITY' });
+
+    const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
+    expect(signal).toMatchObject({ count: 0, triggered: false });
+  });
+
+  it('flags DISPUTE_RAISE_VELOCITY on its own, wider 24h window and lower threshold', async () => {
+    const activityRepository = createInMemoryActorActivityRepository();
+    for (let i = 0; i < 4; i += 1) {
+      activityRepository.seed('GSCAMMER', 'DISPUTE_RAISED', new Date());
+    }
+    const assessActor = createAssessActorUseCase({ activityRepository });
 
     const result = await assessActor({ address: 'GSCAMMER' });
 
@@ -79,37 +234,61 @@ import { createFixedClock, createInMemoryActorActivityRepository } from './__fix
   });
 
   describe('alerting', () => {
-    it('dispatches an actor_flagged alert with the triggered signals when an actor is flagged', async () => {
+    it('dispatches the full assessment through the alert callback when an actor is flagged', async () => {
       const activityRepository = createInMemoryActorActivityRepository();
       for (let i = 0; i < 11; i += 1) {
         activityRepository.seed('GBOTALERT', 'DELIVERY_CREATED', new Date());
       }
-      const alertPublisher = { publish: vi.fn().mockResolvedValue(undefined) };
+      const alertPublisher = vi
+        .fn<(assessment: ActorAssessment) => Promise<void>>()
+        .mockResolvedValue(undefined);
       const assessActor = createAssessActorUseCase({ activityRepository, alertPublisher });
 
       const result = await assessActor({ address: 'GBOTALERT' });
 
       expect(result.flagged).toBe(true);
-      expect(alertPublisher.publish).toHaveBeenCalledTimes(1);
-      const event = alertPublisher.publish.mock.calls[0][0];
-      expect(event).toMatchObject({ type: 'actor_flagged', address: 'GBOTALERT' });
+      expect(alertPublisher).toHaveBeenCalledTimes(1);
+      const event = alertPublisher.mock.calls[0]![0];
+      expect(alertPublisher).toHaveBeenCalledWith(result);
+      expect(event).toMatchObject({ address: 'GBOTALERT' });
       expect(event.signals).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ ruleType: 'DELIVERY_CREATION_VELOCITY', triggered: true }),
         ]),
       );
-      expect(event.signals.every((s: { triggered: boolean }) => s.triggered)).toBe(true);
+      expect(event.signals).toEqual(result.signals);
+      expect(event.signals).toHaveLength(3);
+      expect(event.signals.filter((signal) => !signal.triggered)).toEqual([
+        {
+          ruleType: 'ESCROW_RELEASE_VELOCITY',
+          category: 'ESCROW_RELEASED',
+          windowHours: 1,
+          threshold: 10,
+          count: 0,
+          triggered: false,
+        },
+        {
+          ruleType: 'DISPUTE_RAISE_VELOCITY',
+          category: 'DISPUTE_RAISED',
+          windowHours: 24,
+          threshold: 3,
+          count: 0,
+          triggered: false,
+        },
+      ]);
     });
 
     it('does not dispatch an alert when the actor is not flagged', async () => {
       const activityRepository = createInMemoryActorActivityRepository();
-      const alertPublisher = { publish: vi.fn().mockResolvedValue(undefined) };
+      const alertPublisher = vi
+        .fn<(assessment: ActorAssessment) => Promise<void>>()
+        .mockResolvedValue(undefined);
       const assessActor = createAssessActorUseCase({ activityRepository, alertPublisher });
 
       const result = await assessActor({ address: 'GCLEAN' });
 
       expect(result.flagged).toBe(false);
-      expect(alertPublisher.publish).not.toHaveBeenCalled();
+      expect(alertPublisher).not.toHaveBeenCalled();
     });
   });
 
@@ -134,13 +313,22 @@ import { createFixedClock, createInMemoryActorActivityRepository } from './__fix
       const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
       expect(signal).toMatchObject({ count: 11, triggered: true });
     });
-    expect(byName.ESCROW_RELEASE_VELOCITY).toMatchObject({
-      windowHours: 1,
-      threshold: 10,
-    });
-    expect(byName.DISPUTE_RAISE_VELOCITY).toMatchObject({
-      windowHours: 24,
-      threshold: 3,
+
+    it('without a lag-aware clock, comparing lagged occurredAt values against real wall-clock time would incorrectly exclude them', async () => {
+      const activityRepository = createInMemoryActorActivityRepository();
+      // Real "now" is far ahead of the on-chain occurredAt values because
+      // the indexer has fallen behind — with the default systemClock (no
+      // clock injected), this activity falls outside every rule window.
+      const longAgo = new Date(Date.now() - 5 * 60 * 60 * 1000);
+      for (let i = 0; i < 11; i += 1) {
+        activityRepository.seed('GSTALE', 'DELIVERY_CREATED', longAgo);
+      }
+      const assessActor = createAssessActorUseCase({ activityRepository });
+
+      const result = await assessActor({ address: 'GSTALE' });
+
+      const signal = result.signals.find((s) => s.ruleType === 'DELIVERY_CREATION_VELOCITY');
+      expect(signal).toMatchObject({ count: 0, triggered: false });
     });
   });
 });

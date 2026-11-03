@@ -25,8 +25,15 @@ describe('getFleet', () => {
     const result = await getFleet({ chainFleetId: 42n });
 
     expect(result.chainFleetId).toBe(42n);
-    expect(result.drivers).toHaveLength(3);
+    expect(result.drivers).toHaveLength(2);
+    expect(result.drivers.every((driver) => driver.removedAt === null)).toBe(true);
     expect(result.totalActiveDrivers).toBe(1);
+    const history = await getFleet({ chainFleetId: 42n, includeRemoved: true });
+    expect(history.drivers).toHaveLength(3);
+    expect(
+      history.drivers.find((driver) => driver.driverAddress === 'GREMOVED')?.removedAt,
+    ).toBeInstanceOf(Date);
+    expect(history.totalActiveDrivers).toBe(1);
   });
 
   it('rejects an unknown chain fleet id', async () => {

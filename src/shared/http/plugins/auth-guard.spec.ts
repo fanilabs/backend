@@ -6,19 +6,8 @@ import { getPrismaClient } from '../../database/index.js';
 import { UnauthorizedError } from '../../errors/index.js';
 import type * as AuthCacheModule from '../../cache/index.js';
 
-/**
- * Unit coverage for `authenticate`'s DB-backed `tokenVersion` check
- * (security issue #12) — stubs the shared Prisma singleton's `user.findUnique`
- * directly (same instance `authenticate` itself calls, since
- * `getPrismaClient()` is memoized) rather than mocking the whole module, so
- * this exercises the real guard logic without a live database.
- *
- * The Redis-backed auth context cache (#369) is likewise replaced at the
- * same singleton boundary `authenticate` consumes it through — an
- * in-memory map behind the same two functions — so the guard's real
- * cache-interaction logic (miss → DB read → populate, hit → no DB read,
- * eviction → fresh read) runs without a live Redis.
- */
+/** Guard tests keep a deliberately stale shared cache beside the real guard;
+ * the database lookup must remain authoritative on every request. */
 const cacheEntries = vi.hoisted(
   () =>
     new Map<
@@ -135,7 +124,7 @@ describe('authenticate — tokenVersion check', () => {
 });
 
 describe('authenticate — auth context cache (#369)', () => {
-  it('serves the second request from the cache — one database read for two requests', async () => {
+  it('checks the database on every request even when a cache entry exists', async () => {
     const spy = vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
       role: 'COURIER',
       tokenVersion: 1,
@@ -146,7 +135,7 @@ describe('authenticate — auth context cache (#369)', () => {
     const second = fakeRequest(`Bearer ${token}`);
     await authenticate(second, fakeReply);
 
-    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledTimes(2);
     expect(second.user).toEqual({ id: 'user-cache', role: 'COURIER' });
   });
 
@@ -169,12 +158,12 @@ describe('authenticate — auth context cache (#369)', () => {
     expect(spy).toHaveBeenCalledTimes(2);
   });
 
-  it('trusts the cached role as much as the database one — never the token claim', async () => {
+  it('uses the current database role even if a stale cached role exists', async () => {
     vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
       role: 'CUSTOMER',
       tokenVersion: 5,
     } as never);
-    // First request populates the cache from the DB read above.
+    cacheEntries.set('user-role', { role: 'ADMIN', tokenVersion: 5 });
     await authenticate(
       fakeRequest(
         `Bearer ${signAccessToken({ sub: 'user-role', role: 'ADMIN', tokenVersion: 5 })}`,
@@ -182,8 +171,7 @@ describe('authenticate — auth context cache (#369)', () => {
       fakeReply,
     );
 
-    // Second request is served entirely from cache — still CUSTOMER, never
-    // the token's stale ADMIN claim.
+    // A stale cached role must never authorize the request.
     const request = fakeRequest(
       `Bearer ${signAccessToken({ sub: 'user-role', role: 'ADMIN', tokenVersion: 5 })}`,
     );

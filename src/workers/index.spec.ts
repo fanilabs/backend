@@ -1,32 +1,77 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { workerExecutionStatus } from '../shared/queue/worker-execution.js';
 
-vi.mock('../modules/indexer/index.js', () => ({
-  createIndexerBackgroundWorker: vi.fn(),
-  scheduleIndexer: vi.fn().mockResolvedValue(undefined),
+const lifecycle = vi.hoisted(() => ({
+  write: vi.fn(async () => true),
+  shutdown: undefined as undefined | ((event: { err?: Error }) => Promise<void>),
 }));
-vi.mock('../modules/notifications/index.js', () => ({
-  createNotificationsBackgroundWorker: vi.fn(),
+// Loading job composition is unnecessary under the restriction. Fail if the
+// entrypoint imports it, rather than allowing mocked factories to hide effects.
+vi.mock('../modules/indexer/index.js', () => {
+  throw new Error('Indexer must not load');
+});
+vi.mock('../modules/notifications/index.js', () => {
+  throw new Error('Notifications must not load');
+});
+vi.mock('../modules/fraud-detection/index.js', () => {
+  throw new Error('Cleanup must not load');
+});
+vi.mock('close-with-grace', () => ({
+  default: vi.fn((_options: unknown, shutdown: (event: { err?: Error }) => Promise<void>) => {
+    lifecycle.shutdown = shutdown;
+    return { close: vi.fn() };
+  }),
 }));
-vi.mock('../modules/fraud-detection/index.js', () => ({
-  createFraudDetectionCleanupBackgroundWorker: vi.fn(),
-  scheduleFraudDetectionCleanup: vi.fn().mockResolvedValue(undefined),
+vi.mock('./heartbeat.js', () => ({
+  HEARTBEAT_INTERVAL_MS: 15_000,
+  createHeartbeatController: vi.fn(() => ({ write: lifecycle.write })),
 }));
 
-import { registerWorkers } from './index.js';
-import { createNotificationsBackgroundWorker } from '../modules/notifications/index.js';
-import {
-  createFraudDetectionCleanupBackgroundWorker,
-  scheduleFraudDetectionCleanup,
-} from '../modules/fraud-detection/index.js';
+afterEach(() => {
+  vi.useRealTimers();
+  vi.clearAllMocks();
+});
 
-describe('worker registration', () => {
-  it('registers the indexer, notifications, and fraud-cleanup workers (#351, #352)', () => {
-    expect(registerWorkers).toHaveLength(3);
-    expect(createNotificationsBackgroundWorker).toBeDefined();
-    expect(createFraudDetectionCleanupBackgroundWorker).toBeDefined();
+describe('restricted worker entrypoint', () => {
+  it('loads without activating the historical registry, scheduling jobs or starting timers', async () => {
+    vi.useFakeTimers();
+    const { registerWorkers } = await import('./index.js');
+    expect(registerWorkers).toEqual([]);
+    expect(Object.isFrozen(registerWorkers)).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(lifecycle.write).not.toHaveBeenCalled();
+    expect(lifecycle.shutdown).toBeUndefined();
+    expect(workerExecutionStatus.status).toBe('blocked');
+    expect(workerExecutionStatus.jobs).toEqual([
+      {
+        queue: 'blockchain-indexer',
+        status: 'blocked',
+        reason: 'consumer_completion_and_checkpoint_recovery_unverified',
+      },
+      {
+        queue: 'notifications',
+        status: 'blocked',
+        reason: 'delivery_outbox_and_ambiguous_send_recovery_unverified',
+      },
+      {
+        queue: 'fraud-activity-cleanup',
+        status: 'blocked',
+        reason: 'safe_retention_frontier_and_bounded_deletion_unverified',
+      },
+    ]);
   });
 
-  it('schedules fraud-detection cleanup on worker startup (#353)', () => {
-    expect(scheduleFraudDetectionCleanup).toHaveBeenCalledTimes(1);
+  it('runs only the liveness heartbeat and cancels it during graceful shutdown', async () => {
+    vi.useFakeTimers();
+    const { startWorkerProcess } = await import('./index.js');
+    await startWorkerProcess();
+    expect(lifecycle.write).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(1);
+    await vi.advanceTimersByTimeAsync(15_000);
+    expect(lifecycle.write).toHaveBeenCalledTimes(2);
+    const shutdown = lifecycle.shutdown;
+    if (!shutdown) throw new Error('Graceful shutdown was not installed');
+    await shutdown({});
+    expect(vi.getTimerCount()).toBe(0);
   });
 });

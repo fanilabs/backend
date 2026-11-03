@@ -135,6 +135,7 @@ describe('createSorobanFleetContractClient — getPayoutAddress', () => {
     const client = new SorobanClient();
     const driver = Keypair.random().publicKey();
     const treasury = Keypair.random().publicKey();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(new Account(driver, '100'));
 
     vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
       id: '1',
@@ -155,6 +156,8 @@ describe('createSorobanFleetContractClient — getPayoutAddress', () => {
 
   it('throws when simulation fails', async () => {
     const client = new SorobanClient();
+    const driver = Keypair.random().publicKey();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(new Account(driver, '100'));
     vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
       id: '1',
       latestLedger: 1000,
@@ -165,6 +168,8 @@ describe('createSorobanFleetContractClient — getPayoutAddress', () => {
 
     const contractClient = createSorobanFleetContractClient(client, CONTRACT_ID);
 
-    await expect(contractClient.getPayoutAddress('GDRIVER', 999n)).rejects.toThrow();
+    await expect(contractClient.getPayoutAddress(driver, 999n)).rejects.toThrow(
+      'get_payout_address simulation failed: contract not found',
+    );
   });
 });

@@ -29,7 +29,7 @@ export function createInMemoryEscrowRepository(): EscrowRepository & {
         platformFee: null,
         releasedAt: null,
         refundedAt: null,
-        isVerified: record.isVerified ?? true,
+        isVerified: record.isVerified ?? false,
       };
       escrows.set(key(escrow.chainDeliveryId), escrow);
       return escrow;

@@ -32,9 +32,12 @@ export interface RefreshTokenRepository {
     userId: string;
     tokenHash: string;
     expiresAt: Date;
+    familyId?: string;
   }): Promise<RefreshTokenRecord>;
   findByTokenHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   revoke(id: string): Promise<void>;
+  isFamilyActive(familyId: string): Promise<boolean>;
+  revokeFamily(familyId: string): Promise<void>;
   revokeAllForUser(userId: string): Promise<void>;
 }
 
@@ -91,4 +94,15 @@ export interface Mailer {
 
 export interface Clock {
   now(): Date;
+}
+
+/** Serializes session mutations against the user's row, then commits all effects together. */
+export interface AuthUnitOfWork {
+  run<T>(
+    userId: string,
+    work: (ports: {
+      userRepository: UserRepository;
+      refreshTokenRepository: RefreshTokenRepository;
+    }) => Promise<T>,
+  ): Promise<T>;
 }

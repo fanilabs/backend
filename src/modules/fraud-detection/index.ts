@@ -13,7 +13,7 @@ import {
   subscribeFraudDetectionEventDispatch,
 } from './infrastructure/index.js';
 import { createFraudDetectionRoutes } from './interface/routes.js';
-import { env } from '../../shared/config/env.js';
+import { getConfig } from '../../shared/config/index.js';
 
 /**
  * Unlike `notifications`, this module writes synchronously in its event
@@ -26,6 +26,7 @@ import { env } from '../../shared/config/env.js';
  * subscription to actually fire — see that file's header comment).
  */
 export function createFraudDetectionModule(prisma: PrismaClient): FastifyPluginAsyncZod {
+  const config = getConfig();
   const activityRepository = createPrismaActorActivityRepository(prisma);
 
   const recordActorActivityFromEvent = createRecordActorActivityFromEventUseCase({
@@ -37,7 +38,26 @@ export function createFraudDetectionModule(prisma: PrismaClient): FastifyPluginA
     assessActor: createAssessActorUseCase({
       activityRepository,
       clock: createLedgerClock(prisma),
-      ruleDefinitions: env.fraudRules,
+      ruleDefinitions: [
+        {
+          ruleType: 'DELIVERY_CREATION_VELOCITY',
+          category: 'DELIVERY_CREATED',
+          threshold: config.FRAUD_DELIVERY_VELOCITY_THRESHOLD,
+          windowHours: config.FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS,
+        },
+        {
+          ruleType: 'ESCROW_RELEASE_VELOCITY',
+          category: 'ESCROW_RELEASED',
+          threshold: config.FRAUD_ESCROW_VELOCITY_THRESHOLD,
+          windowHours: config.FRAUD_ESCROW_VELOCITY_WINDOW_HOURS,
+        },
+        {
+          ruleType: 'DISPUTE_RAISE_VELOCITY',
+          category: 'DISPUTE_RAISED',
+          threshold: config.FRAUD_DISPUTE_VELOCITY_THRESHOLD,
+          windowHours: config.FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS,
+        },
+      ],
     }),
   };
 

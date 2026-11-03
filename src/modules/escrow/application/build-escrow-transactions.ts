@@ -1,5 +1,6 @@
-import { ValidationError } from '../../../shared/errors/index.js';
+import { assertEscrowAmount } from '../../../shared/validation/i128.js';
 import { InvalidEscrowStateError } from '../domain/errors.js';
+import { assertEscrowDeliveryId } from '../domain/identifiers.js';
 import type {
   CreateEscrowTxInput,
   EscrowStatus,
@@ -15,7 +16,7 @@ export interface BuildEscrowTransactionsDeps {
    * transaction. When provided, refunds are rejected for escrows that are no
    * longer eligible (e.g. already released or refunded).
    */
-  getEscrowStatus?: (chainDeliveryId: string) => Promise<EscrowStatus>;
+  getEscrowStatus?: (chainDeliveryId: bigint) => Promise<EscrowStatus>;
 }
 
 const REFUNDABLE_STATUSES: readonly EscrowStatus[] = ['LOCKED', 'PAUSED'];
@@ -32,16 +33,18 @@ const REFUNDABLE_STATUSES: readonly EscrowStatus[] = ['LOCKED', 'PAUSED'];
 export function createBuildEscrowTransactionsUseCases(deps: BuildEscrowTransactionsDeps) {
   return {
     buildCreateEscrowTransaction: async (input: CreateEscrowTxInput): Promise<string> => {
-      if (input.amount <= 0n) {
-        throw new ValidationError('Escrow amount must be greater than zero');
-      }
+      assertEscrowAmount(input.amount);
+      assertEscrowDeliveryId(input.chainDeliveryId);
       return deps.transactionBuilder.buildCreateEscrow(input);
     },
 
-    buildReleaseEscrowTransaction: (input: ReleaseEscrowTxInput): Promise<string> =>
-      deps.transactionBuilder.buildReleaseEscrow(input),
+    buildReleaseEscrowTransaction: async (input: ReleaseEscrowTxInput): Promise<string> => {
+      assertEscrowDeliveryId(input.chainDeliveryId);
+      return deps.transactionBuilder.buildReleaseEscrow(input);
+    },
 
     buildRefundEscrowTransaction: async (input: RefundEscrowTxInput): Promise<string> => {
+      assertEscrowDeliveryId(input.chainDeliveryId);
       if (deps.getEscrowStatus) {
         const status = await deps.getEscrowStatus(input.chainDeliveryId);
         if (!REFUNDABLE_STATUSES.includes(status)) {

@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { workerExecutionStatus } from '../../queue/worker-execution.js';
 import { buildApp } from '../../../app.js';
 import { disconnectPrisma } from '../../database/index.js';
 import { disconnectRedis } from '../../cache/index.js';
@@ -33,11 +34,13 @@ describe.skipIf(!dbAvailable)('observability routes (integration)', () => {
     expect(response.statusCode).toBe(200);
     const body = response.json<{
       status: string;
+      workerExecution: typeof workerExecutionStatus;
       queues: Array<{ name: string; waiting: number; failed: number }>;
     }>();
-    expect(body.status).toBe('ok');
+    expect(body.status).toBe('degraded');
+    expect(body.workerExecution).toEqual(workerExecutionStatus);
     expect(body.queues.map((q) => q.name).sort()).toEqual(
-      ['blockchain-indexer', 'notifications'].sort(),
+      ['blockchain-indexer', 'notifications', 'fraud-activity-cleanup'].sort(),
     );
   });
 

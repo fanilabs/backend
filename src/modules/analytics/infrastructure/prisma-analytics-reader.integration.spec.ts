@@ -64,6 +64,7 @@ describe.skipIf(!dbAvailable)('Prisma analytics reader (integration)', () => {
         token,
         amount: '100',
         status: 'RELEASED',
+        isVerified: true,
         createdAtChain: new Date(),
       },
     });
@@ -76,6 +77,7 @@ describe.skipIf(!dbAvailable)('Prisma analytics reader (integration)', () => {
         token,
         amount: '170141183460469231731687303715884105727',
         status: 'RELEASED',
+        isVerified: true,
         createdAtChain: new Date(),
       },
     });

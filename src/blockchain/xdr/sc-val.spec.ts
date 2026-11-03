@@ -1,6 +1,7 @@
 import { Address, Keypair, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import {
+  i128ToScVal,
   addressToScVal,
   boolToScVal,
   namedStructToScVal,
@@ -154,5 +155,17 @@ describe('native -> ScVal encoders', () => {
       estimated_delivery: '1700100000',
       origin: 'Lagos',
     });
+  });
+});
+
+describe('signed i128 financial encoding', () => {
+  it.each([-(1n << 127n), (1n << 127n) - 1n, -1n, 0n, 1n, 9007199254740993n])(
+    'round-trips exactly %s',
+    (value) => {
+      expect(scValToNative(i128ToScVal(value))).toBe(value.toString());
+    },
+  );
+  it.each([-(1n << 127n) - 1n, 1n << 127n])('rejects overflow %s instead of wrapping', (value) => {
+    expect(() => i128ToScVal(value)).toThrow('signed 128-bit bounds');
   });
 });

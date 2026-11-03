@@ -288,13 +288,13 @@ describe.skipIf(!dbAvailable)('deliveries routes (integration)', () => {
   // fallback, not a 404 (which would mean the route doesn't exist) or a
   // generic 500.
   it('reaches the raise-delivery-dispute handler and returns 502 BLOCKCHAIN_ERROR when DELIVERY_CONTRACT_ID is unconfigured', async () => {
-    const { accessToken } = await registerUser();
+    const { accessToken, address } = await registerWithWallet();
 
     const response = await app.inject({
       method: 'POST',
       url: '/api/v1/transactions/build/raise-delivery-dispute',
       headers: { authorization: `Bearer ${accessToken}` },
-      payload: { callerAddress: Keypair.random().publicKey(), chainDeliveryId: '1' },
+      payload: { callerAddress: address, chainDeliveryId: '1' },
     });
 
     expect(response.statusCode).toBe(502);

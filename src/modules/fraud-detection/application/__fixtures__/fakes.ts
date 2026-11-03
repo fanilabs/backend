@@ -24,10 +24,11 @@ export function createInMemoryActorActivityRepository(): ActorActivityRepository
     async record(input) {
       rows.push({ address: input.address, category: input.category, occurredAt: input.occurredAt });
     },
-    async countSince(address, category, since) {
-      return rows.filter(
+    async countSince(address, category, since, limit) {
+      const count = rows.filter(
         (row) => row.address === address && row.category === category && row.occurredAt >= since,
       ).length;
+      return limit === undefined ? count : Math.min(count, limit);
     },
     async deleteOlderThan(olderThan) {
       let removed = 0;

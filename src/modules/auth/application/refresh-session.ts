@@ -1,14 +1,8 @@
-import type {
-  Clock,
-  RefreshTokenRepository,
-  TokenService,
-  UserRepository,
-} from '../domain/index.js';
+import type { Clock, AuthUnitOfWork, TokenService } from '../domain/index.js';
 import { InvalidRefreshTokenError, UserNotFoundError } from '../domain/index.js';
 
 export interface RefreshSessionDeps {
-  refreshTokenRepository: RefreshTokenRepository;
-  userRepository: UserRepository;
+  unitOfWork: AuthUnitOfWork;
   tokenService: TokenService;
   clock: Clock;
 }
@@ -36,30 +30,36 @@ export function createRefreshSessionUseCase(deps: RefreshSessionDeps) {
       throw new InvalidRefreshTokenError();
     }
 
-    const record = await deps.refreshTokenRepository.findByTokenHash(verified.tokenHash);
-    if (
-      !record ||
-      record.revokedAt !== null ||
-      record.expiresAt.getTime() < deps.clock.now().getTime()
-    ) {
-      throw new InvalidRefreshTokenError();
-    }
-
-    const user = await deps.userRepository.findById(verified.userId);
-    if (!user) {
-      throw new UserNotFoundError();
-    }
-
-    await deps.refreshTokenRepository.revoke(record.id);
-
-    const accessToken = deps.tokenService.issueAccessToken(user);
-    const issued = deps.tokenService.issueRefreshToken(user);
-    await deps.refreshTokenRepository.create({
-      userId: user.id,
-      tokenHash: issued.tokenHash,
-      expiresAt: issued.expiresAt,
-    });
-
-    return { accessToken, refreshToken: issued.token };
+    // Invalid reuse must return from the transaction normally so revocation commits.
+    const result = await deps.unitOfWork.run(
+      verified.userId,
+      async ({ userRepository, refreshTokenRepository }) => {
+        const record = await refreshTokenRepository.findByTokenHash(verified.tokenHash);
+        if (!record || record.userId !== verified.userId || !record.familyId) return null;
+        if (record.revokedAt !== null) {
+          await refreshTokenRepository.revokeFamily(record.familyId);
+          return null;
+        }
+        if (
+          record.expiresAt.getTime() <= deps.clock.now().getTime() ||
+          !(await refreshTokenRepository.isFamilyActive(record.familyId))
+        )
+          return null;
+        const user = await userRepository.findById(verified.userId);
+        if (!user) throw new UserNotFoundError();
+        await refreshTokenRepository.revoke(record.id);
+        const accessToken = deps.tokenService.issueAccessToken(user);
+        const issued = deps.tokenService.issueRefreshToken(user);
+        await refreshTokenRepository.create({
+          userId: user.id,
+          tokenHash: issued.tokenHash,
+          expiresAt: issued.expiresAt,
+          familyId: record.familyId,
+        });
+        return { accessToken, refreshToken: issued.token };
+      },
+    );
+    if (!result) throw new InvalidRefreshTokenError();
+    return result;
   };
 }

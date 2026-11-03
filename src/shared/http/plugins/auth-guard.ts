@@ -3,7 +3,6 @@ import type { UserRole } from '@prisma/client';
 import { verifyAccessToken } from '../../jwt/index.js';
 import { UnauthorizedError, ForbiddenError } from '../../errors/index.js';
 import { getPrismaClient } from '../../database/index.js';
-import { readAuthContext, writeAuthContext } from '../../cache/index.js';
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -11,41 +10,11 @@ declare module 'fastify' {
   }
 }
 
-/**
- * Route-level auth guard — attached per-route via `{ preHandler: authenticate }`,
- * not globally, so public routes (register/login) stay public without an
- * allow-list of exceptions to maintain. Verifies the bearer access token and
- * attaches the claims to `request.user` for downstream handlers/guards.
- *
- * Access tokens are otherwise fully stateless (signature + expiry only, per
- * docs/AUTHENTICATION.md) — this `users.token_version` check is the one
- * deliberate exception, closing security issue #12: without it, an
- * already-issued access token keeps granting its original role for the
- * rest of its ~15-minute lifetime even after an admin changes that user's
- * role, since the role is otherwise only ever read from the token's own
- * (now-stale) claim. `updateUserRole` bumps `token_version` on every role
- * change, so this rejects any token issued before that change on its very
- * next request — not just at token expiry or next refresh. `role` is read
- * fresh from this same lookup (not from the token's claim) as defense in
- * depth, at no extra cost since the row is already being fetched.
- *
- * The `role`/`tokenVersion` pair is served from a short-TTL Redis cache
- * first (#369, `shared/cache/auth-context-cache.ts`) so the check doesn't
- * cost one `users` lookup per authenticated request under load. Two
- * properties keep the #12 guarantee intact despite the cache: (1) role
- * changes evict the entry the moment their transaction commits
- * (`AuthCacheInvalidator`, wired in `src/modules/admin`) — the TTL is only
- * a backstop for eviction failures, never the primary invalidation path;
- * (2) every cache failure (outage, corrupt entry) degrades to the original
- * per-request database lookup rather than skipping the check — an
- * unreachable cache must never widen privileges or reject valid requests.
- *
- * Uses the shared Prisma singleton directly (matching the existing
- * `shared/http/routes/health.ts` precedent) rather than threading a
- * dependency through every one of this function's ~10 call sites — it's
- * referenced by bare function identity (`preHandler: authenticate`)
- * throughout the codebase, so changing its signature would mean touching
- * every route file and module composition root for a single security check.
+/** Authentication checks role and tokenVersion against the authoritative primary
+ * database on every request. Cached state cannot authorize a revoked credential.
+ * Requests whose DB check precedes a reset commit may already be in flight;
+ * checks after commit reject old tokens, across instances and Redis failures.
+ * Database errors fail closed. Do not point this lookup at a lagging replica.
  */
 export const authGuard = {
   async authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
@@ -63,17 +32,10 @@ export const authGuard = {
       throw new UnauthorizedError('Invalid or expired access token');
     }
 
-  let currentUser = await readAuthContext(claims.sub);
-  if (!currentUser) {
-    const row = await getPrismaClient().user.findUnique({
+    const currentUser = await getPrismaClient().user.findUnique({
       where: { id: claims.sub },
       select: { role: true, tokenVersion: true },
     });
-    if (row) {
-      currentUser = { role: row.role, tokenVersion: row.tokenVersion };
-      await writeAuthContext(claims.sub, currentUser);
-    }
-  }
 
     // Tokens issued before `tokenVersion` existed carry no such claim —
     // treated as version 0 (the column's default) so they keep working

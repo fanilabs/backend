@@ -1,5 +1,6 @@
 export type { User, UserRole, RefreshTokenRecord } from './entities.js';
 export type {
+  AuthUnitOfWork,
   UserRepository,
   RefreshTokenRepository,
   PasswordHasher,

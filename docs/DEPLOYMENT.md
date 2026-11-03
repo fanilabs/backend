@@ -60,6 +60,45 @@ headroom for the worker process's own pool. If you see `P2024` errors, increase
 `DATABASE_POOL_SIZE` rather than `DATABASE_POOL_TIMEOUT` — a longer timeout
 merely delays failures under sustained pressure.
 
+## Restricted worker execution
+
+The current worker binary deliberately does **not** run `blockchain-indexer`,
+`notifications`, or `fraud-activity-cleanup`. It registers no consumers or recurring
+jobs for them and does not replay historical events. Pending jobs and existing
+repeat definitions remain stored; they are not drained, cancelled or executed by
+this binary. Polling/checkpoint progress, queued notification delivery and fraud
+retention cleanup are unavailable. API endpoints remain available under their
+existing authorization rules; this does not make the application fully operational.
+
+Historically the worker intended to schedule polling and daily cleanup and start
+all three consumers. Missing imports prevented startup. The explicit restriction
+replaces that accidental failure while restoring compilation. The process now
+runs only its liveness heartbeat and shutdown handling. Startup logs report
+`workerExecution.status: blocked`, each queue's reason, and `workerCount: 0`.
+`GET /health/queue` includes the same fixed `workerExecution` state and reports
+`degraded` even for empty queues (existing backend/stall failures still return503).
+`GET /health/indexer` reports503/degraded with the same restriction and
+`healthy: false` for each contract, even when its lag snapshot is small.
+The heartbeat and `GET /health` prove process/dependency liveness only, **not job
+availability or deployment readiness**.
+
+There is no environment override for activation. A separately reviewed code change
+and rollout decision must first establish:
+
+- Indexer consumer completion, ordering/idempotency and recovery, complete event
+  coverage and safe checkpoint progression; historical replay needs its own policy.
+- Notification intent/outbox deduplication and recovery for ambiguous SMTP outcomes,
+  including pending backlog treatment without duplicate or unapproved sends.
+- Retention/window consistency, a reliable processing frontier aligned with evaluator
+  time, bounded deletion and restart/concurrency recovery without loss of required data.
+
+Do not substitute the unfinished M10 system or globally enable execution to make
+status green. Before rollout, inventory existing workers and recurring schedules:
+older binaries must not keep consuming these queues. This binary does not remotely
+pause queues or disable other processes. Expect backlog/storage growth and stalled
+indexer lag; monitor capacity and communicate the unavailable services. Existing
+schema/session migration and recovery requirements still apply.
+
 ## Health Checks
 
 - `GET /health` — liveness/readiness: database + Redis reachability (see `src/shared/http/routes/health.ts`). **Point your orchestrator's readiness probe at this endpoint.**

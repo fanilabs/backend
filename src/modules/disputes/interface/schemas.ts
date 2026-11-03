@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { matchesMp4Header } from '../application/file-signature.js';
 import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 
@@ -27,9 +28,12 @@ export type EvidenceContentType = (typeof allowedEvidenceContentTypes)[number];
  * Magic-byte signatures for each allowed evidence content type. Each entry
  * lists one or more candidate signatures; a file matches the declared type
  * when its header starts with any of them. Signatures are compared against
- * the first 16 bytes of the decoded payload.
+ * the first 16 bytes of the decoded payload (MP4 uses the complete box below).
  */
-const evidenceMagicBytes: Record<EvidenceContentType, readonly (readonly number[])[]> = {
+const evidenceMagicBytes: Record<
+  Exclude<EvidenceContentType, 'video/mp4'>,
+  readonly (readonly number[])[]
+> = {
   'image/jpeg': [[0xff, 0xd8, 0xff]],
   'image/png': [[0x89, 0x50, 0x4e, 0x47]],
   'image/webp': [[0x52, 0x49, 0x46, 0x46]], // RIFF....WEBP
@@ -40,7 +44,6 @@ const evidenceMagicBytes: Record<EvidenceContentType, readonly (readonly number[
     [0xff, 0xf3],
     [0xff, 0xf2],
   ],
-  'video/mp4': [[0x66, 0x74, 0x79, 0x70]], // ftyp (checked at offset 4 below)
 };
 
 const MAGIC_BYTE_WINDOW = 16;
@@ -56,7 +59,7 @@ function matchesSignature(header: Uint8Array, signature: readonly number[]): boo
 /**
  * Verifies that the decoded file header matches the declared content type.
  * Returns true when the magic bytes are consistent with `contentType`.
- * MP4 stores its `ftyp` box at offset 4, so that signature is checked there.
+ * MP4 uses a complete leading FileTypeBox check, not a whole-video validator.
  */
 export function matchesEvidenceMagicBytes(
   bytes: Uint8Array,
@@ -64,11 +67,9 @@ export function matchesEvidenceMagicBytes(
 ): boolean {
   const header = bytes.subarray(0, MAGIC_BYTE_WINDOW);
   if (contentType === 'video/mp4') {
-    return matchesSignature(header.subarray(4), [0x66, 0x74, 0x79, 0x70]);
+    return matchesMp4Header(bytes);
   }
-  return evidenceMagicBytes[contentType].some((signature) =>
-    matchesSignature(header, signature),
-  );
+  return evidenceMagicBytes[contentType].some((signature) => matchesSignature(header, signature));
 }
 
 /**

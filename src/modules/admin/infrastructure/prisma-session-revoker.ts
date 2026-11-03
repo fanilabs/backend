@@ -18,6 +18,10 @@ import type { SessionRevoker } from '../domain/index.js';
 export function createPrismaSessionRevoker(prisma: Prisma.TransactionClient): SessionRevoker {
   return {
     async revokeAllForUser(userId) {
+      await prisma.sessionFamily.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
       await prisma.refreshToken.updateMany({
         where: { userId, revokedAt: null },
         data: { revokedAt: new Date() },

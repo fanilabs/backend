@@ -54,6 +54,21 @@ describe.skipIf(!dbAvailable)('Prisma escrow repository (integration)', () => {
     expect(found).toMatchObject({ chainDeliveryId, token: 'GTOKENX', status: 'LOCKED' });
   });
 
+  it.each([true, false, undefined])(
+    'persists explicit token verification %s and excludes unknown state',
+    async (isVerified) => {
+      const chainDeliveryId = await nextChainId();
+      const record = buildChainEscrowRecord({ chainDeliveryId });
+      // Undefined models a caller without an ingestion-policy result.
+      if (isVerified !== undefined) record.isVerified = isVerified;
+      const created = await escrowRepository.create(record);
+      expect(created.isVerified).toBe(isVerified ?? false);
+      await escrowRepository.updateStatus(chainDeliveryId, { status: 'RELEASED' });
+      const found = await escrowRepository.findByChainDeliveryId(chainDeliveryId);
+      expect(found?.isVerified).toBe(isVerified ?? false);
+    },
+  );
+
   it('updates status, platformFee, and releasedAt via updateStatus', async () => {
     const chainDeliveryId = await nextChainId();
     await escrowRepository.create(buildChainEscrowRecord({ chainDeliveryId, status: 'LOCKED' }));

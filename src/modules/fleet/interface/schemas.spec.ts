@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { addDriverToFleetBodySchema, payoutAddressResponseSchema } from './schemas.js';
+import { testAddress } from '../../../shared/testing/addresses.js';
 
 describe('payoutAddressResponseSchema', () => {
   it('accepts payout addresses up to the maximum address length', () => {
@@ -20,13 +21,13 @@ describe('payoutAddressResponseSchema', () => {
 });
 
 describe('addDriverToFleetBodySchema', () => {
-  const callerAddress = 'G' + 'A'.repeat(55);
-  const driverAddress = 'G' + 'B'.repeat(55);
+  const callerAddress = testAddress('fleet-schema-owner');
+  const driverAddress = testAddress('fleet-schema-driver');
 
   it('accepts distinct caller and driver addresses', () => {
     const result = addDriverToFleetBodySchema.safeParse({
       callerAddress,
-      chainFleetId: 1,
+      chainFleetId: '1',
       driverAddress,
     });
 
@@ -36,7 +37,7 @@ describe('addDriverToFleetBodySchema', () => {
   it('rejects when driver address equals caller address', () => {
     const result = addDriverToFleetBodySchema.safeParse({
       callerAddress,
-      chainFleetId: 1,
+      chainFleetId: '1',
       driverAddress: callerAddress,
     });
 

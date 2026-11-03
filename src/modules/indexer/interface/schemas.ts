@@ -12,6 +12,12 @@ const contractHealthSchema = z.object({
 
 export const indexerHealthResponseSchema = z.object({
   status: z.enum(['ok', 'degraded']),
+  workerExecution: z.object({
+    status: z.literal('blocked'),
+    jobs: z.array(
+      z.object({ queue: z.string(), status: z.literal('blocked'), reason: z.string() }),
+    ),
+  }),
   latestLedger: z.number(),
   contracts: z.array(contractHealthSchema),
 });

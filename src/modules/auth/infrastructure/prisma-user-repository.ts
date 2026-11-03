@@ -1,4 +1,4 @@
-import type { PrismaClient, User as PrismaUser } from '@prisma/client';
+import type { Prisma, User as PrismaUser } from '@prisma/client';
 import type { User, UserRepository } from '../domain/index.js';
 
 function toDomain(record: PrismaUser): User {
@@ -20,7 +20,7 @@ function toDomain(record: PrismaUser): User {
  * test-database client per docs/DATABASE.md's "no mocking the repository
  * layer" rule) without this module knowing or caring.
  */
-export function createPrismaUserRepository(prisma: PrismaClient): UserRepository {
+export function createPrismaUserRepository(prisma: Prisma.TransactionClient): UserRepository {
   return {
     async findByEmail(email) {
       const record = await prisma.user.findUnique({ where: { email } });

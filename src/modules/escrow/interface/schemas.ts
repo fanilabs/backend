@@ -1,11 +1,20 @@
 import { z } from 'zod';
+import { I128_MAX } from '../../../shared/validation/i128.js';
 import { chainId } from '../../../shared/validation/chain-id.js';
 import { stellarAddress } from '../../../shared/validation/stellar-address.js';
 import { tokenAddress } from '../../../shared/validation/token-address.js';
+import { ESCROW_DELIVERY_ID_MAX } from '../domain/identifiers.js';
 
 export { transactionResponseSchema } from '../../../shared/validation/transaction-response.js';
 
 const chainDeliveryId = chainId.max(128, 'chainDeliveryId must be at most 128 characters');
+const builderChainDeliveryId = chainDeliveryId.refine((value) => {
+  try {
+    return BigInt(value) <= ESCROW_DELIVERY_ID_MAX;
+  } catch {
+    return false;
+  }
+}, 'chainDeliveryId must be an unsigned 64-bit integer');
 // Module-specific: a token amount that happens to share the digit-string
 // shape of `chainId` but is a distinct concept — kept local by design.
 const amount = z
@@ -14,12 +23,12 @@ const amount = z
   .refine(
     (val) => {
       try {
-        return BigInt(val) > 0n;
+        return BigInt(val) > 0n && BigInt(val) <= I128_MAX;
       } catch {
         return false;
       }
     },
-    { message: 'amount must be greater than zero' },
+    { message: 'amount must be greater than zero and within signed 128-bit bounds' },
   );
 const escrowStatus = z.enum(['LOCKED', 'RELEASED', 'REFUNDED', 'PAUSED']);
 
@@ -51,17 +60,17 @@ export const createEscrowBodySchema = z.object({
   senderAddress: stellarAddress,
   recipientAddress: stellarAddress,
   driverAddress: stellarAddress,
-  chainDeliveryId,
+  chainDeliveryId: builderChainDeliveryId,
   token: tokenAddress,
   amount,
 });
 
 export const releaseEscrowBodySchema = z.object({
   callerAddress: stellarAddress,
-  chainDeliveryId,
+  chainDeliveryId: builderChainDeliveryId,
 });
 
 export const refundEscrowBodySchema = z.object({
   callerAddress: stellarAddress,
-  chainDeliveryId,
+  chainDeliveryId: builderChainDeliveryId,
 });

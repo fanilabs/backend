@@ -8,7 +8,7 @@ import {
   createInMemoryDisputeRepository,
   createInMemoryEvidenceRepository,
 } from './__fixtures__/fakes.js';
-import { DisputeStatus } from '../domain/dispute-status.js';
+import { DisputeStatus } from '@prisma/client';
 import { EvidenceNotFoundError, ForbiddenEvidenceAccessError } from '../domain/index.js';
 
 function setup() {
@@ -228,11 +228,11 @@ describe('downloadEvidence', () => {
   });
 
   describe('dispute lifecycle access policy', () => {
-    const participantStatuses: DisputeStatus[] = [DisputeStatus.OPEN, DisputeStatus.UNDER_REVIEW];
+    const participantStatuses: DisputeStatus[] = [DisputeStatus.OPEN];
     const restrictedStatuses: DisputeStatus[] = [
-      DisputeStatus.RESOLVED,
-      DisputeStatus.CANCELLED,
-      DisputeStatus.CLOSED,
+      DisputeStatus.RESOLVED_REFUND,
+      DisputeStatus.RESOLVED_PAYOUT,
+      DisputeStatus.SPLIT,
     ];
 
     it.each(participantStatuses)(

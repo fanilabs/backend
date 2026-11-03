@@ -115,7 +115,8 @@ describe('syncFleetFromEvent', () => {
       }),
     );
 
-    const stored = await fleetRepository.findByChainFleetId(1n);
+    expect((await fleetRepository.findByChainFleetId(1n))?.drivers).toEqual([]);
+    const stored = await fleetRepository.findByChainFleetId(1n, { includeRemoved: true });
     expect(stored?.drivers).toHaveLength(1);
     expect(stored?.drivers[0]?.removedAt).toEqual(closedAt);
     expect(stored?.totalActiveDrivers).toBe(0);
