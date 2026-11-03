@@ -1,3 +1,4 @@
+import { matchesMp4Header } from './file-signature.js';
 import { createHash } from 'node:crypto';
 import type {
   DisputeRepository,
@@ -50,16 +51,22 @@ const MAGIC_BYTES: Record<string, readonly (readonly number[])[]> = {
     [0x49, 0x44, 0x33], // ID3
     [0xff, 0xfb],
   ],
-  'video/mp4': [[0x66, 0x74, 0x79, 0x70]], // ftyp
 };
 
 /**
- * Verifies the first 16 bytes of `bytes` against the known magic byte
+ * Checks a complete leading FileTypeBox for MP4; for other types, verifies
+ * the first 16 bytes of `bytes` against the known magic byte
  * signatures for `contentType`. Throws `ValidationError` when the content
  * does not match the declared type. Content types without a registered
  * signature are left to the schema-level allowlist check.
  */
 function assertMagicBytesMatch(contentType: string, bytes: Buffer): void {
+  if (contentType === 'video/mp4') {
+    if (!matchesMp4Header(bytes)) {
+      throw new ValidationError('File content does not match declared contentType');
+    }
+    return;
+  }
   const signatures = MAGIC_BYTES[contentType];
   if (!signatures) {
     return;

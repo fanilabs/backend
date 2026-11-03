@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdtemp, rm, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DisputeStatus, UserRole, PrismaClient } from '@prisma/client';
@@ -10,6 +10,10 @@ import { disconnectPrisma } from '../src/shared/database/index.js';
 import { handleError } from '../src/shared/errors/index.js';
 import { signAccessToken } from '../src/shared/jwt/index.js';
 import { testAddress } from '../src/shared/testing/addresses.js';
+
+import { ftyp24, extendedFtyp32, invalidMp4Headers } from './__fixtures__/mp4-headers.js';
+import { createLocalEvidenceStorage } from '../src/modules/disputes/infrastructure/local-evidence-storage.js';
+import { getConfig } from '../src/shared/config/index.js';
 
 // Real module, Prisma repositories, authentication, schema compilers and local storage.
 // The unconfigured chain client cannot submit transactions or make RPC calls.
@@ -268,5 +272,127 @@ describe('dispute HTTP compatibility', () => {
       });
       expect(response.statusCode).toBe(expected);
     }
+  });
+  it.each([ftyp24, extendedFtyp32])(
+    'uploads an owned MP4 header and preserves hash, identity and bytes',
+    async (mp4) => {
+      await prisma.dispute.update({ where: { id: disputeId }, data: { status: 'OPEN' } });
+      await prisma.walletAddress.update({
+        where: { address },
+        data: { userId: userId('CUSTOMER-uploader') },
+      });
+      const response = await app.inject({
+        method: 'POST',
+        url: `/disputes/${chainId}/evidence`,
+        headers: headers('CUSTOMER-uploader'),
+        payload: {
+          uploadedBy: address,
+          contentType: 'video/mp4',
+          base64Content: mp4.toString('base64'),
+        },
+      });
+      expect(response.statusCode).toBe(200);
+      const stored = await prisma.evidence.findUniqueOrThrow({
+        where: { id: response.json<{ data: { evidenceId: string } }>().data.evidenceId },
+      });
+      const storage = createLocalEvidenceStorage(baseDir);
+      try {
+        expect(stored.uploadedByUserId).toBe(userId('CUSTOMER-uploader'));
+        expect(stored.hash).toBe(createHash('sha256').update(mp4).digest('hex'));
+        expect(response.json<{ data: { hash: string } }>().data.hash).toBe(stored.hash);
+        expect(await storage.read(stored.storageUrl)).toEqual(mp4);
+      } finally {
+        await prisma.evidence.delete({ where: { id: stored.id } });
+        await storage.delete(stored.storageUrl);
+      }
+    },
+  );
+
+  it.each(invalidMp4Headers)(
+    'returns400 for $name without writing evidence',
+    async ({ bytes: invalid }) => {
+      const before = await prisma.evidence.count({ where: { disputeId } });
+      const files = await readdir(join(baseDir, disputeId));
+      const response = await app.inject({
+        method: 'POST',
+        url: `/disputes/${chainId}/evidence`,
+        headers: headers('CUSTOMER-uploader'),
+        payload: {
+          uploadedBy: address,
+          contentType: 'video/mp4',
+          base64Content: invalid.toString('base64'),
+        },
+      });
+      expect(response.statusCode).toBe(400);
+      expect(response.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_ERROR');
+      expect(await prisma.evidence.count({ where: { disputeId } })).toBe(before);
+      expect(await readdir(join(baseDir, disputeId))).toEqual(files);
+    },
+  );
+
+  it('preserves401/403/409/404 and upload size errors for MP4', async () => {
+    const url = `/disputes/${chainId}/evidence`;
+    const payload = {
+      uploadedBy: address,
+      contentType: 'video/mp4',
+      base64Content: ftyp24.toString('base64'),
+    };
+    expect((await app.inject({ method: 'POST', url, payload })).statusCode).toBe(401);
+    expect(
+      (await app.inject({ method: 'POST', url, headers: headers('CUSTOMER-stranger'), payload }))
+        .statusCode,
+    ).toBe(403);
+    await prisma.dispute.update({ where: { id: disputeId }, data: { status: 'RESOLVED_REFUND' } });
+    expect(
+      (await app.inject({ method: 'POST', url, headers: headers('CUSTOMER-uploader'), payload }))
+        .statusCode,
+    ).toBe(409);
+    await prisma.dispute.update({ where: { id: disputeId }, data: { status: 'OPEN' } });
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url: `/disputes/${chainId + 999n}/evidence`,
+          headers: headers('CUSTOMER-uploader'),
+          payload,
+        })
+      ).statusCode,
+    ).toBe(404);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers: headers('CUSTOMER-uploader'),
+          payload: { ...payload, contentType: 'video/not-mp4' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    expect(
+      (
+        await app.inject({
+          method: 'POST',
+          url,
+          headers: headers('CUSTOMER-uploader'),
+          payload: { ...payload, contentType: 'image/png' },
+        })
+      ).statusCode,
+    ).toBe(400);
+    const oversized = Buffer.concat([ftyp24, Buffer.alloc(getConfig().EVIDENCE_MAX_BYTES + 1)]);
+    const sizeResponse = await app.inject({
+      method: 'POST',
+      url,
+      headers: headers('CUSTOMER-uploader'),
+      payload: { ...payload, base64Content: oversized.toString('base64') },
+    });
+    expect(sizeResponse.statusCode).toBe(400);
+    expect(sizeResponse.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_ERROR');
+    const bodyResponse = await app.inject({
+      method: 'POST',
+      url,
+      headers: headers('CUSTOMER-uploader'),
+      payload: { ...payload, base64Content: 'A'.repeat(16 * 1024 * 1024) },
+    });
+    expect(bodyResponse.statusCode).toBe(413);
   });
 });
