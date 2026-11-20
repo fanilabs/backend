@@ -29,6 +29,16 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 
 `blockchain_checkpoints` (one row per `(contractName, network)`) and `blockchain_events` (append-only raw event log, unique on `(contractName, network, rpcEventId)` — the Soroban RPC's own globally-unique event id) are the durability layer described in `ARCHITECTURE.md` §6. `blockchain_events` is intentionally kept even after a module has processed an event — it's the replay/audit source if a module's read-model logic needs to be rebuilt.
 
+## Referential Integrity
+
+Foreign keys declare their referential action explicitly rather than relying on Prisma's implicit defaults, so the behavior is identical whether a delete is issued through the Prisma client or raw SQL, and so migrations never drift on the action.
+
+- `FleetDriver.fleet` → `Fleet`: `onDelete: Cascade` — deleting a fleet removes its driver links.
+- `Escrow.delivery` → `Delivery` (`chainDeliveryId`): `onDelete: Restrict` — a delivery with an associated escrow cannot be deleted; the escrow must be removed first. This prevents silently orphaning fund-custody state during test cleanup or administrative purges.
+- `Dispute.delivery` → `Delivery` (`chainDeliveryId`): `onDelete: Restrict` — same rationale as escrow; a delivery with an associated dispute cannot be deleted.
+
+Attempting to delete a `Delivery` that still has an `Escrow` or `Dispute` row referencing it fails with a foreign key constraint violation (Prisma `P2003`).
+
 ## Read-Path Indexes
 
 Several ordered list / aggregation reads filter on one column and sort on
@@ -84,16 +94,4 @@ read model:
 - Four additional deliveries dedicated to disputes, one per `DisputeStatus`
   value, plus one `Evidence` row on the `OPEN` dispute.
 - One `Fleet` (owned by the seeded admin) with two `FleetDriver` rows, one
-  per `FleetDriverStatus` value.
-- Three `DriverProfile` rows, one per `DriverTier` value.
-- Three `Notification` rows, one per `NotificationStatus` value.
-- Two `AuditLog` rows.
-
-The script upserts on each table's natural unique key (email, wallet
-address, `chainDeliveryId`, `chainFleetId`, etc.) or a fixed seed id, so
-running it more than once does not create duplicate rows. It refuses to run
-when `NODE_ENV=production`.
-
-## Money/Amounts
-
-`escrows.amount` and `.platform_fee` are `Decimal(39, 0)` — exactly large enough to hold any Soroban `i128` value as an integer (`i128::MAX` has 39 digits; `Decimal(38, 0)` is one digit short), never a floating-point representation. Display formatting (applying decimals for a given asset) happens in the application layer, not the database.
+  per `FleetDriverStatus` val

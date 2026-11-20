@@ -1,54 +1,34 @@
-import type { PrismaClient, ActorActivity, ActorActivityCategory } from '@prisma/client';
-import type { ActorActivityRepository } from '../domain/ports';
+import type { PrismaClient } from '@prisma/client';
+import type { ActorActivityRepository } from '../domain/actor-activity-repository';
 
 export function createPrismaActorActivityRepository(
   prisma: PrismaClient,
 ): ActorActivityRepository {
   return {
-    async record(activity: ActorActivity): Promise<ActorActivity> {
-      return prisma.actorActivity.create({ data: activity });
-    },
+    async deleteOlderThan(olderThan, batchSize, maxIterations = 50) {
+      let totalDeleted = 0;
+      let iterations = 0;
 
-    async findByAddress(
-      address: string,
-      category?: ActorActivityCategory,
-      since?: Date,
-    ): Promise<ActorActivity[]> {
-      return prisma.actorActivity.findMany({
-        where: {
-          address,
-          ...(category ? { category } : {}),
-          ...(since ? { occurredAt: { gte: since } } : {}),
-        },
-        orderBy: { occurredAt: 'desc' },
-      });
-    },
+      for (;;) {
+        if (iterations >= maxIterations) break;
+        iterations += 1;
 
-    async countSince(
-      address: string,
-      category: ActorActivityCategory,
-      since: Date,
-      limit?: number,
-    ): Promise<number> {
-      const where = { address, category, occurredAt: { gte: since } };
+        const batch = await prisma.actorActivity.findMany({
+          where: { occurredAt: { lt: olderThan } },
+          select: { id: true },
+          take: batchSize,
+        });
+        if (batch.length === 0) break;
 
-      if (limit === undefined) {
-        return prisma.actorActivity.count({ where });
+        const { count } = await prisma.actorActivity.deleteMany({
+          where: { id: { in: batch.map((row) => row.id) } },
+        });
+        totalDeleted += count;
+
+        if (batch.length < batchSize) break;
       }
 
-      const rows = await prisma.actorActivity.findMany({
-        where,
-        take: limit,
-        select: { id: true },
-      });
-      return rows.length;
-    },
-
-    async deleteOlderThan(cutoff: Date): Promise<number> {
-      const result = await prisma.actorActivity.deleteMany({
-        where: { occurredAt: { lt: cutoff } },
-      });
-      return result.count;
+      return totalDeleted;
     },
   };
 }
