@@ -32,6 +32,15 @@ import { createFraudDetectionModule } from './modules/fraud-detection/index.js';
 import { createAdminModule } from './modules/admin/index.js';
 
 /**
+ * Default request body limit for the whole API surface. Standard JSON
+ * endpoints (auth, users, etc.) never need more than this, and keeping it
+ * small prevents unauthenticated clients from exhausting memory by streaming
+ * oversized payloads. Routes that legitimately need larger bodies (e.g.
+ * dispute evidence uploads) override this at the route level.
+ */
+const DEFAULT_BODY_LIMIT_BYTES = 256 * 1024;
+
+/**
  * Composes the Fastify instance with no side effects (no `listen()` call) so
  * it can be built once for the real server (src/server.ts) and again,
  * identically, inside API tests via `app.inject()`.
@@ -48,7 +57,7 @@ export async function buildApp() {
   const app = Fastify({
     loggerInstance: logger,
     trustProxy: true,
-    bodyLimit: config.EVIDENCE_MAX_BYTES,
+    bodyLimit: DEFAULT_BODY_LIMIT_BYTES,
   }).withTypeProvider<ZodTypeProvider>();
 
   // Ensure native BigInt values serialize cleanly to strings across all Fastify JSON responses

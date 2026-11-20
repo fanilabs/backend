@@ -24,8 +24,8 @@ export async function executeShutdownSteps(deps: ShutdownStepsDeps): Promise<unk
   const shutdownErrors: unknown[] = [];
 
   for (const step of [
-    () => deps.app.close(),
-    () => deps.closeAllQueues(),
+    () => withTimeout(() => deps.app.close(), timeoutMs, 'Fastify'),
+    () => withTimeout(() => deps.closeAllQueues(), timeoutMs, 'Queues'),
     () => withTimeout(() => deps.disconnectPrisma(), timeoutMs, 'Prisma'),
     () => withTimeout(() => deps.disconnectRedis(), timeoutMs, 'Redis'),
     () => withTimeout(() => deps.disconnectQueueConnection(), timeoutMs, 'QueueConnection'),
