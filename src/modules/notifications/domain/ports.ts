@@ -59,6 +59,11 @@ export interface UserContact {
  * `Notification` row, so an email address change between dispatch and
  * send (queued jobs can sit for a while under BullMQ's retry/backoff) is
  * honored.
+ *
+ * Both directions must resolve the *current* email on every call — an
+ * adapter must not cache a contact's email across calls, so a lookup
+ * performed after the account's email is updated returns the replacement
+ * address (see `prisma-user-contact-lookup.integration.spec.ts`).
  */
 export interface UserContactLookup {
   findByWalletAddress(address: string): Promise<UserContact | null>;
