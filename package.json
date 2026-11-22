@@ -24,6 +24,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "check:docs": "node scripts/check-doc-links.mjs",
+    "openapi:export": "tsx --env-file-if-exists=.env scripts/export-openapi.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
