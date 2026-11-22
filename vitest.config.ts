@@ -1,35 +1,34 @@
 import { defineConfig } from 'vitest/config';
+import { resolve } from 'node:path';
 
 export default defineConfig({
   test: {
+    globals: true,
     environment: 'node',
     setupFiles: ['./src/shared/testing/env.ts'],
-    include: ['src/**/*.{spec,test}.ts', 'tests/**/*.{spec,test}.ts'],
-    // The bootstrap test spawns isolated child processes that import the
-    // setup module directly; keep it out of the default suite so the
-    // runner's already-mutated process.env cannot leak into assertions.
-    exclude: ['**/node_modules/**', '**/dist/**', 'src/shared/testing/env.bootstrap.test.ts'],
+    include: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
       include: ['src/**/*.ts'],
       exclude: [
-        'src/**/*.{spec,test}.ts',
-        // Barrel / re-export index files only. Module composition roots
-        // (`src/modules/*/index.ts`) are deliberately NOT excluded: they
-        // hold real conditional wiring — the `X_CONTRACT_ID ? real client :
-        // 502-on-unconfigured fallback` branch documented in
-        // docs/API_REFERENCE.md — that a blanket `src/**/index.ts` would
-        // hide from the coverage report.
-        'src/**/{domain,application,infrastructure,interface}/index.ts',
-        'src/shared/**/index.ts',
+        'src/**/*.spec.ts',
+        'src/**/*.test.ts',
+        'src/**/index.ts',
+        'src/**/__fixtures__/**',
+        'src/shared/testing/**',
       ],
       thresholds: {
-        statements: 60,
-        branches: 60,
-        functions: 60,
-        lines: 60,
+        lines: 80,
+        functions: 80,
+        branches: 70,
+        statements: 80,
       },
+    },
+  },
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
     },
   },
 });
