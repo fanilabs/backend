@@ -48,4 +48,48 @@ describe.skipIf(!dbAvailable)('Prisma user contact lookup (integration)', () => 
     expect(await userContactLookup.findByUserId(user.id)).toEqual({ userId: user.id, email });
     expect(await userContactLookup.findByUserId(randomUUID())).toBeNull();
   });
+
+  it('observes updated email addresses on later reads via the same adapter', async () => {
+    const originalEmail = `test-${randomUUID()}@example.com`;
+    const replacementEmail = `test-${randomUUID()}@example.com`;
+    const otherEmail = `test-${randomUUID()}@example.com`;
+    const address = Keypair.random().publicKey();
+
+    const user = await prisma.user.create({
+      data: { email: originalEmail, passwordHash: 'hash', role: 'CUSTOMER' },
+    });
+    createdUserIds.push(user.id);
+    await prisma.walletAddress.create({
+      data: { userId: user.id, address, isPrimary: true, verifiedAt: new Date() },
+    });
+
+    const otherUser = await prisma.user.create({
+      data: { email: otherEmail, passwordHash: 'hash', role: 'CUSTOMER' },
+    });
+    createdUserIds.push(otherUser.id);
+
+    expect(await userContactLookup.findByUserId(user.id)).toEqual({
+      userId: user.id,
+      email: originalEmail,
+    });
+    expect(await userContactLookup.findByWalletAddress(address)).toEqual({
+      userId: user.id,
+      email: originalEmail,
+    });
+
+    await prisma.user.update({ where: { id: user.id }, data: { email: replacementEmail } });
+
+    const byId = await userContactLookup.findByUserId(user.id);
+    expect(byId).toEqual({ userId: user.id, email: replacementEmail });
+    expect(byId?.userId).toBe(user.id);
+
+    const byWallet = await userContactLookup.findByWalletAddress(address);
+    expect(byWallet).toEqual({ userId: user.id, email: replacementEmail });
+    expect(byWallet?.userId).toBe(user.id);
+
+    expect(await userContactLookup.findByUserId(otherUser.id)).toEqual({
+      userId: otherUser.id,
+      email: otherEmail,
+    });
+  });
 });
