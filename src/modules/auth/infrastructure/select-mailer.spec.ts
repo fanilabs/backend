@@ -58,3 +58,57 @@ describe('selectMailer', () => {
     );
   });
 });
+
+describe('smtpSettingsFromEnv', () => {
+  const baseEnv = {
+    SMTP_HOST: 'smtp.test.invalid',
+    SMTP_PORT: '2525',
+    SMTP_USER: 'test-user',
+    SMTP_PASSWORD: 'test-password',
+    SMTP_FROM: 'Test Sender <sender@test.invalid>',
+  } as NodeJS.ProcessEnv;
+
+  it('returns undefined when host is missing', () => {
+    const env = { ...baseEnv, SMTP_HOST: undefined } as NodeJS.ProcessEnv;
+    expect(smtpSettingsFromEnv(env)).toBeUndefined();
+  });
+
+  it('returns undefined when from is missing', () => {
+    const env = { ...baseEnv, SMTP_FROM: undefined } as NodeJS.ProcessEnv;
+    expect(smtpSettingsFromEnv(env)).toBeUndefined();
+  });
+
+  it('forwards the exact port and optional fields verbatim', () => {
+    const env = { ...baseEnv } as NodeJS.ProcessEnv;
+    const settings = smtpSettingsFromEnv(env);
+    expect(settings).toEqual({
+      host: 'smtp.test.invalid',
+      port: 2525,
+      user: 'test-user',
+      password: 'test-password',
+      from: 'Test Sender <sender@test.invalid>',
+    });
+  });
+
+  it('omits optional fields that are not provided rather than fabricating them', () => {
+    const env = {
+      SMTP_HOST: 'smtp.test.invalid',
+      SMTP_FROM: 'sender@test.invalid',
+    } as NodeJS.ProcessEnv;
+    const settings = smtpSettingsFromEnv(env);
+    expect(settings).toEqual({
+      host: 'smtp.test.invalid',
+      from: 'sender@test.invalid',
+    });
+    expect(settings?.port).toBeUndefined();
+    expect(settings?.user).toBeUndefined();
+    expect(settings?.password).toBeUndefined();
+  });
+
+  it('does not modify the input env object', () => {
+    const env = { ...baseEnv } as NodeJS.ProcessEnv;
+    const snapshot = { ...env };
+    smtpSettingsFromEnv(env);
+    expect(env).toEqual(snapshot);
+  });
+});

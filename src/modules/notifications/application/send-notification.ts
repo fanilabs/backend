@@ -3,6 +3,7 @@ import { NotificationNotFoundError } from '../domain/index.js';
 import type {
   NotificationRepository,
   NotificationSender,
+  NotificationSenderRegistry,
   UserContactLookup,
 } from '../domain/index.js';
 
@@ -11,7 +12,13 @@ const log = logger.child({ module: 'send-notification' });
 export interface SendNotificationDeps {
   notificationRepository: NotificationRepository;
   userContactLookup: UserContactLookup;
-  sender: NotificationSender;
+  /**
+   * Channel routing registry. When provided, the sender for a notification's
+   * channel is resolved from here; `sender` is used as the EMAIL fallback for
+   * callers that have not yet migrated to the registry.
+   */
+  senderRegistry?: NotificationSenderRegistry;
+  sender?: NotificationSender;
 }
 
 export interface SendNotificationInput {
@@ -31,17 +38,21 @@ export interface SendNotificationInput {
  * every job `dispatchNotificationsFromEvent` enqueues. Re-resolves the
  * recipient's current email (see `UserContactLookup.findByUserId`'s header
  * comment) rather than trusting a value captured at dispatch time, then
- * delegates to whichever channel adapter `notifications/index.ts` wired up
- * (a real SMTP sender, or the unconfigured fallback that always throws —
- * see that file). A send failure always rethrows, so BullMQ's own
- * retry/backoff (`shared/queue/queues.ts` — 5 attempts, exponential) gets a
- * chance to succeed on a later attempt — but the row is only marked
+ * delegates to the sender registered for the notification's channel (see
+ * `NotificationSenderRegistry`). A send failure always rethrows, so BullMQ's
+ * own retry/backoff (`shared/queue/queues.ts` — 5 attempts, exponential) gets
+ * a chance to succeed on a later attempt — but the row is only marked
  * `FAILED` when `isFinalAttempt` is true; an intermediate failure leaves it
  * `PENDING` so `GET /notifications?status=FAILED` never reports a
  * still-retrying send as permanently failed (see #104). A recipient with no
  * resolvable contact email yet is treated the same way on non-final
  * attempts (#354): returning void would let BullMQ mark the job completed
  * while the row stayed `PENDING` forever.
+ *
+ * Channels without a registered sender (e.g. SMS/PUSH before a provider is
+ * wired) are deferred rather than marked `FAILED` (#457): the row stays
+ * `PENDING` and a configuration notice is logged, so failure metrics are not
+ * poisoned by unconfigured channels.
  */
 export function createSendNotificationUseCase(deps: SendNotificationDeps) {
   return async function sendNotification(input: SendNotificationInput): Promise<void> {
@@ -50,23 +61,18 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
 
     if (notification.status === 'SENT') return;
 
-    // The persisted `NotificationChannel` enum has three variants, but
-    // `deps.sender` is always the single, EMAIL-shaped adapter wired at
-    // module composition (`notifications/index.ts`) — nothing in this
-    // codebase can actually deliver SMS/PUSH today (see `NotificationSender`'s
-    // doc comment). Sending an SMS/PUSH row through the email sender would
-    // silently deliver it to the wrong channel (or the wrong recipient
-    // field entirely); no retry could ever fix this, so it's marked FAILED
-    // immediately rather than going through the isFinalAttempt-gated path
-    // below, which exists for genuinely transient failures.
-    if (notification.channel !== 'EMAIL') {
-      await deps.notificationRepository.markFailed(
-        notification.id,
-        `No sender configured for channel ${notification.channel}`,
-      );
-      log.error(
+    const sender =
+      deps.senderRegistry?.resolve(notification.channel) ??
+      (notification.channel === 'EMAIL' ? deps.sender : undefined);
+
+    // No sender is configured for this channel yet. This is a configuration
+    // gap, not a delivery failure — leave the notification in its current
+    // (non-terminal) state and log a notice so operators can wire a provider
+    // without false `notification_failures_total` spikes (#457).
+    if (!sender) {
+      log.warn(
         { notificationId: notification.id, channel: notification.channel },
-        'Notification channel has no configured sender — marking failed without attempting delivery',
+        'No sender configured for notification channel — deferring without marking failed',
       );
       return;
     }
@@ -101,7 +107,7 @@ export function createSendNotificationUseCase(deps: SendNotificationDeps) {
     }
 
     try {
-      await deps.sender.send({
+      await sender.send({
         to: contact.email,
         type: notification.type,
         payload: notification.payload,

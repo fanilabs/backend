@@ -59,6 +59,11 @@ export interface UserContact {
  * `Notification` row, so an email address change between dispatch and
  * send (queued jobs can sit for a while under BullMQ's retry/backoff) is
  * honored.
+ *
+ * Both directions must resolve the *current* email on every call — an
+ * adapter must not cache a contact's email across calls, so a lookup
+ * performed after the account's email is updated returns the replacement
+ * address (see `prisma-user-contact-lookup.integration.spec.ts`).
  */
 export interface UserContactLookup {
   findByWalletAddress(address: string): Promise<UserContact | null>;
@@ -72,26 +77,39 @@ export interface NotificationEmailInput {
 }
 
 /**
- * Channel delivery adapter — email only for v1 (`ARCHITECTURE.md` §4: SMS
- * and push are documented future work, not built here). Throws on any
- * failure (unconfigured channel, SMTP error) rather than silently
- * pretending success — `sendNotification` maps a throw to `FAILED`.
+ * Channel delivery adapter. Throws on any failure (SMTP error, provider
+ * error) rather than silently pretending success — `sendNotification` maps
+ * a throw to `FAILED`.
  *
- * `NotificationChannel`'s database enum has three variants, and a
- * persisted row (seed data or any other direct write) can genuinely be
- * `SMS`/`PUSH` even though nothing in this module can produce or send one
- * through the normal dispatch flow. `sendNotification` checks
- * `notification.channel` explicitly before ever calling this port, so an
- * `SMS`/`PUSH` row is marked `FAILED` up front rather than silently handed
- * to this EMAIL-shaped sender — see that file's doc comment. Widen this
- * port (add a channel-keyed sender registry) once a real multi-channel
- * sender exists; the API response schema (`interface/schemas.ts`) already
+ * `NotificationChannel`'s database enum has three variants (`EMAIL`, `SMS`,
+ * `PUSH`), and a persisted row (seed data or any other direct write) can
+ * genuinely be `SMS`/`PUSH` even though nothing in this module can produce
+ * or send one through the normal dispatch flow. Senders are resolved per
+ * channel through `NotificationSenderRegistry` below, so a channel with no
+ * registered sender is deferred (left non-terminal) rather than handed to
+ * an EMAIL-shaped sender or marked `FAILED` — see `send-notification.ts`'s
+ * doc comment. The API response schema (`interface/schemas.ts`) already
  * reflects the full three-variant enum since it must be able to represent
  * whatever the database actually holds regardless of what can currently be
  * sent.
  */
 export interface NotificationSender {
   send(input: NotificationEmailInput): Promise<void>;
+}
+
+/**
+ * Channel routing registry — maps each `NotificationChannel` to the
+ * `NotificationSender` configured for it. `sendNotification` resolves the
+ * sender for a notification's channel here instead of assuming EMAIL, so
+ * SMS/PUSH senders can be adopted incrementally without touching the use
+ * case. A channel with no registered sender resolves to `undefined`; the
+ * use case treats that as a deferred/skipped delivery (logged as a
+ * configuration notice) rather than a terminal failure, so unconfigured
+ * channels don't poison `notification_failures_total`.
+ */
+export interface NotificationSenderRegistry {
+  register(channel: NotificationChannel, sender: NotificationSender): void;
+  resolve(channel: NotificationChannel): NotificationSender | undefined;
 }
 
 /**

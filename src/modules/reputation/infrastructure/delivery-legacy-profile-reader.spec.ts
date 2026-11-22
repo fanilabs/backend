@@ -1,64 +1,41 @@
-import { randomBytes } from 'node:crypto';
-import { Address, Keypair, xdr } from '@stellar/stellar-sdk';
-import type { rpc } from '@stellar/stellar-sdk';
 import { describe, expect, it, vi } from 'vitest';
-import { SorobanClient } from '../../../blockchain/soroban-client.js';
-import { addressToScVal, u64ToScVal } from '../../../blockchain/xdr/sc-val.js';
 import { createDeliveryLegacyProfileReader } from './delivery-legacy-profile-reader.js';
+import type { SorobanClient } from '../../../shared/stellar/index.js';
 
-const CONTRACT_ID = Address.contract(randomBytes(32)).toString();
+vi.mock('../../../shared/stellar/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/stellar/index.js')>();
+  return {
+    ...actual,
+    simulateReadCall: vi.fn(),
+  };
+});
+
+const { simulateReadCall } = await import('../../../shared/stellar/index.js');
+
+const client = {} as SorobanClient;
+const address = 'GAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAWHF';
 
 describe('createDeliveryLegacyProfileReader', () => {
-  it('reads delivery_contract.get_driver_profile and returns only deliveries_completed', async () => {
-    const client = new SorobanClient();
-    const driver = Keypair.random().publicKey();
+  it('returns the deliveries_completed count from the legacy profile', async () => {
+    vi.mocked(simulateReadCall).mockResolvedValueOnce({ deliveries_completed: 7 });
 
-    const retval = xdr.ScVal.scvMap(
-      [
-        ['address', addressToScVal(driver)],
-        ['deliveries_completed', xdr.ScVal.scvU32(9)],
-        ['kyc_verified', xdr.ScVal.scvBool(false)],
-        ['registered_at', u64ToScVal(1_700_000_000n)],
-        // delivery_contract's own, separate reputation_score — must never
-        // be surfaced by this reader (PHASE_1_DOMAIN_ANALYSIS.md §12).
-        ['reputation_score', xdr.ScVal.scvU32(3)],
-      ].map(
-        ([k, v]) =>
-          new xdr.ScMapEntry({ key: xdr.ScVal.scvSymbol(k as string), val: v as xdr.ScVal }),
-      ),
-    );
-
-    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
-      id: '1',
-      latestLedger: 1000,
-      events: [],
-      transactionData: {} as never,
-      minResourceFee: '100',
-      cost: {} as never,
-      result: { auth: [], retval },
-      _parsed: true,
-    } satisfies rpc.Api.SimulateTransactionSuccessResponse);
-
-    const reader = createDeliveryLegacyProfileReader(client, CONTRACT_ID);
-    const count = await reader.getLegacyDeliveriesCompleted(driver);
-
-    expect(count).toBe(9);
+    const reader = createDeliveryLegacyProfileReader(client);
+    await expect(reader.getLegacyDeliveriesCompleted(address)).resolves.toBe(7);
   });
 
-  it('throws when simulation fails (e.g. driver has no legacy profile yet)', async () => {
-    const client = new SorobanClient();
-    vi.spyOn(client, 'simulateTransaction').mockResolvedValue({
-      id: '1',
-      latestLedger: 1000,
-      events: [],
-      error: 'not found',
-      _parsed: true,
-    } satisfies rpc.Api.SimulateTransactionErrorResponse);
+  it('returns 0 when the driver has no legacy profile (null)', async () => {
+    vi.mocked(simulateReadCall).mockResolvedValueOnce(null);
 
-    const reader = createDeliveryLegacyProfileReader(client, CONTRACT_ID);
+    const reader = createDeliveryLegacyProfileReader(client);
+    await expect(reader.getLegacyDeliveriesCompleted(address)).resolves.toBe(0);
+  });
 
-    await expect(
-      reader.getLegacyDeliveriesCompleted(Keypair.random().publicKey()),
-    ).rejects.toThrow();
+  it('throws when the contract returns an unexpected non-object shape', async () => {
+    vi.mocked(simulateReadCall).mockResolvedValueOnce(42);
+
+    const reader = createDeliveryLegacyProfileReader(client);
+    await expect(reader.getLegacyDeliveriesCompleted(address)).rejects.toThrow(
+      'Expected delivery_contract.get_driver_profile to return an object',
+    );
   });
 });

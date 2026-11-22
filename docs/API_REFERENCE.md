@@ -65,8 +65,53 @@ All `/api/v1/users/*` routes require authentication; unauthenticated requests ge
 | `POST` | `/api/v1/transactions/build/cancel-delivery` | Unsigned XDR for `cancel_delivery` — the sender only |
 | `POST` | `/api/v1/transactions/build/raise-delivery-dispute` | Unsigned XDR for `delivery_contract.raise_dispute` — sender or recipient. Distinct from the `disputes` module's own `POST /transactions/build/raise-dispute` (`dispute_resolution_contract.raise_dispute`, the richer Layer B arbitration-case path) — the two previously collided under the identical path, crashing `buildApp()`. |
 
-All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }` and nothing else — no pending transaction record, receipt ID, or confirmation status. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
+All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }`. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
 
-**Encoding caveat**: `create-delivery`'s request bo
+### Delivery list filters
 
-/* … truncated 1404 chars — edit only what you need near the top … */
+`GET /api/v1/deliveries` accepts four optional query filters, validated by `listDeliveriesQuerySchema` (`src/modules/deliveries/interface/schemas.ts`):
+
+| Query param | Type | Notes |
+|---|---|---|
+| `senderAddress` | string | Exact match on the delivery's sender address |
+| `recipientAddress` | string | Exact match on the delivery's recipient address |
+| `driverAddress` | string | Exact match on the assigned driver address |
+| `status` | enum | One of `PENDING`, `ASSIGNED`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `DISPUTED` |
+
+All supplied filters are combined as an **intersection (logical AND)** — a delivery is returned only if it matches every filter present in the request. Omitting a filter places no constraint on that field. The repository applies each supplied filter as an additional `where` predicate (`src/modules/deliveries/infrastructure/prisma-delivery-repository.ts`).
+
+Combined-filter example — deliveries from a given sender that are currently in transit:
+
+```
+GET /api/v1/deliveries?senderAddress=GABC...&status=IN_TRANSIT
+```
+
+```json
+{ "data": [ { "chainDeliveryId": "42", "senderAddress": "GABC...", "status": "IN_TRANSIT", "...": "..." } ] }
+```
+
+An empty result is **not** an error: a successful list request that matches nothing returns `200` with `{ "data": [] }`. This differs from `GET /api/v1/deliveries/:chainDeliveryId`, where an unknown single id returns `404 NOT_FOUND`.
+
+```
+GET /api/v1/deliveries?driverAddress=GXYZ...&status=DELIVERED
+```
+
+```json
+{ "data": [] }
+```
+
+**Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
+
+Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
+
+## Prisma Error Mapping
+
+`handleError` (`src/shared/errors/error-handler.ts`) maps the following Prisma known-request-error codes to distinguishable HTTP responses. Any Prisma code not listed here still falls through to a masked `500 INTERNAL_ERROR`.
+
+| Prisma code | HTTP status | `error.code` | Notes |
+|---|---|---|---|
+| `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
+| `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
+| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | For
+
+/* … truncated 1458 chars — edit only what you need near the top … */

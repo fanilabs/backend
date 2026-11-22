@@ -37,6 +37,27 @@ const deliveryDto = z.object({
   deliveredAt: z.string().datetime().nullable(),
 });
 
+/**
+ * Read filters for `GET /deliveries`.
+ *
+ * All four filters are optional and combine as an intersection (AND): a
+ * delivery is returned only when it matches every supplied filter. Omitted
+ * filters impose no constraint. `status` must be one of the exact enum values
+ * above (`PENDING`, `ACTIVE`, `IN_TRANSIT`, `DELIVERED`, `DISPUTED`,
+ * `CANCELLED`); the three address filters must be valid Stellar public keys.
+ *
+ * A successful query that matches nothing is not an error: the endpoint
+ * responds `200` with `{ "data": [] }`. The `404` response is reserved for
+ * `GET /deliveries/:chainDeliveryId` when a single unknown ID is requested.
+ *
+ * Example — combined filters (intersection):
+ *   GET /deliveries?senderAddress=G...&status=IN_TRANSIT
+ *   -> 200 { "data": [ ...deliveries matching BOTH filters... ] }
+ *
+ * Example — no matches:
+ *   GET /deliveries?driverAddress=G...&status=DELIVERED
+ *   -> 200 { "data": [] }
+ */
 export const listDeliveriesQuerySchema = z.object({
   senderAddress: stellarAddress.optional(),
   recipientAddress: stellarAddress.optional(),

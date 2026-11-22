@@ -61,6 +61,57 @@ describe.skipIf(!dbAvailable)('Prisma users repositories (integration)', () => {
     expect(await walletAddressRepository.findById(created.id)).toBeNull();
   });
 
+  it('returns only the selected user rows ordered by createdAt with nullable verifiedAt preserved', async () => {
+    const userId = await seedUser();
+    const otherUserId = await seedUser();
+
+    const earlier = new Date('2024-01-01T00:00:00.000Z');
+    const later = new Date('2024-06-01T00:00:00.000Z');
+    const verifiedAt = new Date('2024-03-15T12:34:56.000Z');
+
+    const addressEarlier = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;
+    const addressLater = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;
+    const addressOther = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;
+
+    // Insert the later row first so ordering cannot be satisfied by insertion order.
+    const laterWallet = await walletAddressRepository.create({
+      userId,
+      address: addressLater,
+      isPrimary: false,
+      verifiedAt,
+    });
+    const earlierWallet = await walletAddressRepository.create({
+      userId,
+      address: addressEarlier,
+      isPrimary: true,
+      verifiedAt: null,
+    });
+    await walletAddressRepository.create({
+      userId: otherUserId,
+      address: addressOther,
+      isPrimary: true,
+      verifiedAt: null,
+    });
+
+    await prisma.walletAddress.update({
+      where: { id: laterWallet.id },
+      data: { createdAt: later },
+    });
+    await prisma.walletAddress.update({
+      where: { id: earlierWallet.id },
+      data: { createdAt: earlier },
+    });
+
+    const rows = await walletAddressRepository.findByUserId(userId);
+
+    expect(rows.map((row) => row.id)).toEqual([earlierWallet.id, laterWallet.id]);
+    expect(rows.map((row) => row.address)).toEqual([addressEarlier, addressLater]);
+    expect(rows.map((row) => row.isPrimary)).toEqual([true, false]);
+    expect(rows[0].verifiedAt).toBeNull();
+    expect(rows[1].verifiedAt).toEqual(verifiedAt);
+    expect(rows.some((row) => row.address === addressOther)).toBe(false);
+  });
+
   it('promotes a wallet to primary and demotes previously primary wallet atomically', async () => {
     const userId = await seedUser();
     const address1 = `G${randomUUID().replace(/-/g, '').toUpperCase()}`;

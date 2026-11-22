@@ -25,7 +25,7 @@ export function createPrismaWalletAddressRepository(prisma: PrismaClient): Walle
     async findByUserId(userId) {
       const records = await prisma.walletAddress.findMany({
         where: { userId },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       });
       return records.map(toDomain);
     },

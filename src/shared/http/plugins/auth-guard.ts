@@ -12,6 +12,18 @@ declare module 'fastify' {
 }
 
 /**
+ * Extracts the bearer token from the Authorization header. Per RFC 6750 § 2.1
+ * and RFC 7235 § 2.1, the auth scheme name is case-insensitive, so `bearer`,
+ * `Bearer`, and `BEARER` are all accepted.
+ */
+function extractBearerToken(request: FastifyRequest): string | null {
+  const header = request.headers.authorization?.trim();
+  if (!header) return null;
+  const match = /^bearer\s+(.+)$/i.exec(header);
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Route-level auth guard — attached per-route via `{ preHandler: authenticate }`,
  * not globally, so public routes (register/login) stay public without an
  * allow-list of exceptions to maintain. Verifies the bearer access token and
@@ -46,15 +58,26 @@ declare module 'fastify' {
  * referenced by bare function identity (`preHandler: authenticate`)
  * throughout the codebase, so changing its signature would mean touching
  * every route file and module composition root for a single security check.
+ *
+ * Idempotent per request (#459): a route that (mistakenly) lists this guard
+ * on more than one hook — e.g. both `onRequest` and `preHandler` — must not
+ * pay for JWT verification and user resolution twice. Once `request.user`
+ * has been populated by an earlier invocation on the same request, later
+ * invocations short-circuit. This is a safety net; routes should still
+ * declare the guard exactly once (`preHandler: authenticate`).
  */
 export const authGuard = {
   async authenticate(request: FastifyRequest, _reply: FastifyReply): Promise<void> {
+    // Already authenticated earlier in this request's lifecycle — skip the
+    // redundant token decode, signature verification, and user lookup.
+    if (request.user) {
+      return;
+    }
+
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) {
       throw new UnauthorizedError('Missing or malformed Authorization header');
     }
-
-    const token = header.slice('Bearer '.length);
 
     let claims;
     try {

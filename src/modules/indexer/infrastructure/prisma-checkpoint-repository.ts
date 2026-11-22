@@ -12,6 +12,7 @@ export function createPrismaCheckpointRepository(prisma: PrismaClient): Checkpoi
             contractName: record.contractName,
             network: record.network,
             lastLedgerSeq: record.lastLedgerSeq,
+            createdAt: record.createdAt,
             updatedAt: record.updatedAt,
           }
         : null;

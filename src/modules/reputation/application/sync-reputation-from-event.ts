@@ -86,11 +86,12 @@ async function refreshDriverProfile(
     fields.legacyDeliveriesCompleted =
       await deps.legacyReader.getLegacyDeliveriesCompleted(address);
   } catch (error: unknown) {
-    // delivery_contract not configured, unreachable, or has no local
-    // DriverProfile for this driver yet — leave legacyDeliveriesCompleted
-    // untouched (DriverProfileRepository.upsert preserves the prior value,
-    // or Prisma's own column default on first insert) rather than
-    // regressing a previously-known count to 0.
+    // delivery_contract not configured or unreachable — leave
+    // legacyDeliveriesCompleted untouched (DriverProfileRepository.upsert
+    // preserves the prior value, or Prisma's own column default on first
+    // insert) rather than regressing a previously-known count to 0. A
+    // driver with no legacy profile is no longer an error: the reader
+    // returns 0 for that case.
     log.debug({ err: error, address }, 'Legacy delivery_contract driver profile unavailable');
   }
 

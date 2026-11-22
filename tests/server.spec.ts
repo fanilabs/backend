@@ -94,6 +94,47 @@ describe('server configuration and shutdown', () => {
       expect(deps.disconnectRedis).toHaveBeenCalledTimes(1);
       expect(deps.disconnectQueueConnection).toHaveBeenCalledTimes(1);
     });
+
+    it('times out a hanging app.close and still runs subsequent teardown steps', async () => {
+      const deps = {
+        app: { close: vi.fn().mockImplementation(() => new Promise(() => {})) },
+        closeAllQueues: vi.fn().mockResolvedValue(undefined),
+        disconnectPrisma: vi.fn().mockResolvedValue(undefined),
+        disconnectRedis: vi.fn().mockResolvedValue(undefined),
+        disconnectQueueConnection: vi.fn().mockResolvedValue(undefined),
+        disconnectTimeoutMs: 50,
+      };
+
+      const errors = await executeShutdownSteps(deps);
+
+      expect(errors).toHaveLength(1);
+      expect((errors[0] as Error).message).toContain('Fastify');
+      expect((errors[0] as Error).message).toContain('timed out');
+      expect(deps.closeAllQueues).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectPrisma).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectRedis).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectQueueConnection).toHaveBeenCalledTimes(1);
+    });
+
+    it('times out hanging closeAllQueues and still runs subsequent teardown steps', async () => {
+      const deps = {
+        app: { close: vi.fn().mockResolvedValue(undefined) },
+        closeAllQueues: vi.fn().mockImplementation(() => new Promise(() => {})),
+        disconnectPrisma: vi.fn().mockResolvedValue(undefined),
+        disconnectRedis: vi.fn().mockResolvedValue(undefined),
+        disconnectQueueConnection: vi.fn().mockResolvedValue(undefined),
+        disconnectTimeoutMs: 50,
+      };
+
+      const errors = await executeShutdownSteps(deps);
+
+      expect(errors).toHaveLength(1);
+      expect((errors[0] as Error).message).toContain('Queues');
+      expect((errors[0] as Error).message).toContain('timed out');
+      expect(deps.disconnectPrisma).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectRedis).toHaveBeenCalledTimes(1);
+      expect(deps.disconnectQueueConnection).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('withTimeout', () => {

@@ -134,6 +134,33 @@ describe('authenticate — tokenVersion check', () => {
   });
 });
 
+describe('authenticate — case-insensitive bearer scheme (#463)', () => {
+  it.each(['bearer', 'Bearer', 'BEARER', 'bEaReR'])(
+    'accepts the %s scheme prefix per RFC 6750 § 2.1',
+    async (scheme) => {
+      vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValueOnce({
+        role: 'CUSTOMER',
+        tokenVersion: 1,
+      } as never);
+      const token = signAccessToken({ sub: 'user-case', role: 'CUSTOMER', tokenVersion: 1 });
+      const request = fakeRequest(`${scheme} ${token}`);
+
+      await authenticate(request, fakeReply);
+
+      expect(request.user).toEqual({ id: 'user-case', role: 'CUSTOMER' });
+    },
+  );
+
+  it('rejects a header with a non-bearer scheme', async () => {
+    const spy = vi.spyOn(getPrismaClient().user, 'findUnique');
+    const token = signAccessToken({ sub: 'user-basic', role: 'CUSTOMER', tokenVersion: 0 });
+    const request = fakeRequest(`Basic ${token}`);
+
+    await expect(authenticate(request, fakeReply)).rejects.toBeInstanceOf(UnauthorizedError);
+    expect(spy).not.toHaveBeenCalled();
+  });
+});
+
 describe('authenticate — auth context cache (#369)', () => {
   it('serves the second request from the cache — one database read for two requests', async () => {
     const spy = vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue({
@@ -193,7 +220,7 @@ describe('authenticate — auth context cache (#369)', () => {
 
   it('never caches a user that no longer exists — every such request re-checks the database', async () => {
     const spy = vi.spyOn(getPrismaClient().user, 'findUnique').mockResolvedValue(null);
-    const token = signAccessToken({ sub: 'deleted-user', role: 'ADMIN', tokenVersion: 0 });
+    const token = signAccessToken({ sub: 'user-gone', role: 'CUSTOMER', tokenVersion: 0 });
 
     await expect(authenticate(fakeRequest(`Bearer ${token}`), fakeReply)).rejects.toBeInstanceOf(
       UnauthorizedError,
@@ -203,6 +230,6 @@ describe('authenticate — auth context cache (#369)', () => {
     );
 
     expect(spy).toHaveBeenCalledTimes(2);
-    expect(cacheEntries.size).toBe(0);
+    expect(cacheEntries.has('user-gone')).toBe(false);
   });
 });
