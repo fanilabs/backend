@@ -37,3 +37,8 @@ variable.
 > Docker Compose uses its own `env_file` directive and is configured
 > separately. The host-run env-file loading described here does not affect
 > Compose behavior.
+
+## Handsoff notes
+
+<!-- handsoff-issue-655 -->
+- #655: Validate Grafana provisioning references before local startup
