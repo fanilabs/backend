@@ -84,17 +84,20 @@ All `/api/v1/users/*` routes require authentication; unauthenticated requests ge
 
 | `GET` | `/api/v1/deliveries` | List deliveries — public read model, optional `senderAddress`/`recipientAddress`/`driverAddress`/`status` query filters |
 | `GET` | `/api/v1/deliveries/:chainDeliveryId` | Get one delivery by its on-chain id (`404` if not yet indexed) |
-| `POST` | `/api/v1/transactions/build/create-delivery` | Unsigned XDR for `delivery_contract.create_delivery` — `{ senderAddress, recipientAddress, origin, destination, cargoCategory, weightGrams, fragile, estimatedDelivery }`; `origin` must differ from `destination` (case/whitespace-insensitive) and `recipientAddress` from `senderAddress`, or the request fails with `400 VALIDATION_ERROR` |
-| `POST` | `/api/v1/transactions/build/assign-driver` | Unsigned XDR for `assign_driver` — caller is admin or the driver self-assigning |
-| `POST` | `/api/v1/transactions/build/mark-in-transit` | Unsigned XDR for `mark_in_transit` — the assigned driver only |
-| `POST` | `/api/v1/transactions/build/confirm-delivery` | Unsigned XDR for `confirm_delivery` — the recipient only |
-| `POST` | `/api/v1/transactions/build/cancel-delivery` | Unsigned XDR for `cancel_delivery` — the sender only |
-| `POST` | `/api/v1/transactions/build/raise-delivery-dispute` | Unsigned XDR for `delivery_contract.raise_dispute` — sender or recipient. Distinct from the `disputes` module's own `POST /transactions/build/raise-dispute` (`dispute_resolution_contract.raise_dispute`, the richer Layer B arbitration-case path) — the two previously collided under the identical path, crashing `buildApp()`. |
+| `POST` | `/api/v1/transactions/build/create-delivery` | Unsigned XDR for `delivery_contract.create_delivery` — `{ senderAddress, recipientAddress, origin, destination, ... }` |
 
-All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }`. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
+## Prisma / database error mapping
 
-### Delivery list filters
+The shared error handler (`src/shared/errors/error-handler.ts`) translates Prisma errors into the standard error envelope. The table below lists every Prisma code that currently has an explicit mapping; the contract is asserted by `src/shared/errors/error-handler.spec.ts`.
 
-`GET /api/v1/deliveries` accepts four optional query filters, validated by `listDeliveriesQuerySchema` (`src/
+| Prisma code | HTTP status | Error `code` | `Retry-After` | Notes |
+|---|---|---|---|---|
+| `P1001` | `503` | `SERVICE_UNAVAILABLE` | — | Database unreachable |
+| `P1002` | `504` | `GATEWAY_TIMEOUT` | — | Database operation timed out |
+| `P2000` | `400` | `VALIDATION_ERROR` | — | Value too long for a column |
+| `P2004` | `400` | `VALIDATION_ERROR` | — | Constraint failed on the database |
+| `P2011` | `400` | `VALIDATION_ERROR` | — | Null constraint violation |
+| `P2024` | `503` | `SERVICE_UNAVAILABLE` | `1` (one second) | Transient connection-pool pressure — safe to retry after the advertised delay |
+| any other code | `500` | `INTERNAL_ERROR` | — | Unmapped Prisma codes are masked as generic `500` responses; raw database metadata is never returned to clients |
 
-/* … truncated 72 chars — edit only what you need near the top … */
+Clients should treat `P2024` as a transient condition: honor the `Retry-After` header (in seconds) before retrying the request. All other mapped codes are deterministic and should not be retried without changing the request.
