@@ -37,3 +37,55 @@ variable.
 > Docker Compose uses its own `env_file` directive and is configured
 > separately. The host-run env-file loading described here does not affect
 > Compose behavior.
+
+### Testing locally
+
+The test suite uses a separate test database (`fanilab_backend_test`) to avoid affecting development data.
+
+#### Set up the test database
+
+1. Start Postgres (if not already running):
+
+   ```sh
+   make db-up
+   ```
+
+2. Create the test database:
+
+   ```sh
+   make db-create-test
+   ```
+
+   This creates `fanilab_backend_test` with the same credentials as the development database.
+
+3. Run the test suite:
+
+   ```sh
+   make test
+   ```
+
+   The test suite automatically runs migrations against the test database before tests.
+
+**Note:** The test database is never automatically reset. If tests fail due to stale state, you can manually reset it by recreating it:
+
+```sh
+dropdb -h localhost -U fanilab fanilab_backend_test
+make db-create-test
+```
+
+#### Local contributor checks
+
+Before opening a pull request, run the same checks CI runs:
+
+```sh
+make format-check  # Check formatting (read-only)
+make lint          # Run ESLint
+make typecheck     # Type check
+make test          # Run test suite
+```
+
+Or run all checks together:
+
+```sh
+make format-check && make lint && make typecheck && make test
+```

@@ -6,7 +6,18 @@ Thanks for your interest in improving this project. This guide covers local setu
 
 1. Install dependencies with your package manager of choice.
 2. Copy the example environment file and fill in local values.
-3. Run the test suite before opening a pull request.
+3. Set up the test database:
+   ```sh
+   make db-up           # Start Postgres if not running
+   make db-create-test  # Create the test database
+   ```
+4. Run the checks before opening a pull request:
+   ```sh
+   make format-check  # Verify formatting (see README.md)
+   make lint
+   make typecheck
+   make test
+   ```
 
 ## Test layers
 
