@@ -5,31 +5,24 @@ import { createPrismaDeliveryRepository } from './prisma-delivery-repository.js'
 import { DeliveryNotFoundError } from '../domain/index.js';
 import { buildChainDeliveryRecord } from '../application/__fixtures__/fakes.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
+import { createChainIdAllocator } from '../../../shared/testing/id-allocator.js';
 
 const dbAvailable = await isDatabaseAvailable();
 
 describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => {
   const prisma = new PrismaClient();
   const deliveryRepository = createPrismaDeliveryRepository(prisma);
-  const createdChainIds: bigint[] = [];
+  const allocator = createChainIdAllocator();
 
   afterAll(async () => {
-    if (createdChainIds.length > 0) {
-      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
+    if (allocator.allocated.length > 0) {
+      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: [...allocator.allocated] } } });
     }
     await prisma.$disconnect();
   });
 
-  function nextChainId(): bigint {
-    // Random-ish, large, and unique per test run to avoid collisions with
-    // any other data in a shared test database.
-    const id = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
-    createdChainIds.push(id);
-    return id;
-  }
-
   it('creates a delivery and finds it by chain id', async () => {
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     const record = buildChainDeliveryRecord({ chainDeliveryId, origin: 'Kigali' });
 
     const created = await deliveryRepository.create(record);
@@ -40,7 +33,7 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
   });
 
   it('updates status and driver via updateStatus', async () => {
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     await deliveryRepository.create(
       buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
     );
@@ -57,7 +50,7 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
 
   it('lists deliveries filtered by sender address', async () => {
     const sender = `GSENDER-${randomUUID()}`;
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     await deliveryRepository.create(
       buildChainDeliveryRecord({ chainDeliveryId, senderAddress: sender }),
     );
@@ -68,7 +61,7 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
   });
 
   it('recovers from a transient database connection drop on updateStatus', async () => {
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     await deliveryRepository.create(
       buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
     );
@@ -102,7 +95,7 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
   });
 
   it('is an idempotent no-op when the status is already current (duplicate event)', async () => {
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     await deliveryRepository.create(
       buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
     );
@@ -115,7 +108,7 @@ describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => 
   });
 
   it('throws DeliveryNotFoundError when the delivery does not exist', async () => {
-    const chainDeliveryId = nextChainId();
+    const chainDeliveryId = allocator.next();
     await expect(
       deliveryRepository.updateStatus(chainDeliveryId, { status: 'ACTIVE' }),
     ).rejects.toBeInstanceOf(DeliveryNotFoundError);
