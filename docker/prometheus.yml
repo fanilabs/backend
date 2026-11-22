@@ -5,6 +5,11 @@
 global:
   scrape_interval: 15s
 
+# Optional example alert rules (scrape loss + sustained 5xx). No Alertmanager
+# receiver is configured; see docs/OBSERVABILITY.md.
+rule_files:
+  - /etc/prometheus/alerts.yml
+
 scrape_configs:
   - job_name: fanilab-backend-api
     metrics_path: /metrics

@@ -34,6 +34,22 @@ Every thrown error resolves through the single error hierarchy (`src/shared/erro
 
 `docker compose --profile observability up` (`make docker-up-observability`) brings up a local Prometheus (`docker/prometheus.yml`, scraping `api:3000/metrics` every 15s) and Grafana (`docker/grafana/`, auto-provisioned datasource + one starter dashboard, `admin`/`admin` — change before exposing this beyond your own machine) alongside the normal stack. Grafana at `http://localhost:3001`, Prometheus at `http://localhost:9090`. The starter dashboard (`docker/grafana/dashboards/fanilab-backend.json`) has seven panels: HTTP request rate and p95 latency by route, HTTP error rate, indexer lag per contract, queue depth and failed-job count per queue, and process resident memory. Not part of the default `docker compose up` topology (`DEPLOYMENT.md`'s topology is `api`/`worker`/`postgres`/`redis`) — a real deployment scrapes `/metrics` with whatever monitoring stack it already runs; this is for looking at this backend's own metrics locally without standing up external infra first. Verified for real (Phase 6): Prometheus reports the `fanilab-backend-api` scrape target `"health": "up"`, and Grafana's own datasource proxy returns real, non-empty query results for the dashboard's panels — not just "the containers started."
 
+### Example Alert Rules
+
+`docker/prometheus/alerts.yml` ships two optional, ready-to-adapt example rules for API availability and server-error signals:
+
+- `FanilabApiTargetDown` — fires when `up{job="fanilab-backend-api"} == 0` for `2m` (scrape loss).
+- `FanilabApiHigh5xxRate` — fires when more than 5% of `http_requests_total` are `5xx` over a `5m` window, sustained for `5m`, and only when the request rate is above a small floor so low/no-traffic periods don't fire. 4xx-only traffic never matches the `5xx` selector.
+
+To enable them, add the file to your Prometheus config's `rule_files` (e.g. `rule_files: ["alerts.yml"]` alongside `docker/prometheus.yml`). No notification receiver or paging integration is configured or required — the rules only produce alert state; wire up Alertmanager separately if you want notifications. Attach your own deployment labels (environment, cluster, team) via Prometheus `external_labels` or Alertmanager routing rather than editing the rule logic; the rules only set a `severity` label.
+
+The rules are covered by promtool unit tests in `docker/prometheus/alerts.test.yml` (synthetic series for healthy, down, recovering, sustained-5xx, 4xx-only, and low/no-traffic states). Validate without contacting a real alert receiver:
+
+```sh
+promtool check rules docker/prometheus/alerts.yml
+promtool test rules docker/prometheus/alerts.test.yml
+```
+
 ## Load Testing
 
 `pnpm load-test` (`scripts/load-test.ts`, `make load-test`) — `autocannon` against a running instance's public, read-only, no-side-effect endpoints only (`/health`, `/api/v1/deliveries`, a 404 case, `/metrics`); never touches auth/mutating routes, so it's safe to run against any environment without creating data or needing credentials. `BASE_URL` env var to target something other than `localhost:3000`.
