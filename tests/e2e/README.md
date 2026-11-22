@@ -2,12 +2,27 @@
 
 These are the end-to-end tests referenced by `ROADMAP.md` §10. Per that
 section they deliberately **do not** run on every PR — they run **on a
-schedule and on release branches** (a nightly scheduled run plus `release/**`
-branch / `v*.*.*` tag pushes; see `.github/workflows/e2e.yml`), because they
-boot the fully-composed server and hit it end-to-end, which is costlier and
-flakier than the src-scoped unit/integration/API suite.
+schedule, on release branches, and on demand** (a nightly scheduled run
+plus `release/**` branch / `v*.*.*` tag pushes, and manual workflow dispatch;
+see `.github/workflows/e2e.yml`), because they boot the fully-composed server
+and hit it end-to-end, which is costlier and flakier than the src-scoped
+unit/integration/API suite.
 
-## Why a separate config/script
+## Triggers
+
+The GitHub Actions workflow (`.github/workflows/e2e.yml`) is triggered by:
+
+1. **Nightly schedule** — runs at 03:00 UTC every day (`cron: '0 3 * * *'`).
+2. **Release branches/tags** — any push to `release/**` branches or `v*.*.*` tags.
+3. **Manual dispatch** — via the GitHub Actions UI:
+   - Go to **Actions → E2E → Run workflow**
+   - Select the target branch (e.g. `main`, a feature branch, or a release branch)
+   - Click **Run workflow**
+   - The run uses the same service containers (Postgres + Redis) and test
+     requirements as scheduled/release runs; it does not bypass any setup.
+
+The documented trigger list therefore covers: nightly, release branches/tags,
+and manual dispatch.
 
 - Fast per-PR jobs (`pnpm test` / `test:coverage`) include **src only** —
   `vitest.config.ts` — so they never sweep these in.
