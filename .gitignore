@@ -13,6 +13,17 @@ dist/
 # Testing
 coverage/
 
+# Test snapshots
+**/__snapshots__/
+*.snap
+
+# Vitest cache
+.vitest-cache/
+**/.vitest/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Logs
 *.log
 npm-debug.log*
@@ -32,6 +43,11 @@ storage/evidence/
 .idea/
 .DS_Store
 Thumbs.db
+
+# OS / editor extras
+*.swp
+*.swo
+*~
 
 # Misc
 *.local

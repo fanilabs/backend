@@ -75,3 +75,48 @@ Name fixtures after the port or scenario they represent (for example `createAnal
 ## Pull requests
 
 Keep changes focused, include tests for new behavior, and describe the motivation in the PR body.
+
+## ESM import specifiers
+
+This repository uses `"module": "NodeNext"` and `"moduleResolution": "NodeNext"` in `tsconfig.json`. Node's ESM loader resolves specifiers literally from the compiled output — it does **not** strip `.ts` extensions or add `.js` for you.
+
+### The rule
+
+Always write relative imports with a `.js` extension, even though the source file is `.ts`:
+
+```ts
+// ✅ correct — matches the emitted filename
+import { successResponse } from '../http/response-envelope.js';
+
+// ❌ wrong — works in some tsx dev-loader setups but fails after `tsc` emission
+import { successResponse } from '../http/response-envelope';
+```
+
+### Why `tsx` alone is not enough
+
+Running `tsx` during development uses a loader that transparently maps `.js` → `.ts` at import time. This masks missing `.js` extensions. The only way to verify imports survive compilation is to run `pnpm build` and inspect `dist/`. A green `tsx` run does not guarantee the build output resolves correctly.
+
+### Validating your imports
+
+```bash
+pnpm build          # compiles src/ → dist/ with tsc
+node dist/server.js # fails fast on any unresolvable specifier
+```
+
+### Type-only imports
+
+Use `import type` for imports that exist only for type-checking:
+
+```ts
+import type { FastifyInstance } from 'fastify';
+```
+
+This keeps emitted output clean — `import type` is erased entirely by `tsc`.
+
+### Package imports
+
+Bare specifiers (no leading `./` or `../`) resolve through `node_modules` as usual and do not need a `.js` suffix:
+
+```ts
+import Fastify from 'fastify'; // ✅ bare specifier, no extension needed
+```

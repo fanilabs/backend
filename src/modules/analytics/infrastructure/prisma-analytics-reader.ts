@@ -16,12 +16,16 @@ export function createPrismaAnalyticsReader(prisma: PrismaClient): AnalyticsRead
         where: { status: 'RELEASED', isVerified: true },
         _sum: { amount: true },
         _count: { _all: true },
+        orderBy: [{ token: 'asc' }],
       });
-      return grouped.map((row) => ({
-        token: row.token,
-        releasedAmount: row._sum.amount === null ? 0n : decimalToBigInt(row._sum.amount),
-        releasedCount: row._count._all,
-      }));
+      return grouped
+        .slice()
+        .sort((a, b) => a.token.localeCompare(b.token))
+        .map((row) => ({
+          token: row.token,
+          releasedAmount: row._sum.amount === null ? 0n : decimalToBigInt(row._sum.amount),
+          releasedCount: row._count._all,
+        }));
     },
 
     async getDeliveryFunnelCounts() {

@@ -7,6 +7,7 @@ The live, authoritative reference is generated from the same Zod schemas that va
 - All routes are versioned under `/api/v1` except `/health*` and `/api-docs`.
 - Success responses: `{ "data": ..., "meta"?: {...} }`.
 - Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... }, "requestId": "<fastify request id>" }` — see `src/shared/errors` for the full code list. The top-level `requestId` lets a user reporting a 500 be correlated to the matching `req.id` in the server's request log line.
+- Unmatched routes (unknown paths) return `404 NOT_FOUND` using the same envelope, with a stable generic `"Route not found"` message and a `requestId`.
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
 - A successful build response contains **only** the unsigned envelope (`{ "data": { "xdr": "<unsigned envelope>" } }`, matching `transactionResponseSchema` in `src/shared/validation/transaction-response.ts`). It does **not** create a pending transaction record, return a receipt ID, or confirm any chain state — construction success is not on-chain confirmation. The underlying resource only reaches its new state once the client signs, submits, and the blockchain indexer observes the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 

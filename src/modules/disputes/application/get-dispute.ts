@@ -51,10 +51,10 @@ export function createGetDisputeUseCase(deps: GetDisputeDeps) {
 
     const evidence = await deps.evidenceRepository.listByDisputeId(dispute.id);
 
-    let onChainHashes: string[] = [];
+    let onChainHashSet = new Set<string>();
     try {
       const chainCase = await deps.contractReader.getDispute(input.chainDeliveryId);
-      onChainHashes = chainCase.evidenceHashes;
+      onChainHashSet = new Set(chainCase.evidenceHashes);
     } catch (error: unknown) {
       log.debug(
         { err: error, chainDeliveryId: input.chainDeliveryId.toString() },
@@ -66,7 +66,7 @@ export function createGetDisputeUseCase(deps: GetDisputeDeps) {
       dispute,
       evidence: evidence.map((item) => ({
         ...item,
-        confirmedOnChain: onChainHashes.includes(item.hash),
+        confirmedOnChain: onChainHashSet.has(item.hash),
       })),
     };
   };
