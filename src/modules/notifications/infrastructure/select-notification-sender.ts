@@ -1,6 +1,10 @@
 import type { Env } from '../../../shared/config/env.js';
 import type { SmtpSettings } from '../../../shared/smtp/index.js';
 import type { NotificationSender } from '../domain/index.js';
+import {
+  createNotificationSenderRegistry,
+  type NotificationSenderRegistry,
+} from '../domain/ports.js';
 import { createLoggerNotificationSender } from './logger-notification-sender.js';
 import { createSmtpNotificationSender } from './smtp-notification-sender.js';
 
@@ -39,4 +43,19 @@ export function selectNotificationSender(
     );
   }
   return createSmtpNotificationSender(smtp);
+}
+
+/**
+ * Builds the channel routing registry. EMAIL is wired to the selected sender;
+ * SMS and PUSH remain unregistered until their providers are configured, so
+ * the send use case defers them instead of marking them FAILED.
+ */
+export function selectNotificationSenderRegistry(
+  nodeEnv: Env['NODE_ENV'],
+  provider: Env['NOTIFICATION_PROVIDER'],
+  smtp?: SmtpSettings,
+): NotificationSenderRegistry {
+  return createNotificationSenderRegistry({
+    EMAIL: selectNotificationSender(nodeEnv, provider, smtp),
+  });
 }
