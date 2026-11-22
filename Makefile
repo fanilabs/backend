@@ -8,6 +8,7 @@ help:
 	@echo "  make dev                   Run the API in watch mode"
 	@echo "  make dev-worker            Run the BullMQ worker process in watch mode"
 	@echo "  make build                 Compile TypeScript"
+	@echo "  make start                 Start the compiled API (pnpm start); run make build first to produce dist/"
 	@echo "  make lint                  Run ESLint"
 	@echo "  make format                Run Prettier (writes changes)"
 	@echo "  make test                  Run the test suite once"
@@ -36,6 +37,9 @@ dev-worker:
 
 build:
 	pnpm build
+
+start:
+	pnpm start
 
 lint:
 	pnpm lint
