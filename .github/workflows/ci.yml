@@ -20,3 +20,5 @@ jobs:
       - run: pnpm typecheck:eslint
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm build
+      - run: node scripts/check-build-artifacts.mjs
