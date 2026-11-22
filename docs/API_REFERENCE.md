@@ -67,18 +67,6 @@ All `/api/v1/users/*` routes require authentication; unauthenticated requests ge
 
 All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }` and nothing else — no pending transaction record, receipt ID, or confirmation status. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
 
-**Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
+**Encoding caveat**: `create-delivery`'s request bo
 
-Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
-
-## Prisma Error Mapping
-
-`handleError` (`src/shared/errors/error-handler.ts`) maps the following Prisma known-request-error codes to distinguishable HTTP responses. Any Prisma code not listed here still falls through to a masked `500 INTERNAL_ERROR`.
-
-| Prisma code | HTTP status | `error.code` | Notes |
-|---|---|---|---|
-| `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
-| `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
-| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | For
-
-/* … truncated 1458 chars — edit only what you need near the top … */
+/* … truncated 1404 chars — edit only what you need near the top … */
