@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   addressToScVal,
   boolToScVal,
+  i128ToScVal,
   namedStructToScVal,
   scValToNative,
   stringToScVal,
@@ -90,6 +91,26 @@ describe('native -> ScVal encoders', () => {
   it('round-trips a real Stellar address', () => {
     const keypair = Keypair.random();
     expect(scValToNative(addressToScVal(keypair.publicKey()))).toBe(keypair.publicKey());
+  });
+
+  it('round-trips the maximum signed 128-bit integer', () => {
+    const max = (1n << 127n) - 1n;
+    expect(scValToNative(i128ToScVal(max))).toBe(max.toString());
+  });
+
+  it('round-trips the minimum signed 128-bit integer', () => {
+    const min = -(1n << 127n);
+    expect(scValToNative(i128ToScVal(min))).toBe(min.toString());
+  });
+
+  it('round-trips a value exceeding 64 bits', () => {
+    const value = (1n << 100n) + 12345n;
+    expect(scValToNative(i128ToScVal(value))).toBe(value.toString());
+  });
+
+  it('throws RangeError for values outside the signed 128-bit range', () => {
+    expect(() => i128ToScVal(1n << 127n)).toThrow(RangeError);
+    expect(() => i128ToScVal(-(1n << 127n) - 1n)).toThrow(RangeError);
   });
 
   it('encodes a tuple/newtype struct as a one-element Vec', () => {

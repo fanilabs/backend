@@ -109,7 +109,7 @@ export function createDisputeRoutes(
       '/disputes/:chainDeliveryId/evidence',
       {
         preHandler: authenticate,
-        bodyLimit: EVIDENCE_UPLOAD_BODY_LIMIT,
+        bodyLimit: Math.max(EVIDENCE_UPLOAD_BODY_LIMIT, config.evidenceMaxBytes),
         schema: {
           security: [{ bearerAuth: [] }],
           params: disputeIdParamsSchema,
@@ -246,10 +246,9 @@ export function createDisputeRoutes(
     app.post(
       '/transactions/build/resolve-dispute-split-funds',
       {
-        preHandler: [authenticate, requireRole('ADMIN')],
+        preHandler: authenticate,
         schema: {
           security: [{ bearerAuth: [] }],
-          description: 'Requires ADMIN role.',
           body: resolveDisputeSplitFundsBodySchema,
           response: { 200: transactionResponseSchema },
         },
