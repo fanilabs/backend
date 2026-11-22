@@ -25,6 +25,9 @@ env:
   REDIS_URL: redis://localhost:6379
   JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-use-000000
   JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-use-00000
+  # This job provisions PostgreSQL, so a missing database must fail the run
+  # instead of silently skipping every repository case.
+  REQUIRE_DATABASE: 'true'
 
 jobs:
   e2e:
