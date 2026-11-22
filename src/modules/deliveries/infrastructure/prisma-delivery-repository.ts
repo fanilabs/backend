@@ -65,6 +65,25 @@ function toDomain(record: PrismaDelivery): Delivery {
   };
 }
 
+/**
+ * Builds the Prisma `where` clause for a delivery list query.
+ *
+ * The four supported filters (`senderAddress`, `recipientAddress`,
+ * `driverAddress`, `status`) are optional and combine as an intersection:
+ * every supplied filter must match (logical AND). Omitted filters are not
+ * constrained. When no filter matches, the query returns an empty array
+ * (`data: []`) — a successful empty collection, not a 404. The 404 is
+ * reserved for a single delivery lookup by an unknown chain ID.
+ */
+function buildListWhere(filter: Parameters<DeliveryRepository['list']>[0]): Prisma.DeliveryWhereInput {
+  return {
+    ...(filter.senderAddress && { senderAddress: filter.senderAddress }),
+    ...(filter.recipientAddress && { recipientAddress: filter.recipientAddress }),
+    ...(filter.driverAddress && { driverAddress: filter.driverAddress }),
+    ...(filter.status && { status: filter.status }),
+  };
+}
+
 export function createPrismaDeliveryRepository(prisma: PrismaClient): DeliveryRepository {
   return {
     async findByChainId(chainDeliveryId) {
@@ -73,14 +92,8 @@ export function createPrismaDeliveryRepository(prisma: PrismaClient): DeliveryRe
     },
 
     async list(filter) {
-      const where: Prisma.DeliveryWhereInput = {
-        ...(filter.senderAddress && { senderAddress: filter.senderAddress }),
-        ...(filter.recipientAddress && { recipientAddress: filter.recipientAddress }),
-        ...(filter.driverAddress && { driverAddress: filter.driverAddress }),
-        ...(filter.status && { status: filter.status }),
-      };
       const records = await prisma.delivery.findMany({
-        where,
+        where: buildListWhere(filter),
         orderBy: { createdAtChain: 'desc' },
       });
       return records.map(toDomain);

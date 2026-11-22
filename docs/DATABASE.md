@@ -15,9 +15,21 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 - `disputes` uses `dispute_resolution_contract`'s richer `DisputeStatus` (`OPEN`, `RESOLVED_REFUND`, `RESOLVED_PAYOUT`, `SPLIT`) as the canonical shape, but the indexer also ingests `escrow_contract`'s simpler dispute-adjacent events (`delivery_disputed`, `dispute_resolved`) into the same row's timeline fields, so nothing from either on-chain layer is lost.
 - `driver_profiles.reputation_score` / `.deliveries_completed` are sourced from `identity_reputation_contract` (the canonical ledger per the Phase 1 §12 decision). `legacy_deliveries_completed` separately mirrors `delivery_contract`'s own redundant local counter, clearly labeled non-authoritative — it exists for transparency/debugging, never for ranking or eligibility decisions.
 
+## Table Ownership and Approved Read Ports
+
+Each table has exactly one owning module, and that module is the only one that writes to it. Cross-module *writes* are never allowed. A small, explicitly approved set of **read-only ports** lets a module read another module's tables through a declared interface rather than reaching into the schema directly. These are the only sanctioned exceptions to "modules never touch each other's tables":
+
+| Port (owner) | Reads | Read-only rationale |
+|---|---|---|
+| [`UserContactLookup`](../src/modules/notifications/domain/ports.ts) (`notifications`) | `users`, `wallet_addresses` (owned by `auth`) | Resolves a `userId` to contact details when generating notifications; never mutates identity rows. Same precedent `auth` set for `users`. |
+| [`AnalyticsRepository`](../src/modules/analytics/domain/ports.ts) (`analytics`) | `escrows`, `driver_profiles` (owned by `deliveries` / `identity`) | Aggregation-only reads (GMV by token, driver tier counts) for reporting; no writes to the source tables. |
+| [`AuditLogRepository`](../src/modules/admin/domain/ports.ts) (`admin`) | `audit_logs` (owned by `admin`) | Admin audit reads are append-only and scoped to the admin module's own log; no cross-module mutation. |
+
+These ports are read-only by contract: they expose query methods only, and adding a write path through them is out of scope for this catalog. Ordinary domain/application imports remain subject to the architecture boundary rules in [`ARCHITECTURE.md`](../ARCHITECTURE.md) — this catalog documents existing approved database-read ownership exceptions, it does not authorize new cross-module writes or change any role-update behavior.
+
 ## Notifications
 
-`notifications` is not a read model of on-chain state the way `deliveries`/`escrows`/`disputes`/`fleets`/`driver_profiles` are — there is no `notification_*` contract event to sync from. Rows are generated as a side effect of the `notifications` module reacting to *other* modules' blockchain events (see `EVENT_INDEXER.md`), then mutated as delivery is attempted. It resolves `userId` by reading `users`/`wallet_addresses` directly — the one deliberate exception to "modules never touch each other's tables" in this codebase, on the same precedent `auth` already set for `users`. See `src/modules/notifications/domain/ports.ts`'s `UserContactLookup` header comment.
+`notifications` is not a read model of on-chain state the way `deliveries`/`escrows`/`disputes`/`fleets`/`driver_profiles` are — there is no `notification_*` contract event to sync from. Rows are generated as a side effect of the `notifications` module reacting to *other* modules' blockchain events (see `EVENT_INDEXER.md`), then mutated as delivery is attempted. It resolves `userId` by reading `users`/`wallet_addresses` through the `UserContactLookup` read port listed above. See `src/modules/notifications/domain/ports.ts`'s `UserContactLookup` header comment.
 
 ## Fraud Detection
 

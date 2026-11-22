@@ -12,8 +12,8 @@
   "packageManager": "pnpm@10.33.0",
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "dev": "tsx watch src/server.ts",
-    "dev:worker": "tsx watch src/workers/index.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
+    "dev:worker": "tsx watch --env-file-if-exists=.env src/workers/index.ts",
     "start": "node dist/server.js",
     "start:worker": "node dist/workers/index.js",
     "typecheck": "tsc --noEmit",
