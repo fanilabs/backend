@@ -97,4 +97,101 @@ describe.skipIf(!dbAvailable)('Prisma indexer repositories (integration)', () =>
     const stored = await prisma.blockchainEvent.findMany({ where: { contractName, rpcEventId } });
     expect(stored).toHaveLength(1);
   });
+
+  it('persists every envelope field exactly, including nested JSON and Unicode topics', async () => {
+    const rpcEventId = `evt-${randomUUID()}`;
+    const closedAt = new Date('2024-05-01T12:34:56.789Z');
+    const topic = ['escrow_funded', 'ñandú-🚀-契約', 'topic-\u0000-with-null'];
+    const payload = {
+      amount: '100',
+      nested: { depth: { deeper: [1, 2, { three: true }] } },
+      unicode: 'héllo-世界-🎉',
+      nullValue: null,
+      list: ['a', 'b'],
+    };
+    const event = {
+      contractName,
+      network,
+      rpcEventId,
+      ledgerSeq: 123456789n,
+      txHash: 'tx-hash-fidelity',
+      topic,
+      payload,
+      closedAt,
+    };
+
+    expect(await eventStore.tryInsert(event)).toBe(true);
+
+    const stored = await prisma.blockchainEvent.findFirstOrThrow({
+      where: { contractName, network, rpcEventId },
+    });
+    expect(stored.contractName).toBe(contractName);
+    expect(stored.network).toBe(network);
+    expect(stored.rpcEventId).toBe(rpcEventId);
+    expect(stored.ledgerSeq).toBe(123456789n);
+    expect(stored.txHash).toBe('tx-hash-fidelity');
+    expect(stored.topic).toEqual(topic);
+    expect(stored.payload).toEqual(payload);
+    expect(stored.closedAt).toEqual(closedAt);
+  });
+
+  it('allows the same rpcEventId under a different contract and under a different network', async () => {
+    const rpcEventId = `evt-${randomUUID()}`;
+    const otherContract = `test-contract-other-${randomUUID()}`;
+    const otherNetwork = 'mainnet';
+    const base = {
+      rpcEventId,
+      ledgerSeq: 700n,
+      txHash: 'tx-hash-tuple',
+      topic: ['escrow_funded'],
+      payload: { amount: '100' },
+      closedAt: new Date('2024-06-01T00:00:00.000Z'),
+    };
+
+    try {
+      expect(await eventStore.tryInsert({ ...base, contractName, network })).toBe(true);
+      expect(
+        await eventStore.tryInsert({ ...base, contractName: otherContract, network }),
+      ).toBe(true);
+      expect(
+        await eventStore.tryInsert({ ...base, contractName, network: otherNetwork }),
+      ).toBe(true);
+
+      const stored = await prisma.blockchainEvent.findMany({ where: { rpcEventId } });
+      expect(stored).toHaveLength(3);
+      expect(stored.map((row) => `${row.contractName}|${row.network}`).sort()).toEqual(
+        [
+          `${contractName}|${network}`,
+          `${otherContract}|${network}`,
+          `${contractName}|${otherNetwork}`,
+        ].sort(),
+      );
+    } finally {
+      await prisma.blockchainEvent.deleteMany({ where: { rpcEventId } });
+    }
+  });
+
+  it('rejects unrelated failures instead of treating them as duplicates', async () => {
+    const failingPrisma = {
+      blockchainEvent: {
+        create: async () => {
+          throw new Error('connection terminated unexpectedly');
+        },
+      },
+    } as unknown as PrismaClient;
+    const failingStore = createPrismaEventStore(failingPrisma);
+
+    await expect(
+      failingStore.tryInsert({
+        contractName,
+        network,
+        rpcEventId: `evt-${randomUUID()}`,
+        ledgerSeq: 1n,
+        txHash: 'tx-hash-failure',
+        topic: ['escrow_funded'],
+        payload: { amount: '100' },
+        closedAt: new Date(),
+      }),
+    ).rejects.toThrow('connection terminated unexpectedly');
+  });
 });
