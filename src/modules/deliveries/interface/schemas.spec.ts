@@ -1,6 +1,18 @@
 import { Keypair } from '@stellar/stellar-sdk';
-import { describe, expect, it } from 'vitest';
-import { createDeliveryBodySchema, getDeliveryResponseSchema } from './schemas.js';
+import Fastify from 'fastify';
+import { serializerCompiler, validatorCompiler } from 'fastify-type-provider-zod';
+import { describe, expect, it, vi } from 'vitest';
+import { createDeliveryBodySchema, getDeliveryResponseSchema, listDeliveriesQuerySchema } from './schemas.js';
+import { createDeliveriesRoutes } from './routes.js';
+
+vi.mock('../../../shared/http/index.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../shared/http/index.js')>();
+  return {
+    ...actual,
+    authenticate: vi.fn(async () => {}),
+    requireRole: () => vi.fn(async () => {}),
+  };
+});
 
 function deliveryDto(destination: string) {
   return {
@@ -91,5 +103,105 @@ describe('createDeliveryBodySchema (issue #377)', () => {
         message: 'Recipient address must differ from sender address',
       });
     }
+  });
+});
+
+describe('listDeliveriesQuerySchema', () => {
+  const validStatuses = ['PENDING', 'ACTIVE', 'IN_TRANSIT', 'DELIVERED', 'DISPUTED', 'CANCELLED'];
+  const validAddress = 'G' + 'A'.repeat(55);
+
+  it.each(validStatuses)('accepts status=%s', (status) => {
+    expect(listDeliveriesQuerySchema.safeParse({ status }).success).toBe(true);
+  });
+
+  it('accepts empty query (all filters optional)', () => {
+    expect(listDeliveriesQuerySchema.safeParse({}).success).toBe(true);
+  });
+
+  it('accepts combined valid filters', () => {
+    expect(
+      listDeliveriesQuerySchema.safeParse({
+        senderAddress: validAddress,
+        status: 'PENDING',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects an invalid status value', () => {
+    const result = listDeliveriesQuerySchema.safeParse({ status: 'INVALID_STATUS' });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a non-string senderAddress (number)', () => {
+    const result = listDeliveriesQuerySchema.safeParse({ senderAddress: 12345 });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a malformed senderAddress', () => {
+    const result = listDeliveriesQuerySchema.safeParse({ senderAddress: 'not-a-stellar-key' });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('GET /deliveries query validation via route', () => {
+  async function buildTestApp() {
+    const listDeliveries = vi.fn().mockResolvedValue([]);
+    const getDelivery = vi.fn();
+    const buildTransactions = {
+      buildCreateDeliveryTransaction: vi.fn(),
+      buildAssignDriverTransaction: vi.fn(),
+      buildMarkInTransitTransaction: vi.fn(),
+      buildConfirmDeliveryTransaction: vi.fn(),
+      buildCancelDeliveryTransaction: vi.fn(),
+      buildRaiseDisputeTransaction: vi.fn(),
+    };
+    const app = Fastify();
+    app.setValidatorCompiler(validatorCompiler);
+    app.setSerializerCompiler(serializerCompiler);
+    await app.register(
+      createDeliveriesRoutes({ listDeliveries, getDelivery, buildTransactions }),
+      { prefix: '/api/v1' },
+    );
+    return { app, listDeliveries };
+  }
+
+  it('passes valid filters to the use case unchanged', async () => {
+    const { app, listDeliveries } = await buildTestApp();
+    const validAddress = 'G' + 'A'.repeat(55);
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/deliveries?senderAddress=${validAddress}&status=PENDING`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(listDeliveries).toHaveBeenCalledOnce();
+    expect(listDeliveries).toHaveBeenCalledWith(
+      expect.objectContaining({ senderAddress: validAddress, status: 'PENDING' }),
+    );
+  });
+
+  it('rejects an invalid status and never calls the use case', async () => {
+    const { app, listDeliveries } = await buildTestApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deliveries?status=BOGUS',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(listDeliveries).not.toHaveBeenCalled();
+  });
+
+  it('rejects a malformed senderAddress and never calls the use case', async () => {
+    const { app, listDeliveries } = await buildTestApp();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/deliveries?senderAddress=not-valid',
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(listDeliveries).not.toHaveBeenCalled();
   });
 });

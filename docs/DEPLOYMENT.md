@@ -11,6 +11,8 @@ Two long-running processes, one shared database, one shared cache/queue broker:
 
 Both `api` and `worker` are built from the same multi-stage [`Dockerfile`](../Dockerfile) (`api` / `worker` build targets) so there is exactly one build pipeline to maintain, not two diverging images.
 
+`Dockerfile.worker` is a separate entrypoint that exposes the `worker` stage as the default build target (so `docker build -f Dockerfile.worker .` produces the worker image without needing `--target`). The shared stages (`base`, `deps`, `build`, `prod-deps`) are kept byte-for-byte identical between the two files. Run `make check-dockerfile-parity` (or `bash scripts/check-dockerfile-parity.sh`) to verify they have not drifted. Any edit to a shared stage must be applied to both files.
+
 ## Environments
 
 | Environment | Network | Notes |
