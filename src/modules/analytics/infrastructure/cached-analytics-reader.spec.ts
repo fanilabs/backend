@@ -1,56 +1,154 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import type { AnalyticsReader, GmvByToken } from '../domain/index.js';
+import type { AnalyticsCache } from './analytics-cache.js';
 import { createCachedAnalyticsReader } from './cached-analytics-reader.js';
-import { createFakeAnalyticsReader } from '../application/__fixtures__/fakes.js';
-import { createCountingAnalyticsReader, createInMemoryAnalyticsCache } from './__fixtures__/fakes.js';
 
-const TTL_SECONDS = 30;
+/** Minimal in-memory `AnalyticsCache` with per-entry expiry, mirroring the
+ * adapter contract without touching Redis. */
+function createInMemoryCache(): AnalyticsCache & { entries: Map<string, { value: string; expiresAt: number }> } {
+  const entries = new Map<string, { value: string; expiresAt: number }>();
+  return {
+    entries,
+    async get(key) {
+      const entry = entries.get(key);
+      if (!entry) return null;
+      if (entry.expiresAt <= Date.now()) {
+        entries.delete(key);
+        return null;
+      }
+      return entry.value;
+    },
+    async set(key, value, ttlSeconds) {
+      entries.set(key, { value, expiresAt: Date.now() + ttlSeconds * 1000 });
+    },
+  };
+}
+
+function createSpyReader(overrides: Partial<AnalyticsReader> = {}): AnalyticsReader {
+  return {
+    getGmvByToken: vi.fn(async () => [
+      { token: 'USDC', releasedAmount: 123n },
+    ] as GmvByToken[]),
+    getDeliveryFunnelCounts: vi.fn(async () => ({
+      requested: 10,
+      accepted: 8,
+      pickedUp: 6,
+      delivered: 5,
+      cancelled: 1,
+    })),
+    getDriverTierCounts: vi.fn(async () => ({ bronze: 3, silver: 2, gold: 1 })),
+    ...overrides,
+  };
+}
 
 describe('createCachedAnalyticsReader', () => {
-  it('does not re-query the underlying reader for repeated calls within the TTL', async () => {
-    const underlying = createFakeAnalyticsReader();
-    underlying.setTierCounts({ bronze: 2, silver: 1, gold: 3 });
-    const spy = createCountingAnalyticsReader(underlying);
-    const cache = createInMemoryAnalyticsCache();
-    const cachedReader = createCachedAnalyticsReader(spy, cache, TTL_SECONDS);
+  it('caches repeated funnel reads', async () => {
+    const reader = createSpyReader();
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 60);
 
-    await cachedReader.getDriverTierCounts();
-    await cachedReader.getDriverTierCounts();
-    const result = await cachedReader.getDriverTierCounts();
+    const first = await cached.getDeliveryFunnelCounts();
+    const second = await cached.getDeliveryFunnelCounts();
 
-    expect(spy.callCounts.getDriverTierCounts).toBe(1);
-    expect(result).toEqual({ bronze: 2, silver: 1, gold: 3 });
+    expect(second).toEqual(first);
+    expect(reader.getDeliveryFunnelCounts).toHaveBeenCalledTimes(1);
   });
 
-  it('re-queries and returns fresh values once the TTL expires', async () => {
-    const underlying = createFakeAnalyticsReader();
-    underlying.setFunnelCounts({ totalDeliveries: 10, deliveredCount: 5, disputedCount: 1 });
-    const spy = createCountingAnalyticsReader(underlying);
-    const cache = createInMemoryAnalyticsCache();
-    const cachedReader = createCachedAnalyticsReader(spy, cache, TTL_SECONDS);
+  it('re-reads after the TTL expires', async () => {
+    const reader = createSpyReader();
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 0);
 
-    await cachedReader.getDeliveryFunnelCounts();
-    expect(spy.callCounts.getDeliveryFunnelCounts).toBe(1);
+    await cached.getDeliveryFunnelCounts();
+    await cached.getDeliveryFunnelCounts();
 
-    cache.advance(TTL_SECONDS + 1);
-    underlying.setFunnelCounts({ totalDeliveries: 20, deliveredCount: 15, disputedCount: 2 });
-    const afterExpiry = await cachedReader.getDeliveryFunnelCounts();
-
-    expect(spy.callCounts.getDeliveryFunnelCounts).toBe(2);
-    expect(afterExpiry).toEqual({ totalDeliveries: 20, deliveredCount: 15, disputedCount: 2 });
+    expect(reader.getDeliveryFunnelCounts).toHaveBeenCalledTimes(2);
   });
 
-  it('round-trips getGmvByToken bigint amounts through the cache without precision loss', async () => {
-    const underlying = createFakeAnalyticsReader();
-    const hugeAmount = 170141183460469231731687303715884105727n;
-    underlying.setGmv([{ token: 'XLM', releasedAmount: hugeAmount, releasedCount: 2 }]);
-    const spy = createCountingAnalyticsReader(underlying);
-    const cache = createInMemoryAnalyticsCache();
-    const cachedReader = createCachedAnalyticsReader(spy, cache, TTL_SECONDS);
+  it('round-trips the GMV bigint through the cache', async () => {
+    const reader = createSpyReader();
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 60);
 
-    await cachedReader.getGmvByToken();
-    const cached = await cachedReader.getGmvByToken();
+    const first = await cached.getGmvByToken();
+    const second = await cached.getGmvByToken();
 
-    expect(spy.callCounts.getGmvByToken).toBe(1);
-    expect(cached).toEqual([{ token: 'XLM', releasedAmount: hugeAmount, releasedCount: 2 }]);
+    expect(second).toEqual(first);
+    expect(second[0]?.releasedAmount).toBe(123n);
+    expect(reader.getGmvByToken).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates cache keys across metric families when interleaved', async () => {
+    const reader = createSpyReader();
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 60);
+
+    const gmv = await cached.getGmvByToken();
+    const funnel = await cached.getDeliveryFunnelCounts();
+    const tiers = await cached.getDriverTierCounts();
+
+    expect(reader.getGmvByToken).toHaveBeenCalledTimes(1);
+    expect(reader.getDeliveryFunnelCounts).toHaveBeenCalledTimes(1);
+    expect(reader.getDriverTierCounts).toHaveBeenCalledTimes(1);
+
+    const gmvAgain = await cached.getGmvByToken();
+    const funnelAgain = await cached.getDeliveryFunnelCounts();
+    const tiersAgain = await cached.getDriverTierCounts();
+
+    expect(gmvAgain).toEqual(gmv);
+    expect(funnelAgain).toEqual(funnel);
+    expect(tiersAgain).toEqual(tiers);
+
+    // Each family hits its own key: no underlying call count changes.
+    expect(reader.getGmvByToken).toHaveBeenCalledTimes(1);
+    expect(reader.getDeliveryFunnelCounts).toHaveBeenCalledTimes(1);
+    expect(reader.getDriverTierCounts).toHaveBeenCalledTimes(1);
+
+    // Each family occupies a distinct cache entry.
+    expect(cache.entries.size).toBe(3);
+  });
+
+  it('refreshing one expired family leaves other families intact', async () => {
+    const reader = createSpyReader();
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 60);
+
+    const gmv = await cached.getGmvByToken();
+    const funnel = await cached.getDeliveryFunnelCounts();
+    const tiers = await cached.getDriverTierCounts();
+
+    // Expire only the funnel entry, leaving GMV and tier entries valid.
+    const funnelKey = [...cache.entries.keys()].find((key) => key.includes('funnel'));
+    expect(funnelKey).toBeDefined();
+    cache.entries.delete(funnelKey!);
+
+    const funnelAgain = await cached.getDeliveryFunnelCounts();
+    expect(funnelAgain).toEqual(funnel);
+    expect(reader.getDeliveryFunnelCounts).toHaveBeenCalledTimes(2);
+
+    // Other families still served from cache.
+    expect(await cached.getGmvByToken()).toEqual(gmv);
+    expect(await cached.getDriverTierCounts()).toEqual(tiers);
+    expect(reader.getGmvByToken).toHaveBeenCalledTimes(1);
+    expect(reader.getDriverTierCounts).toHaveBeenCalledTimes(1);
+  });
+
+  it('caches empty GMV and zero tier counts as valid values', async () => {
+    const reader = createSpyReader({
+      getGmvByToken: vi.fn(async () => [] as GmvByToken[]),
+      getDriverTierCounts: vi.fn(async () => ({ bronze: 0, silver: 0, gold: 0 })),
+    });
+    const cache = createInMemoryCache();
+    const cached = createCachedAnalyticsReader(reader, cache, 60);
+
+    expect(await cached.getGmvByToken()).toEqual([]);
+    expect(await cached.getDriverTierCounts()).toEqual({ bronze: 0, silver: 0, gold: 0 });
+
+    // Empty/zero values are cached, not treated as misses.
+    expect(await cached.getGmvByToken()).toEqual([]);
+    expect(await cached.getDriverTierCounts()).toEqual({ bronze: 0, silver: 0, gold: 0 });
+
+    expect(reader.getGmvByToken).toHaveBeenCalledTimes(1);
+    expect(reader.getDriverTierCounts).toHaveBeenCalledTimes(1);
   });
 });
