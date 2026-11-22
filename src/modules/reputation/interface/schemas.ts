@@ -9,11 +9,28 @@ const driverProfileDto = z.object({
   id: z.string().uuid(),
   address: z.string(),
   reputationScore: z.number().int(),
-  tier: driverTier,
-  kycVerified: z.boolean(),
-  deliveriesCompleted: z.number().int(),
-  legacyDeliveriesCompleted: z.number().int(),
-  registeredAt: z.string().datetime(),
+  tier: driverTier.describe(
+    'Driver tier derived from the reputation score (BRONZE, SILVER or GOLD).',
+  ),
+  kycVerified: z
+    .boolean()
+    .describe('Whether the driver has passed KYC verification.'),
+  deliveriesCompleted: z
+    .number()
+    .int()
+    .describe(
+      'Canonical completed-delivery count. This is the identity-reputation source of truth and should be used for product decisions.',
+    ),
+  legacyDeliveriesCompleted: z
+    .number()
+    .int()
+    .describe(
+      'Completed-delivery count read from the separate legacy source. It can differ from deliveriesCompleted; see docs/DATABASE.md for the rationale. Do not use it for product decisions.',
+    ),
+  registeredAt: z
+    .string()
+    .datetime()
+    .describe('ISO-8601 timestamp of when the driver profile was registered.'),
 });
 
 export const driverAddressParamsSchema = z.object({ address: stellarAddress });
