@@ -34,6 +34,29 @@ Every thrown error resolves through the single error hierarchy (`src/shared/erro
 
 `docker compose --profile observability up` (`make docker-up-observability`) brings up a local Prometheus (`docker/prometheus.yml`, scraping `api:3000/metrics` every 15s) and Grafana (`docker/grafana/`, auto-provisioned datasource + one starter dashboard, `admin`/`admin` — change before exposing this beyond your own machine) alongside the normal stack. Grafana at `http://localhost:3001`, Prometheus at `http://localhost:9090`. The starter dashboard (`docker/grafana/dashboards/fanilab-backend.json`) has eight panels: HTTP request rate and p95 latency by route, HTTP error rate, indexer lag per contract, queue depth and failed-job count per queue, process resident memory, and subscriber failure rate by contract/event/subscriber. The subscriber panel charts `increase(event_subscriber_errors_total[5m])` grouped by `contract`, `event`, and `subscriber` — `increase()` is reset-aware, so a counter reset (e.g. a restart) never shows up as a negative failure count, and a quiet deployment with no subscriber exceptions simply shows no series ("No subscriber failures in the selected range") rather than an active incident. Not part of the default `docker compose up` topology (`DEPLOYMENT.md`'s topology is `api`/`worker`/`postgres`/`redis`) — a real deployment scrapes `/metrics` with whatever monitoring stack it already runs; this is for looking at this backend's own metrics locally without standing up external infra first. Verified for real (Phase 6): Prometheus reports the `fanilab-backend-api` scrape target `"health": "up"`, and Grafana's own datasource proxy returns real, non-empty query results for the dashboard's panels — not just "the containers started."
 
+### Troubleshooting an Empty or Zero Panel
+
+An empty panel and a real zero value mean different things. Before concluding the backend is healthy or broken, walk this read-only sequence in order — it checks scrape availability *before* interpreting any business metric.
+
+1. **Is the target being scraped?** Check `up{job="fanilab-backend-api"}` in Prometheus (or the dashboard's datasource). `up == 1` means scrapes are succeeding; `up == 0` or no `up` series at all means the scrape itself is failing or the target isn't configured — fix that first, since every other panel is meaningless until it's resolved. `FanilabApiTargetDown` (`docker/prometheus/alerts.yml`) fires on `up == 0` for `2m`.
+2. **Does the metric exist at all?** Confirm the series is present in the selected time range, independent of its value:
+   ```promql
+   count(indexer_lag_ledgers)          # number of lag series present
+   count(http_requests_total)          # number of request series present
+   ```
+   A `count()` of `0` (or an empty result) means *no samples* — the metric was never observed in that range, which is different from a sample whose value is `0`.
+3. **Is it absent or actually zero?** Distinguish the two explicitly:
+   ```promql
+   absent(indexer_lag_ledgers)         # 1 when no lag series exist at all
+   indexer_lag_ledgers == 0            # only matches a present series whose value is 0
+   ```
+   `absent(...)` returning `1` means the series is missing; `== 0` matching means a real zero sample was recorded. An empty panel is usually the former, not the latter.
+4. **Widen the time range.** Labeled HTTP series (`http_requests_total`, `http_request_duration_seconds`) only appear *after* the first observation for a given `method`/`route`/`status_code` combination. A freshly started instance with no traffic yet shows no HTTP series — that's *no traffic*, not a failed scrape. Confirm with step 1 (`up == 1`) before assuming breakage.
+
+**Missing indexer lag is not zero lag.** `shared/metrics/registry.ts` only sets `indexer_lag_ledgers{contract}` for contracts with a configured id and an available value; a contract with no configured id (or before the first successful RPC read) has *no series*, not a lag of `0`. Treating an absent series as `0` would falsely report a healthy indexer. Use `absent(indexer_lag_ledgers{contract="..."})` to detect the missing case rather than reading an empty panel as "lag is fine."
+
+No-data handling here is purely diagnostic: an empty panel never implies the worker is running or that background execution is enabled — it only means no samples were recorded for that series in the selected range. Confirm worker/queue behavior via `queue_jobs` and the worker's own logs, not by inferring from an empty panel.
+
 ### Example Alert Rules
 
 `docker/prometheus/alerts.yml` ships two optional, ready-to-adapt example rules for API availability and server-error signals:
@@ -54,13 +77,4 @@ promtool test rules docker/prometheus/alerts.test.yml
 
 `pnpm load-test` (`scripts/load-test.ts`, `make load-test`) — `autocannon` against a running instance's public, read-only, no-side-effect endpoints only (`/health`, `/api/v1/deliveries`, a 404 case, `/metrics`); never touches auth/mutating routes, so it's safe to run against any environment without creating data or needing credentials. `BASE_URL` env var to target something other than `localhost:3000`.
 
-Phase 6's verification run, against the real Docker Compose deployment (20 connections, 10s/endpoint, empty database — no seeded business data):
-
-| Endpoint | req/s | p50 / p95 / p99 (ms) |
-|---|---|---|
-| `GET /health` | 992 | 15 / 55 / 66 |
-| `GET /api/v1/deliveries` | 795 | 21 / 58 / 81 |
-| `GET /api/v1/deliveries/:unknown-id` (404) | 1180 | 14 / 40 / 48 |
-| `GET /metrics` | 104 | 149 / 482 / 599 |
-
-Zero errors, timeouts, or unexpected non-2xx
+Phase
