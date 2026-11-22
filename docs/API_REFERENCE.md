@@ -10,6 +10,32 @@ The live, authoritative reference is generated from the same Zod schemas that va
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
 - A successful build response contains **only** the unsigned envelope (`{ "data": { "xdr": "<unsigned envelope>" } }`, matching `transactionResponseSchema` in `src/shared/validation/transaction-response.ts`). It does **not** create a pending transaction record, return a receipt ID, or confirm any chain state — construction success is not on-chain confirmation. The underlying resource only reaches its new state once the client signs, submits, and the blockchain indexer observes the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 
+### Wire formats for client authors
+
+Serializers convert large identifiers and dates to JSON-safe primitives. Clients must preserve these representations rather than reinterpreting them.
+
+**Large identifiers are decimal strings.** Delivery IDs (and other bigint-backed identifiers) are serialized as base-10 strings by `serializeDelivery` (`src/modules/deliveries/domain/serialization.ts`). Keep them as strings end-to-end — do **not** coerce to `Number`, which loses precision above `Number.MAX_SAFE_INTEGER` (`9007199254740991`).
+
+```json
+{ "data": { "id": "123456789012345678901234567890" } }
+```
+
+**Lifecycle timestamps are ISO-8601 UTC strings or explicit `null`.** Date fields on delivery DTOs are serialized with `Date.prototype.toISOString()` (e.g. `"2024-01-15T12:34:56.000Z"`). A lifecycle timestamp that has not yet occurred is serialized as JSON `null` — it is **not** epoch zero (`"1970-01-01T00:00:00.000Z"`). Treat `null` as "not yet set" and only render a date when the value is a non-null string.
+
+```json
+{
+  "data": {
+    "id": "123456789012345678901234567890",
+    "createdAt": "2024-01-15T12:34:56.000Z",
+    "assignedAt": null,
+    "pickedUpAt": null,
+    "deliveredAt": null
+  }
+}
+```
+
+**HTTP dates vs. internal ledger timestamps.** All dates on HTTP responses (delivery DTOs, reputation routes in `src/modules/reputation/interface/routes.ts`, admin schemas in `src/modules/admin/interface/schemas.ts`) are ISO-8601 UTC strings as above. Internal ledger timestamps — e.g. Stellar ledger close times — are Unix seconds (integer), not ISO strings; they are an internal representation and are not exposed as-is on the HTTP surface. Do not assume a numeric field on a response is a Unix-seconds timestamp unless the schema documents it as such.
+
 ### Build / sign / submit / observe responsibilities
 
 ```
@@ -71,4 +97,4 @@ All `/api/v1/transactions/build/*` routes require authentication (anti-abuse —
 
 `GET /api/v1/deliveries` accepts four optional query filters, validated by `listDeliveriesQuerySchema` (`src/
 
-/* … truncated 2857 chars — edit only what you need near the top … */
+/* … truncated 72 chars — edit only what you need near the top … */
