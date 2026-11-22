@@ -12,6 +12,18 @@ declare module 'fastify' {
 }
 
 /**
+ * Extracts the bearer token from the Authorization header. Per RFC 6750 § 2.1
+ * and RFC 7235 § 2.1, the auth scheme name is case-insensitive, so `bearer`,
+ * `Bearer`, and `BEARER` are all accepted.
+ */
+function extractBearerToken(request: FastifyRequest): string | null {
+  const header = request.headers.authorization?.trim();
+  if (!header) return null;
+  const match = /^bearer\s+(.+)$/i.exec(header);
+  return match ? match[1].trim() : null;
+}
+
+/**
  * Route-level auth guard — attached per-route via `{ preHandler: authenticate }`,
  * not globally, so public routes (register/login) stay public without an
  * allow-list of exceptions to maintain. Verifies the bearer access token and
@@ -66,8 +78,6 @@ export const authGuard = {
     if (!header?.startsWith('Bearer ')) {
       throw new UnauthorizedError('Missing or malformed Authorization header');
     }
-
-    const token = header.slice('Bearer '.length);
 
     let claims;
     try {
