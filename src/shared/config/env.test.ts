@@ -1,7 +1,7 @@
 import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { envSchemaKeys, parseEnv } from './env.js';
 
 /**
@@ -137,5 +137,58 @@ describe('mail/notification provider validation', () => {
 
   it('leaves SMTP settings unconstrained when both providers stay on logger', () => {
     expect(() => parseEnv({ ...required })).not.toThrow();
+  });
+});
+
+describe('getConfig lazy memoization', () => {
+  afterEach(() => {
+    vi.doUnmock('./env.js');
+    vi.resetModules();
+    vi.restoreAllMocks();
+  });
+
+  async function importWithParseEnvSpy(
+    impl: (input: Record<string, string | undefined>) => unknown,
+  ) {
+    const actual = await vi.importActual<typeof import('./env.js')>('./env.js');
+    const spy = vi.fn(impl);
+    vi.doMock('./env.js', () => ({ ...actual, parseEnv: spy }));
+    const configModule = await import('./index.js');
+    return { configModule, spy };
+  }
+
+  it('does not invoke parseEnv on import alone', async () => {
+    const { spy } = await importWithParseEnvSpy((input) => parseEnv(input));
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('returns the same object on repeated reads and calls parseEnv exactly once', async () => {
+    const { configModule, spy } = await importWithParseEnvSpy((input) => parseEnv(input));
+
+    const first = configModule.getConfig();
+    const second = configModule.getConfig();
+
+    expect(second).toBe(first);
+    expect(spy).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries after an initial throw and memoizes the later successful result', async () => {
+    let attempts = 0;
+    const { configModule, spy } = await importWithParseEnvSpy((input) => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw new Error('Invalid environment configuration');
+      }
+      return parseEnv(input);
+    });
+
+    expect(() => configModule.getConfig()).toThrow(/Invalid environment configuration/);
+
+    const recovered = configModule.getConfig();
+    const again = configModule.getConfig();
+
+    expect(again).toBe(recovered);
+    expect(spy).toHaveBeenCalledTimes(2);
   });
 });
