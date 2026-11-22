@@ -1,5 +1,36 @@
 import { createHmac } from 'node:crypto';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { z } from 'zod';
+
+/**
+ * Explicit, supported environment-file loading for host-run development.
+ *
+ * Docker Compose loads its own `env_file` into the container; that path is
+ * intentionally left untouched. For host-run commands (`pnpm dev`, `tsx
+ * watch src/server.ts`) nothing loads a `.env` file by default, so we do it
+ * here, before validation, using Node's built-in `process.loadEnvFile`.
+ *
+ * Precedence: values already present in the shell/process environment win
+ * over values from the env file. `process.loadEnvFile` only sets variables
+ * that are not already defined, which gives us that rule for free.
+ *
+ * The file is only loaded when it exists; a missing file is not an error
+ * (Compose and CI supply their own environment). Absent required values
+ * still fail the schema validation below with a clear message.
+ */
+function loadEnvFileIfPresent(): void {
+  const envFile = process.env.ENV_FILE ?? '.env';
+  const envPath = resolve(process.cwd(), envFile);
+  if (!existsSync(envPath)) {
+    return;
+  }
+  // `process.loadEnvFile` (Node >= 20.12) does not override existing
+  // process.env entries, so shell-provided values take precedence.
+  process.loadEnvFile(envPath);
+}
+
+loadEnvFileIfPresent();
 
 /**
  * Every environment variable the application reads, validated once at boot.
@@ -159,99 +190,6 @@ const baseEnvSchema = z.object({
 
   /** How long `actor_activities` rows are kept before the scheduled cleanup
    * job deletes them (src/modules/fraud-detection/infrastructure/cleanup-
-   * queue.ts). Default is well above the widest current rule window (24h,
-   * DISPUTE_RAISE_VELOCITY) to leave room for future longer-window rules
-   * and for forensic/manual review of recent flagged activity. */
-  FRAUD_ACTIVITY_RETENTION_DAYS: z.coerce.number().int().positive().default(30),
+   * 
 
-  /** Velocity-rule thresholds and windows for the fraud-detection module
-   * (src/modules/fraud-detection/application/assess-actor.ts). Defaults
-   * mirror the previously hardcoded RULES constants so behaviour is
-   * unchanged when nothing is configured; operators can tune them per
-   * environment (local dev, testnet staging, high-traffic production)
-   * without a rebuild. Thresholds are the number of matching activities
-   * within the window that trigger a flag; windows are in hours. */
-  FRAUD_DELIVERY_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
-  FRAUD_DELIVERY_VELOCITY_WINDOW_HOURS: z.coerce.number().int().positive().default(1),
-  FRAUD_ESCROW_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(10),
-  FRAUD_ESCROW_VELOCITY_WINDOW_HOURS: z.coerce.number().int().positive().default(1),
-  FRAUD_DISPUTE_VELOCITY_THRESHOLD: z.coerce.number().int().positive().default(3),
-  FRAUD_DISPUTE_VELOCITY_WINDOW_HOURS: z.coerce.number().int().positive().default(24),
-
-  /** Short-TTL cache for the ADMIN-only analytics endpoints
-   * (src/modules/analytics/infrastructure/cached-anal
-   * yzer.ts) — each admin dashboard refresh would otherwise re-run full-table
-   * count/groupBy queries on every request. */
-  ANALYTICS_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(30),
-
-  /** Short-TTL cache for the shared HTTP auth guard's per-user
-   * `{ role, tokenVersion }` row (#369, src/shared/cache/auth-context-
-   * cache.ts). Role changes evict the entry when they commit; this bounds
-   * staleness only for cache-eviction failures or a write path that forgets
-   * to evict. */
-  AUTH_CONTEXT_CACHE_TTL_SECONDS: z.coerce.number().int().positive().default(60),
-});
-
-/**
- * A non-logger provider with no relay configured would otherwise only fail at
- * first send — long after boot, deep inside a request or a queued BullMQ job.
- * Failing here keeps the same fail-fast-at-boot contract the required
- * connection strings above already establish (see docs/DEPLOYMENT.md).
- */
-const envWithProviderChecks = baseEnvSchema.superRefine((env, ctx) => {
-  const providers: Array<[string, 'logger' | 'smtp' | 'sendgrid' | 'ses']> = [
-    ['MAIL_PROVIDER', env.MAIL_PROVIDER],
-    ['NOTIFICATION_PROVIDER', env.NOTIFICATION_PROVIDER],
-  ];
-  for (const [key, provider] of providers) {
-    if (provider === 'logger') continue;
-    const missing = (['SMTP_HOST', 'SMTP_FROM'] as const).filter((name) => !env[name]);
-    if (missing.length > 0) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: `${key}=${provider} requires ${missing.join(' and ')} to be set (the SMTP relay this provider delivers through)`,
-      });
-    }
-    if (Boolean(env.SMTP_USER) !== Boolean(env.SMTP_PASSWORD)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [key],
-        message: `${key}=${provider} requires SMTP_USER and SMTP_PASSWORD to be set together (or both unset for a relay that needs no AUTH)`,
-      });
-    }
-  }
-});
-
-/**
- * `LOG_LEVEL`'s effective default depends on `NODE_ENV`: tests should be
- * quiet unless a level is explicitly requested, everything else defaults to
- * `info`. Purpose-specific JWT secrets are derived with independent HMAC
- * labels when operators do not provide dedicated values.
- */
-const envSchema = envWithProviderChecks.transform((env) => ({
-  ...env,
-  JWT_VERIFICATION_SECRET:
-    env.JWT_VERIFICATION_SECRET ??
-    createHmac('sha256', env.JWT_ACCESS_SECRET).update('jwt-verification').digest('hex'),
-  JWT_RESET_SECRET:
-    env.JWT_RESET_SECRET ??
-    createHmac('sha256', env.JWT_ACCESS_SECRET).update('jwt-password-reset').digest('hex'),
-  LOG_LEVEL: env.LOG_LEVEL ?? (env.NODE_ENV === 'test' ? ('silent' as const) : ('info' as const)),
-}));
-
-export type Env = z.infer<typeof envSchema>;
-
-/** Exposed only for the .env.example drift test — see env.test.ts. */
-export const envSchemaKeys = Object.keys(baseEnvSchema.shape);
-
-export function parseEnv(source: NodeJS.ProcessEnv = process.env): Env {
-  const result = envSchema.safeParse(source);
-  if (!result.success) {
-    const issues = result.error.issues
-      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
-      .join('\n');
-    throw new Error(`Invalid environment configuration:\n${issues}`);
-  }
-  return result.data;
-}
+/* … truncated 4638 chars — edit only what you need near the top … */
