@@ -159,4 +159,83 @@ describe('buildInvokeTransaction', () => {
     expect(builtTx.memo.type).toBe(Memo.none().type);
     expect(builtTx.memo.value).toBeNull();
   });
+
+  it('builds the invoke operation against the fetched account’s own source and sequence number', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    // A non-default sequence proves the builder reads it from the fetched
+    // Account rather than defaulting/zeroing it.
+    const account = new Account(sourceKeypairAddress, '424242');
+    const contractId = Address.contract(randomBytes(32)).toString();
+
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+
+    const preparedTx = new TransactionBuilder(new Account(sourceKeypairAddress, '424242'), {
+      fee: BASE_FEE,
+      networkPassphrase: 'Test SDF Network ; September 2015',
+    })
+      .addOperation(new Contract(contractId).call('assign_driver'))
+      .setTimeout(60)
+      .build();
+    const prepareSpy = vi.spyOn(client, 'prepareTransaction').mockResolvedValue(preparedTx);
+
+    await buildInvokeTransaction(client, {
+      contractId,
+      method: 'assign_driver',
+      args: [u64ToScVal(7n)],
+      sourceAddress: sourceKeypairAddress,
+    });
+
+    const builtTx = prepareSpy.mock.calls[0]?.[0];
+    if (!builtTx || !('source' in builtTx)) {
+      throw new Error('expected a Transaction, not a FeeBumpTransaction');
+    }
+    // The next unused sequence (fetched sequence + 1, per TransactionBuilder)
+    // together with the source address — asserted together, not separately,
+    // since either one alone could pass while the pairing was still wrong
+    // (e.g. a stale account's source combined with a fresh sequence).
+    expect(builtTx.source).toBe(sourceKeypairAddress);
+    expect(builtTx.sequence).toBe('424243');
+  });
+
+  it('propagates a failed account lookup instead of returning an unprepared fallback', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const contractId = Address.contract(randomBytes(32)).toString();
+
+    const client = new SorobanClient();
+    const accountError = new Error('account lookup failed');
+    vi.spyOn(client, 'getAccount').mockRejectedValue(accountError);
+    const prepareSpy = vi.spyOn(client, 'prepareTransaction');
+
+    await expect(
+      buildInvokeTransaction(client, {
+        contractId,
+        method: 'assign_driver',
+        args: [u64ToScVal(7n)],
+        sourceAddress: sourceKeypairAddress,
+      }),
+    ).rejects.toBe(accountError);
+
+    expect(prepareSpy).not.toHaveBeenCalled();
+  });
+
+  it('propagates a failed preparation instead of returning the unprepared envelope', async () => {
+    const sourceKeypairAddress = Keypair.random().publicKey();
+    const account = new Account(sourceKeypairAddress, '100');
+    const contractId = Address.contract(randomBytes(32)).toString();
+
+    const client = new SorobanClient();
+    vi.spyOn(client, 'getAccount').mockResolvedValue(account);
+    const prepareError = new Error('simulation failed');
+    vi.spyOn(client, 'prepareTransaction').mockRejectedValue(prepareError);
+
+    await expect(
+      buildInvokeTransaction(client, {
+        contractId,
+        method: 'assign_driver',
+        args: [u64ToScVal(7n)],
+        sourceAddress: sourceKeypairAddress,
+      }),
+    ).rejects.toBe(prepareError);
+  });
 });
