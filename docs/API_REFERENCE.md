@@ -7,8 +7,24 @@ The live, authoritative reference is generated from the same Zod schemas that va
 - All routes are versioned under `/api/v1` except `/health*` and `/api-docs`.
 - Success responses: `{ "data": ..., "meta"?: {...} }`.
 - Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... }, "requestId": "<fastify request id>" }` — see `src/shared/errors` for the full code list. The top-level `requestId` lets a user reporting a 500 be correlated to the matching `req.id` in the server's request log line.
-- Mutating endpoints that reflect on-chain state (deliveries, escrow, disputes, fleet) return a **pending transaction record**, not a synchronously-updated resource — the underlying resource only reaches its new state once the blockchain indexer confirms the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
+- A successful build response contains **only** the unsigned envelope (`{ "data": { "xdr": "<unsigned envelope>" } }`, matching `transactionResponseSchema` in `src/shared/validation/transaction-response.ts`). It does **not** create a pending transaction record, return a receipt ID, or confirm any chain state — construction success is not on-chain confirmation. The underlying resource only reaches its new state once the client signs, submits, and the blockchain indexer observes the corresponding on-chain event. See `ARCHITECTURE.md` §9.
+
+### Build / sign / submit / observe responsibilities
+
+```
+  client                backend (implemented)        chain / indexer
+  ------                ----------------------        ---------------
+  request build  --->   POST /transactions/build/*
+                        validate + simulate/prepare
+                 <---   { data: { xdr } }  (unsigned)
+  sign locally   --->   (private key never leaves client)
+  submit         --->   [outside backend surface]  --->  Stellar network
+                                                          |
+  observe        <---   GET /deliveries*  <---  indexer confirms event
+```
+
+Submission and on-chain observation are **outside the implemented backend surface**: this backend does not submit signed envelopes, does not track a pending transaction resource, and exposes no confirmation-polling endpoint. Clients submit the signed envelope themselves and observe resulting state through the public read models (e.g. `GET /deliveries*`) once the indexer has confirmed the event.
 
 ## Implemented Today
 
@@ -49,7 +65,7 @@ All `/api/v1/users/*` routes require authentication; unauthenticated requests ge
 | `POST` | `/api/v1/transactions/build/cancel-delivery` | Unsigned XDR for `cancel_delivery` — the sender only |
 | `POST` | `/api/v1/transactions/build/raise-delivery-dispute` | Unsigned XDR for `delivery_contract.raise_dispute` — sender or recipient. Distinct from the `disputes` module's own `POST /transactions/build/raise-dispute` (`dispute_resolution_contract.raise_dispute`, the richer Layer B arbitration-case path) — the two previously collided under the identical path, crashing `buildApp()`. |
 
-All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }`. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
+All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }` and nothing else — no pending transaction record, receipt ID, or confirmation status. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
 
 **Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
 
@@ -63,20 +79,6 @@ Everything else below is the **planned surface**, matching the module boundaries
 |---|---|---|---|
 | `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
 | `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
-| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | Foreign-key constraint violation; `details` includes `meta` (constraint name) |
-| `P2034` | 409 | `WRITE_CONFLICT` | Transaction write conflict / deadlock — safe to retry |
-| `P1001` / `P1002` | 503 | `DATABASE_UNAVAILABLE` | Database unreachable / connection timed out |
+| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | For
 
-## Planned Endpoint Families
-
-| Module | Example routes |
-|---|---|
-| `escrow` | `GET /escrow/:deliveryId`, `POST /transactions/build/create-escrow`, `POST /transactions/build/release-escrow`, `POST /transactions/build/refund-escrow` |
-| `fleet` | `GET /fleets/:id`, `GET /fleets/:id/payout-address`, `POST /transactions/build/register-fleet`, `POST /transactions/build/add-driver-to-fleet`, `POST /transactions/build/accept-fleet-invite` |
-| `disputes` | `GET /disputes/:deliveryId`, `POST /disputes/:deliveryId/evidence`, `POST /transactions/build/raise-dispute` |
-| `reputation` | `GET /drivers/:address/reputation` |
-| `analytics` | `GET /analytics/gmv`, `GET /analytics/completion-rate`, `GET /analytics/dispute-rate` |
-| `admin` | `POST /admin/disputes/:deliveryId/resolve`, `POST /admin/users/:id/role`, `GET /admin/audit-log` |
-| — | `POST /transactions/submit` (relay a signed XDR envelope, track confirmation) |
-
-Full request/response schemas for each of these will be documented here as they're implemented — see `ROADMAP.md` §5 (Phase 5 module DoD requires an OpenAPI schema entry and a request/response example for every exposed endpoint before a module is considered done).
+/* … truncated 1458 chars — edit only what you need near the top … */
