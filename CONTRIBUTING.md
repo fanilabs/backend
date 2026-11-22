@@ -8,6 +8,10 @@ Thanks for your interest in improving this project. This guide covers local setu
 2. Copy the example environment file and fill in local values.
 3. Run the test suite before opening a pull request.
 
+## Editor setup
+
+The workspace recommends the Prisma extension (see `.vscode/extensions.json`). Prisma schema files (`prisma/schema.prisma`) format on save with the Prisma formatter via a `[prisma]` override in `.vscode/settings.json`; all other languages keep Prettier as the default formatter. No per-user formatter setting is required.
+
 ## Test layers
 
 We keep three layers of tests:
