@@ -4,9 +4,41 @@ Thanks for your interest in improving this project. This guide covers local setu
 
 ## Getting started
 
-1. Install dependencies with your package manager of choice.
-2. Copy the example environment file and fill in local values.
-3. Run the test suite before opening a pull request.
+1. Select the pinned package manager (see [Package manager](#package-manager)).
+2. Install dependencies with `pnpm install --frozen-lockfile`.
+3. Copy the example environment file and fill in local values.
+4. Run the test suite before opening a pull request.
+
+## Package manager
+
+The `packageManager` field in `package.json` is the authoritative source for the pnpm version contributors must use. CI selects the same release, so a fresh checkout should match it exactly.
+
+The `engines` range (for example `pnpm >=9`) is only a minimum compatibility floor — it is not the recommended or tested toolchain. Do not treat it as the version to install.
+
+### Selecting the pinned release
+
+Read the pin from `package.json` and activate it with Corepack. For the current pin (`pnpm@10.33.0`):
+
+```sh
+corepack prepare pnpm@10.33.0 --activate
+```
+
+This only selects the package manager release; it does not change any dependency versions in `package.json` or the lockfile.
+
+### Verifying before installing
+
+Confirm the active version matches the pin before installing:
+
+```sh
+pnpm --version   # must print 10.33.0
+pnpm install --frozen-lockfile
+```
+
+If `pnpm --version` does not match the `packageManager` field, re-run the `corepack prepare` command above before continuing.
+
+### Refreshing this guide when the pin changes
+
+When the `packageManager` field in `package.json` is bumped, update the version in the `corepack prepare` command and the expected `pnpm --version` output in this section to match. Keep the `engines` range as the minimum floor unless the supported baseline itself changes.
 
 ## Editor setup
 
