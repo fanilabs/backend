@@ -7,8 +7,24 @@ The live, authoritative reference is generated from the same Zod schemas that va
 - All routes are versioned under `/api/v1` except `/health*` and `/api-docs`.
 - Success responses: `{ "data": ..., "meta"?: {...} }`.
 - Error responses: `{ "error": { "code": "...", "message": "...", "details"?: ... }, "requestId": "<fastify request id>" }` — see `src/shared/errors` for the full code list. The top-level `requestId` lets a user reporting a 500 be correlated to the matching `req.id` in the server's request log line.
-- Mutating endpoints that reflect on-chain state (deliveries, escrow, disputes, fleet) return a **pending transaction record**, not a synchronously-updated resource — the underlying resource only reaches its new state once the blockchain indexer confirms the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
+- A successful build response contains **only** the unsigned envelope (`{ "data": { "xdr": "<unsigned envelope>" } }`, matching `transactionResponseSchema` in `src/shared/validation/transaction-response.ts`). It does **not** create a pending transaction record, return a receipt ID, or confirm any chain state — construction success is not on-chain confirmation. The underlying resource only reaches its new state once the client signs, submits, and the blockchain indexer observes the corresponding on-chain event. See `ARCHITECTURE.md` §9.
+
+### Build / sign / submit / observe responsibilities
+
+```
+  client                backend (implemented)        chain / indexer
+  ------                ----------------------        ---------------
+  request build  --->   POST /transactions/build/*
+                        validate + simulate/prepare
+                 <---   { data: { xdr } }  (unsigned)
+  sign locally   --->   (private key never leaves client)
+  submit         --->   [outside backend surface]  --->  Stellar network
+                                                          |
+  observe        <---   GET /deliveries*  <---  indexer confirms event
+```
+
+Submission and on-chain observation are **outside the implemented backend surface**: this backend does not submit signed envelopes, does not track a pending transaction resource, and exposes no confirmation-polling endpoint. Clients submit the signed envelope themselves and observe resulting state through the public read models (e.g. `GET /deliveries*`) once the indexer has confirmed the event.
 
 ## Implemented Today
 
