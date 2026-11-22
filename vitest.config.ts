@@ -5,6 +5,10 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./src/shared/testing/env.ts'],
     include: ['src/**/*.{spec,test}.ts', 'tests/**/*.{spec,test}.ts'],
+    // The bootstrap test spawns isolated child processes that import the
+    // setup module directly; keep it out of the default suite so the
+    // runner's already-mutated process.env cannot leak into assertions.
+    exclude: ['**/node_modules/**', '**/dist/**', 'src/shared/testing/env.bootstrap.test.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
