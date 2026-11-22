@@ -7,6 +7,10 @@ export default defineConfig({
     environment: 'node',
     setupFiles: ['./src/shared/testing/env.ts'],
     include: ['src/**/*.spec.ts', 'src/**/*.test.ts'],
+    reporters: ['default', 'junit'],
+    outputFile: {
+      junit: 'reports/vitest-junit.xml',
+    },
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
