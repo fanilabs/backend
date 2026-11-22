@@ -49,6 +49,8 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
       return [...notifications.values()]
         .filter((n) => n.userId === userId)
         .filter((n) => !filter.status || n.status === filter.status)
+        .filter((n) => filter.unread === undefined || (filter.unread ? n.readAt === null : n.readAt !== null))
+        .filter((n) => filter.channel === undefined || n.channel === filter.channel)
         .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
         .slice(0, filter.limit);
     },
