@@ -275,6 +275,41 @@ describe('createSmtpClient', () => {
     );
   });
 
+  it('encodes a Unicode subject as an RFC 2047 encoded-word that decodes back to the original text (#678)', async () => {
+    relay = await startRelay();
+    const client = createSmtpClient(settingsFor(relay, { user: undefined, password: undefined }));
+    const subject = 'FaniLab 通知 🚀 — déjà vu';
+
+    await client.send({ to: 'user@example.com', subject, text: 'unicode subject test' });
+
+    expect(relay.messages).toHaveLength(1);
+    const raw = relay.messages[0]!;
+    const subjectLine = raw.split('\r\n').find((line) => line.startsWith('Subject: '))!;
+    const encodedWord = /^Subject: =\?UTF-8\?B\?([^?]+)\?=$/.exec(subjectLine);
+    expect(encodedWord).not.toBeNull();
+    expect(Buffer.from(encodedWord![1]!, 'base64').toString('utf8')).toBe(subject);
+  });
+
+  it('wraps a long base64 body at 76-char lines that independently decode back to the original bytes (#678)', async () => {
+    relay = await startRelay();
+    const client = createSmtpClient(settingsFor(relay, { user: undefined, password: undefined }));
+    // Long enough (with multibyte UTF-8 expansion) that the base64 encoding
+    // spans several 76-char wrap boundaries.
+    const text = 'Hello 世界! '.repeat(40);
+
+    await client.send({ to: 'user@example.com', subject: 'long body', text });
+
+    expect(relay.messages).toHaveLength(1);
+    const raw = relay.messages[0]!;
+    const bodySection = raw.split('\r\n\r\n')[1] ?? '';
+    const bodyLines = bodySection.split('\r\n').filter((line) => line.length > 0);
+    expect(bodyLines.length).toBeGreaterThan(1);
+    for (const line of bodyLines) {
+      expect(line.length).toBeLessThanOrEqual(76);
+    }
+    expect(Buffer.from(bodyLines.join(''), 'base64').toString('utf8')).toBe(text);
+  });
+
   it('fails at construction when the configured CA file does not exist', () => {
     expect(() =>
       createSmtpClient({
