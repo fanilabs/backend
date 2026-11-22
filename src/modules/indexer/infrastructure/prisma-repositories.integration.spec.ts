@@ -34,6 +34,50 @@ describe.skipIf(!dbAvailable)('Prisma indexer repositories (integration)', () =>
     });
   });
 
+  it('isolates checkpoint keys by both contract and network', async () => {
+    const contractA = `test-contract-a-${randomUUID()}`;
+    const contractB = `test-contract-b-${randomUUID()}`;
+    const networkA = 'testnet';
+    const networkB = 'mainnet';
+
+    const tuples = [
+      { contractName: contractA, network: networkA, ledger: 100n },
+      { contractName: contractA, network: networkB, ledger: 200n },
+      { contractName: contractB, network: networkA, ledger: 300n },
+      { contractName: contractB, network: networkB, ledger: 400n },
+    ];
+
+    try {
+      for (const tuple of tuples) {
+        await checkpointRepository.advance(tuple.contractName, tuple.network, tuple.ledger);
+      }
+
+      for (const tuple of tuples) {
+        expect(await checkpointRepository.get(tuple.contractName, tuple.network)).toMatchObject({
+          lastLedgerSeq: tuple.ledger,
+        });
+      }
+
+      const updated = tuples[1];
+      await checkpointRepository.advance(updated.contractName, updated.network, 250n);
+
+      for (const tuple of tuples) {
+        const expected = tuple === updated ? 250n : tuple.ledger;
+        expect(await checkpointRepository.get(tuple.contractName, tuple.network)).toMatchObject({
+          lastLedgerSeq: expected,
+        });
+      }
+
+      expect(
+        await checkpointRepository.get(`unknown-contract-${randomUUID()}`, networkA),
+      ).toBeNull();
+    } finally {
+      await prisma.blockchainCheckpoint.deleteMany({
+        where: { contractName: { in: [contractA, contractB] } },
+      });
+    }
+  });
+
   it('inserts a new event and rejects (idempotently) a duplicate rpcEventId', async () => {
     const rpcEventId = `evt-${randomUUID()}`;
     const event = {
