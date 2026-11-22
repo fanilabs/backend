@@ -54,6 +54,51 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
     });
   });
 
+  // #674 — `record` only conditionally writes `metadata` at all, and
+  // `toDomain` normalizes its absence to `null`; the only existing JSON
+  // coverage above is a flat role-change object. These two cases close the
+  // gap: a non-role action proves nested arrays/objects and Unicode text
+  // round-trip exactly (not just flat string fields), and a second entry
+  // with `metadata` entirely omitted proves the read path reports `null`
+  // rather than `undefined` or `{}`.
+  it('round-trips nested JSON metadata with Unicode text for a non-role action', async () => {
+    const actorId = await seedActor();
+    const metadata = {
+      reason: 'fraude détectée — 詐欺が検出されました 🚩',
+      tags: ['critical', 'ñ', { nested: true, values: [1, 2, 3] }],
+      context: { ip: '203.0.113.9', notes: null },
+    };
+
+    await auditLogRepository.record({
+      actorId,
+      actorLabel: 'admin@example.com',
+      action: 'delivery.flagged',
+      entityType: 'Delivery',
+      entityId: 'delivery-123',
+      metadata,
+    });
+
+    const entries = await auditLogRepository.list({ limit: 50 });
+    const entry = entries.find((e) => e.actorId === actorId && e.action === 'delivery.flagged');
+    expect(entry?.metadata).toEqual(metadata);
+  });
+
+  it('reports metadata as explicit null when omitted from record()', async () => {
+    const actorId = await seedActor();
+
+    await auditLogRepository.record({
+      actorId,
+      actorLabel: 'admin@example.com',
+      action: 'session.revoked',
+      entityType: 'Session',
+      entityId: 'session-456',
+    });
+
+    const entries = await auditLogRepository.list({ limit: 50 });
+    const entry = entries.find((e) => e.actorId === actorId && e.action === 'session.revoked');
+    expect(entry?.metadata).toBeNull();
+  });
+
   it('orders newest first, even amongst concurrently-written unrelated rows', async () => {
     // `list` has no actor filter (it's a global admin activity feed by
     // design) — this test only trusts relative order between its own two

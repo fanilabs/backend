@@ -210,6 +210,58 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
     });
   });
 
+  // #673 — the response DTO's channel enum (`EMAIL`/`SMS`/`PUSH`) mirrors
+  // every value the `channel` column can actually hold, but every other
+  // fixture here only ever persists `EMAIL` rows. These seed SMS/PUSH rows
+  // directly (inert payloads, no delivery worker involved) so the read path
+  // is proven for every persisted channel, not just the one this module can
+  // currently send.
+  it('lists persisted SMS and PUSH notifications alongside EMAIL ones', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.createMany({
+      data: [
+        { userId, channel: 'EMAIL' as const, type: 'channel-coverage.email', payload: {} },
+        { userId, channel: 'SMS' as const, type: 'channel-coverage.sms', payload: {} },
+        { userId, channel: 'PUSH' as const, type: 'channel-coverage.push', payload: {} },
+      ],
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SuccessBody<Array<{ channel: string; type: string }>>>();
+    const channelsByType = new Map(body.data.map((n) => [n.type, n.channel]));
+    expect(channelsByType.get('channel-coverage.email')).toBe('EMAIL');
+    expect(channelsByType.get('channel-coverage.sms')).toBe('SMS');
+    expect(channelsByType.get('channel-coverage.push')).toBe('PUSH');
+  });
+
+  it.each(['SMS', 'PUSH'] as const)(
+    'gets a single persisted %s notification by id',
+    async (channel) => {
+      const { accessToken, userId } = await registerAndLogin();
+      const created = await getPrismaClient().notification.create({
+        data: { userId, channel, type: `single-read.${channel.toLowerCase()}`, payload: {} },
+      });
+
+      const response = await app.inject({
+        method: 'GET',
+        url: `/api/v1/notifications/${created.id}`,
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(
+        response.json<SuccessBody<{ channel: string; type: string }>>().data,
+      ).toMatchObject({ channel, type: `single-read.${channel.toLowerCase()}` });
+    },
+  );
+
   it('returns 404 for an unknown notification id', async () => {
     const { accessToken } = await registerAndLogin();
 
