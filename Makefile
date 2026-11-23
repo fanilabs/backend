@@ -1,6 +1,6 @@
-.PHONY: help install dev dev-worker build start lint format test test-watch \
-        typecheck db-up db-down db-migrate db-studio seed docker-up docker-down docker-logs \
-        docker-up-observability docker-migrate load-test check-dockerfile-parity
+.PHONY: help install dev dev-worker build start lint format format-check test test-watch \
+        typecheck db-up db-down db-migrate db-create-test db-studio seed docker-up docker-down docker-logs \
+        docker-up-observability docker-migrate load-test
 
 help:
 	@echo "fanilab-backend — common tasks"
@@ -11,11 +11,15 @@ help:
 	@echo "  make start                 Start the compiled API (pnpm start); run make build first to produce dist/"
 	@echo "  make lint                  Run ESLint"
 	@echo "  make format                Run Prettier (writes changes)"
+	@echo "  make format-check          Run Prettier in check mode (read-only)"
 	@echo "  make test                  Run the test suite once"
 	@echo "  make test-watch            Run the test suite in watch mode"
+	@echo "  make test-coverage         Run the test suite with coverage report (pnpm test:coverage)"
+	@echo "  make test-e2e              Run the E2E test suite (requires Postgres + Redis; see tests/e2e/README.md)"
 	@echo "  make typecheck             Run the TypeScript compiler with no output"
 	@echo "  make db-up                 Start Postgres + Redis only (docker compose)"
 	@echo "  make db-down               Stop Postgres + Redis"
+	@echo "  make db-create-test        Create the local test database (fanilab_backend_test)"
 	@echo "  make db-migrate            Run Prisma migrations (dev)"
 	@echo "  make db-studio             Open Prisma Studio"
 	@echo "  make seed                  Run the database seed script"
@@ -48,11 +52,20 @@ lint:
 format:
 	pnpm format
 
+format-check:
+	pnpm format:check
+
 test:
 	pnpm test
 
 test-watch:
 	pnpm test:watch
+
+test-coverage:
+	pnpm test:coverage
+
+test-e2e:
+	pnpm test:e2e
 
 typecheck:
 	pnpm typecheck
@@ -62,6 +75,9 @@ db-up:
 
 db-down:
 	docker compose stop postgres redis
+
+db-create-test:
+	createdb -h localhost -U fanilab -d fanilab_backend_test 2>/dev/null || echo "Test database already exists or created"
 
 db-migrate:
 	pnpm prisma:migrate

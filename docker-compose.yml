@@ -8,7 +8,7 @@ services:
       POSTGRES_PASSWORD: fanilab
       POSTGRES_DB: fanilab_backend
     ports:
-      - '5432:5432'
+      - '${POSTGRES_HOST_PORT:-5432}:5432'
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -20,7 +20,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - '6379:6379'
+      - '${REDIS_HOST_PORT:-6379}:6379'
     volumes:
       - redis-data:/data
     healthcheck:
@@ -54,6 +54,7 @@ services:
       target: api
     env_file: .env
     environment:
+      PORT: '3000'
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
       EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
