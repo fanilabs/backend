@@ -108,7 +108,10 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
         },
       },
       async (request, reply) => {
-        const { limit, before } = request.query;
+        const { limit, before, actorId, action } = request.query;
+        const filters: { actorId?: string; action?: string } = {};
+        if (actorId !== undefined) filters.actorId = actorId;
+        if (action !== undefined) filters.action = action;
         const {
           items,
           nextCursor,
@@ -117,6 +120,7 @@ export function createAdminRoutes(useCases: AdminUseCases): FastifyPluginAsyncZo
         } = await useCases.listAuditLog({
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
+          ...(Object.keys(filters).length > 0 && { filters }),
         });
         void reply
           .status(200)

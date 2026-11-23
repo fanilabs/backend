@@ -90,6 +90,79 @@ describe.skipIf(!dbAvailable)('admin routes (integration)', () => {
     expect(response.json<ErrorBody>().error.code).toBe('FORBIDDEN');
   });
 
+  it('rejects a non-admin authenticated audit-log request', async () => {
+    const { accessToken } = await registerAndLogin('CUSTOMER');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/audit-log',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json<ErrorBody>().error.code).toBe('FORBIDDEN');
+  });
+
+  it('rejects an invalid actorId on the audit-log endpoint', async () => {
+    const { accessToken } = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/audit-log?actorId=not-a-uuid',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects an empty action on the audit-log endpoint', async () => {
+    const { accessToken } = await registerAndLogin('ADMIN');
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/admin/audit-log?action=',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns only audit-log entries matching the actorId filter', async () => {
+    const admin = await registerAndLogin('ADMIN');
+    const target = await registerAndLogin('CUSTOMER');
+    const authHeader = { authorization: `Bearer ${admin.accessToken}` };
+
+    // Two role changes by the same admin → two audit entries with actorId = admin.userId.
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/users/${target.userId}/role`,
+      headers: authHeader,
+      payload: { role: 'COURIER' },
+    });
+    await app.inject({
+      method: 'POST',
+      url: `/api/v1/admin/users/${target.userId}/role`,
+      headers: authHeader,
+      payload: { role: 'FLEET_MANAGER' },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/admin/audit-log?limit=200&actorId=${admin.userId}`,
+      headers: authHeader,
+    });
+
+    expect(response.statusCode).toBe(200);
+    const entries = response.json<
+      SuccessBody<Array<{ actorId: string; action: string }>>
+    >().data;
+    expect(entries.length).toBeGreaterThanOrEqual(2);
+    expect(entries.every((e) => e.actorId === admin.userId)).toBe(true);
+    expect(entries.every((e) => e.action === 'user.role_updated')).toBe(true);
+  });
+
   it('rejects an unauthenticated role update request', async () => {
     const response = await app.inject({
       method: 'POST',

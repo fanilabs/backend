@@ -150,4 +150,53 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
     expect(entry).toBeDefined();
     expect(entry?.actorId).toBeNull();
   });
+
+  it('lists only entries matching actorId and action filters', async () => {
+    const actorOne = await seedActor();
+    const actorTwo = await seedActor();
+
+    await auditLogRepository.record({
+      actorId: actorOne,
+      actorLabel: 'one@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'u-1',
+    });
+    await auditLogRepository.record({
+      actorId: actorOne,
+      actorLabel: 'one@example.com',
+      action: 'escrow.refunded',
+      entityType: 'Escrow',
+      entityId: 'e-1',
+    });
+    await auditLogRepository.record({
+      actorId: actorTwo,
+      actorLabel: 'two@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'u-2',
+    });
+
+    const byActor = await auditLogRepository.list({
+      limit: 100,
+      actorId: actorTwo,
+    });
+    expect(byActor).toHaveLength(1);
+    expect(byActor[0]!.action).toBe('user.role_updated');
+
+    const byAction = await auditLogRepository.list({
+      limit: 100,
+      action: 'user.role_updated',
+    });
+    const ourByAction = byAction.filter((e) => [actorOne, actorTwo].includes(e.actorId!));
+    expect(ourByAction).toHaveLength(2);
+
+    const composed = await auditLogRepository.list({
+      limit: 100,
+      actorId: actorOne,
+      action: 'escrow.refunded',
+    });
+    expect(composed).toHaveLength(1);
+    expect(composed[0]!.actorId).toBe(actorOne);
+  });
 });

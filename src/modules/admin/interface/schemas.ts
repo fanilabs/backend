@@ -53,6 +53,11 @@ export const updateUserRoleResponseSchema = z.object({
 export const listAuditLogQuerySchema = z.object({
   limit: z.coerce.number().int().positive().max(200).optional(),
   before: z.string().uuid().optional(),
+  /** Exact match on the entry's actor. Must be a valid UUID. */
+  actorId: z.string().uuid().optional(),
+  /** Exact match on the entry's action. 1–100 characters (the `action`
+   * column is `VARCHAR(100)`). */
+  action: z.string().min(1).max(100).optional(),
 });
 export const listAuditLogResponseSchema = z.object({
   data: z.array(

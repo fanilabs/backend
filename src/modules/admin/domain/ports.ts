@@ -71,17 +71,21 @@ export interface ListAuditLogFilter {
   limit: number;
   /** ID of the last row from the previous page, used as a stable cursor. */
   before?: string;
+  /** Exact match on the entry's actor (`audit_logs.actor_id`). */
+  actorId?: string;
+  /** Exact match on the entry's action (`audit_logs.action`, `VARCHAR(100)`). */
+  action?: string;
 }
 
-/** Total number of audit log rows, ignoring both `limit` and the `before`
- * cursor of {@link ListAuditLogFilter}. Deliberately unpaged so the admin UI
- * can render a record/page total next to a single cursor page (#292) —
- * counting only what `list` returned would make `totalCount` change on every
+/** Total number of audit log rows matching `filter` (actorId/action included),
+ * ignoring both `limit` and the `before` cursor. Deliberately unpaged so the
+ * admin UI can render a record/page total next to a single cursor page (#292)
+ * — counting only what `list` returned would make `totalCount` change on every
  * page, which is not what a total is for. */
 export interface AuditLogRepository {
   record(input: RecordAuditLogInput): Promise<void>;
   list(filter: ListAuditLogFilter): Promise<AuditLogEntry[]>;
-  count(): Promise<number>;
+  count(filter: ListAuditLogFilter): Promise<number>;
 }
 
 /**

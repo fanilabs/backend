@@ -100,6 +100,24 @@ GET /api/v1/deliveries?driverAddress=GXYZ...&status=DELIVERED
 { "data": [] }
 ```
 
+### Admin audit-log filters
+
+`GET /api/v1/admin/audit-log` accepts the pagination cursor (`limit`, `before`) plus two optional
+exact-match filters, validated by `listAuditLogQuerySchema` (`src/modules/admin/interface/schemas.ts`):
+
+| Query param | Type | Notes |
+|---|---|---|
+| `actorId` | UUID | Exact match on the entry's actor (`audit_logs.actor_id`). Rejects anything that isn't a valid UUID. |
+| `action` | string | Exact match on the entry's action (`audit_logs.action`, `VARCHAR(100)`). Must be 1–100 characters. |
+
+All supplied filters are combined as an **intersection (logical AND)** — an entry is returned only if it matches every filter present in the request. `actorId` and `action` compose with each other and with the `before` cursor; `totalCount` in the response reflects the filtered result set, not the page length. Omitting a filter places no constraint on that field, so an unfiltered request returns the current full timeline.
+
+Combined-filter example — one administrator's role changes:
+
+```
+GET /api/v1/admin/audit-log?actorId=GABC...&action=user.role_updated
+```
+
 **Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
 
 Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
