@@ -41,6 +41,9 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
         where: {
           userId,
           ...(filter.status && { status: filter.status }),
+          ...(filter.unread === true && { readAt: null }),
+          ...(filter.unread === false && { readAt: { not: null } }),
+          ...(filter.channel !== undefined && { channel: filter.channel }),
           ...(filter.before && { createdAt: { lt: filter.before } }),
         },
         orderBy: { createdAt: 'desc' },

@@ -33,6 +33,14 @@ const notificationDto = z.object({
 
 export const listNotificationsQuerySchema = z.object({
   status: notificationStatus.optional(),
+  /** `true` = only unread rows (readAt is null); `false` = only read rows.
+   * Omitting the parameter returns all rows regardless of read state. */
+  unread: z
+    .enum(['true', 'false'])
+    .transform((v) => v === 'true')
+    .optional(),
+  /** When present, only notifications from this channel are returned. */
+  channel: notificationChannel.optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
   before: z.string().datetime().optional(),
 });

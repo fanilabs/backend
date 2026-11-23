@@ -3,7 +3,7 @@ import { createListOpenDisputesUseCase } from './list-open-disputes.js';
 import { buildDisputeReviewItem, createFakeDisputeReviewReader } from './__fixtures__/fakes.js';
 
 describe('listOpenDisputes', () => {
-  it('returns whatever the reader provides', async () => {
+  it('returns a full terminal page without a next cursor', async () => {
     const disputeReviewReader = createFakeDisputeReviewReader();
     const first = buildDisputeReviewItem({ chainDeliveryId: 7n });
     const second = buildDisputeReviewItem({
@@ -13,12 +13,33 @@ describe('listOpenDisputes', () => {
     disputeReviewReader.seed([first, second]);
     const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
 
-    const result = await listOpenDisputes({ limit: 1 });
+    await expect(listOpenDisputes({ limit: 2 })).resolves.toEqual({
+      items: [first, second],
+      nextCursor: null,
+      limit: 2,
+    });
+  });
+
+  it('uses the last returned item for the cursor and excludes the lookahead row', async () => {
+    const disputeReviewReader = createFakeDisputeReviewReader();
+    const first = buildDisputeReviewItem({ chainDeliveryId: 7n });
+    const second = buildDisputeReviewItem({
+      chainDeliveryId: 8n,
+      raisedAt: new Date('2026-01-02T00:00:00Z'),
+    });
+    const lookahead = buildDisputeReviewItem({
+      chainDeliveryId: 9n,
+      raisedAt: new Date('2026-01-03T00:00:00Z'),
+    });
+    disputeReviewReader.seed([first, second, lookahead]);
+    const listOpenDisputes = createListOpenDisputesUseCase({ disputeReviewReader });
+
+    const result = await listOpenDisputes({ limit: 2 });
 
     expect(result).toEqual({
-      items: [first],
-      nextCursor: '2026-01-01T00:00:00.000Z|7',
-      limit: 1,
+      items: [first, second],
+      nextCursor: '2026-01-02T00:00:00.000Z|8',
+      limit: 2,
     });
   });
 

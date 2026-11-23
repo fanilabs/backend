@@ -160,6 +160,174 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
     expect(body.data[0]?.status).toBe('SENT');
   });
 
+  it('filters to unread notifications when unread=true', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'unread-a', payload: {} },
+    });
+    const read = await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'read-b', payload: {} },
+    });
+    await prisma.notification.update({
+      where: { id: read.id },
+      data: { readAt: new Date() },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=true',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SuccessBody<Array<{ readAt: string | null; type: string }>>>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.readAt).toBeNull();
+    expect(body.data[0]?.type).toBe('unread-a');
+  });
+
+  it('filters to read notifications when unread=false', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'unread-c', payload: {} },
+    });
+    const read = await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'read-d', payload: {} },
+    });
+    await prisma.notification.update({
+      where: { id: read.id },
+      data: { readAt: new Date() },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=false',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SuccessBody<Array<{ readAt: string | null; type: string }>>>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.readAt).not.toBeNull();
+    expect(body.data[0]?.type).toBe('read-d');
+  });
+
+  it('filters by channel via the query string', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'ch-email', payload: {} },
+    });
+    await prisma.notification.create({
+      data: { userId, channel: 'SMS', type: 'ch-sms', payload: {} },
+    });
+    await prisma.notification.create({
+      data: { userId, channel: 'PUSH', type: 'ch-push', payload: {} },
+    });
+
+    const emailResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?channel=EMAIL',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(emailResponse.statusCode).toBe(200);
+    const emailBody = emailResponse.json<SuccessBody<Array<{ channel: string }>>>();
+    expect(emailBody.data).toHaveLength(1);
+    expect(emailBody.data[0]?.channel).toBe('EMAIL');
+
+    const smsResponse = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?channel=SMS',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+    expect(smsResponse.statusCode).toBe(200);
+    const smsBody = smsResponse.json<SuccessBody<Array<{ channel: string }>>>();
+    expect(smsBody.data).toHaveLength(1);
+    expect(smsBody.data[0]?.channel).toBe('SMS');
+  });
+
+  it('composes unread and channel filters together', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    // unread EMAIL — should be the only match
+    await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'combo-match', payload: {} },
+    });
+    // read EMAIL
+    const readEmail = await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'combo-read', payload: {} },
+    });
+    await prisma.notification.update({ where: { id: readEmail.id }, data: { readAt: new Date() } });
+    // unread SMS
+    await prisma.notification.create({
+      data: { userId, channel: 'SMS', type: 'combo-sms', payload: {} },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=true&channel=EMAIL',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SuccessBody<Array<{ channel: string; readAt: string | null; type: string }>>>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.channel).toBe('EMAIL');
+    expect(body.data[0]?.readAt).toBeNull();
+    expect(body.data[0]?.type).toBe('combo-match');
+  });
+
+  it('rejects an invalid channel value with a validation error', async () => {
+    const { accessToken } = await registerAndLogin();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?channel=CARRIER_PIGEON',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects an invalid unread value with a validation error', async () => {
+    const { accessToken } = await registerAndLogin();
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=maybe',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('never returns another user\'s notifications even when channel and unread filters match', async () => {
+    const { accessToken, userId } = await registerAndLogin();
+    const { userId: otherId } = await registerAndLogin();
+    const prisma = getPrismaClient();
+    await prisma.notification.create({
+      data: { userId, channel: 'EMAIL', type: 'isolation-mine', payload: {} },
+    });
+    await prisma.notification.create({
+      data: { userId: otherId, channel: 'EMAIL', type: 'isolation-other', payload: {} },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/api/v1/notifications?unread=true&channel=EMAIL',
+      headers: { authorization: `Bearer ${accessToken}` },
+    });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json<SuccessBody<Array<{ type: string }>>>();
+    expect(body.data).toHaveLength(1);
+    expect(body.data[0]?.type).toBe('isolation-mine');
+  });
+
   it('gets a single notification by id', async () => {
     const { accessToken, userId } = await registerAndLogin();
     const created = await getPrismaClient().notification.create({

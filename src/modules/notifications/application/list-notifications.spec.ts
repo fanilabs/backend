@@ -29,6 +29,124 @@ describe('listNotifications', () => {
     expect(result.nextCursor).toBeNull();
   });
 
+  it('filters to only unread notifications when unread is true', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    notificationRepository.seed(buildNotification({ userId: 'user-1', readAt: null }));
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', readAt: new Date('2026-01-02T00:00:00Z') }),
+    );
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({ userId: 'user-1', unread: true });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.readAt).toBeNull();
+  });
+
+  it('filters to only read notifications when unread is false', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    notificationRepository.seed(buildNotification({ userId: 'user-1', readAt: null }));
+    const readAt = new Date('2026-01-02T00:00:00Z');
+    notificationRepository.seed(buildNotification({ userId: 'user-1', readAt }));
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({ userId: 'user-1', unread: false });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.readAt).not.toBeNull();
+  });
+
+  it('filters by channel when provided', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    notificationRepository.seed(buildNotification({ userId: 'user-1', channel: 'EMAIL' }));
+    notificationRepository.seed(buildNotification({ userId: 'user-1', channel: 'SMS' }));
+    notificationRepository.seed(buildNotification({ userId: 'user-1', channel: 'PUSH' }));
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const emailResult = await listNotifications({ userId: 'user-1', channel: 'EMAIL' });
+    expect(emailResult.items).toHaveLength(1);
+    expect(emailResult.items[0]?.channel).toBe('EMAIL');
+
+    const smsResult = await listNotifications({ userId: 'user-1', channel: 'SMS' });
+    expect(smsResult.items).toHaveLength(1);
+    expect(smsResult.items[0]?.channel).toBe('SMS');
+
+    const pushResult = await listNotifications({ userId: 'user-1', channel: 'PUSH' });
+    expect(pushResult.items).toHaveLength(1);
+    expect(pushResult.items[0]?.channel).toBe('PUSH');
+  });
+
+  it('composes unread and channel filters together', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    // unread EMAIL — should match
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'EMAIL', readAt: null }),
+    );
+    // read EMAIL — should not match unread=true
+    notificationRepository.seed(
+      buildNotification({
+        userId: 'user-1',
+        channel: 'EMAIL',
+        readAt: new Date('2026-01-02T00:00:00Z'),
+      }),
+    );
+    // unread SMS — wrong channel
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'SMS', readAt: null }),
+    );
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({ userId: 'user-1', unread: true, channel: 'EMAIL' });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.channel).toBe('EMAIL');
+    expect(result.items[0]?.readAt).toBeNull();
+  });
+
+  it('composes status and channel filters together', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'EMAIL', status: 'SENT' }),
+    );
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'EMAIL', status: 'PENDING' }),
+    );
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'SMS', status: 'SENT' }),
+    );
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({
+      userId: 'user-1',
+      status: 'SENT',
+      channel: 'EMAIL',
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.channel).toBe('EMAIL');
+    expect(result.items[0]?.status).toBe('SENT');
+  });
+
+  it('never returns another user\'s notifications even when filters match', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-1', channel: 'EMAIL', readAt: null }),
+    );
+    notificationRepository.seed(
+      buildNotification({ userId: 'user-2', channel: 'EMAIL', readAt: null }),
+    );
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({
+      userId: 'user-1',
+      unread: true,
+      channel: 'EMAIL',
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.userId).toBe('user-1');
+  });
+
   it('caps limit at 100 even if a larger value is requested', async () => {
     const notificationRepository = createInMemoryNotificationRepository();
     for (let i = 0; i < 150; i += 1) {

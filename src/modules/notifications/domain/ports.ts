@@ -9,6 +9,12 @@ export interface CreateNotificationInput {
 
 export interface ListNotificationsFilter {
   status?: NotificationStatus;
+  /** When `true`, only rows whose `readAt` is `null` are returned.
+   * When `false`, only rows whose `readAt` is non-null are returned.
+   * Omitting the field places no constraint on read state. */
+  unread?: boolean;
+  /** When supplied, only rows whose `channel` matches this value are returned. */
+  channel?: NotificationChannel;
   limit: number;
   /** Cursor for keyset pagination — only rows strictly older than this
    * timestamp are returned, so the response's `nextCursor` (the oldest

@@ -15,6 +15,15 @@ PostgreSQL via Prisma. Full source of truth: [`prisma/schema.prisma`](../prisma/
 - `disputes` uses `dispute_resolution_contract`'s richer `DisputeStatus` (`OPEN`, `RESOLVED_REFUND`, `RESOLVED_PAYOUT`, `SPLIT`) as the canonical shape, but the indexer also ingests `escrow_contract`'s simpler dispute-adjacent events (`delivery_disputed`, `dispute_resolved`) into the same row's timeline fields, so nothing from either on-chain layer is lost.
 - `driver_profiles.reputation_score` / `.deliveries_completed` are sourced from `identity_reputation_contract` (the canonical ledger per the Phase 1 §12 decision). `legacy_deliveries_completed` separately mirrors `delivery_contract`'s own redundant local counter, clearly labeled non-authoritative — it exists for transparency/debugging, never for ranking or eligibility decisions.
 
+### Canonical vs. legacy delivery counters in API responses
+
+The reputation profile endpoint (`GET /reputation/drivers/:address`, see [`API_REFERENCE.md`](./API_REFERENCE.md)) exposes both counters side by side:
+
+- `deliveriesCompleted` is the **canonical** count, read from `driver_profiles.deliveries_completed`, which the indexer populates from `identity_reputation_contract` — the canonical identity-reputation ledger per the Phase 1 §12 decision above. Use this value for product decisions (ranking, eligibility, display).
+- `legacyDeliveriesCompleted` is read from `driver_profiles.legacy_deliveries_completed`, which separately mirrors `delivery_contract`'s own redundant local counter. It is non-authoritative and may legitimately differ from the canonical count because the two contracts track completions independently; it exists for transparency/debugging only.
+
+Because the legacy counter is a separate source, a failure to read it does not reset or zero the canonical counter — the two are independent reads, and the canonical value remains the source of truth regardless of the legacy read's outcome.
+
 ## Table Ownership and Approved Read Ports
 
 Each table has exactly one owning module, and that module is the only one that writes to it. Cross-module *writes* are never allowed. A small, explicitly approved set of **read-only ports** lets a module read another module's tables through a declared interface rather than reaching into the schema directly. These are the only sanctioned exceptions to "modules never touch each other's tables":
@@ -61,49 +70,4 @@ of sorting the matched rows in a second pass:
 
 | Query shape (module) | Composite index |
 |---|---|
-| `notifications.listByUserId` — `WHERE user_id = ? AND status = ? … ORDER BY created_at DESC` (`notifications`) | `notifications(user_id, created_at desc)` |
-| `auditLogs.list` — `ORDER BY created_at DESC` (unbounded append-only log) (`admin`) | `audit_logs(created_at desc)` |
-| `DeliveryRepository.list` — `WHERE status = ? … ORDER BY created_at_chain DESC` (`deliveries`) | `deliveries(status, created_at_chain desc)` |
-| `analytics.getGmvByToken` — `GROUP BY token` for `status = 'RELEASED'` (`analytics`) | `escrows(status, token)` |
-| `analytics.getDriverTierCounts` — `GROUP BY tier` (`analytics`) | `driver_profiles(tier)` |
-
-See `prisma/schema.prisma` for the authoritative definitions (each carries a
-header comment naming the exact read it backs) and `API_REFERENCE.md` §
-/notifications + §/analytics for the endpoint-level detail. When a new
-composite's leading column fully covers an existing single-column index
-(i.e. every predicate that could use the single-column index is served by
-that composite as a prefix), the single-column index is dropped in the same
-migration rather than kept — that's what removed the former `deliveries_status
-_idx`, which was fully covered by `deliveries(status, created_at_chain desc)`
-and would otherwise carry duplicate write/maintenance cost for no read benefit.
-`deliveries`'s `sender_address`, `recipient_address`, and `driver_address`
-indexes, as well as `escrows`'s `sender_address` and `recipient_address`
-indexes (#386), are kept because they are filter-only columns with no composite
-covering them.
-
-## Migrations
-
-```bash
-pnpm prisma:migrate          # create + apply a dev migration
-pnpm prisma:migrate:deploy   # apply pending migrations (CI/production — never `migrate dev` in prod)
-pnpm prisma:studio           # browse data locally
-```
-
-Migrations are committed to `prisma/migrations/` and reviewed like any other code change — no migration is squashed or edited after merge to `main`.
-
-## Seed Data
-
-`pnpm seed` (`prisma/seed.ts`, also `make seed`, and wired as Prisma's own
-`prisma.seed` hook) populates a small, coherent local dataset covering every
-read model:
-
-- An `ADMIN` and a `CUSTOMER` user, each with one linked `WalletAddress`.
-  Development-only credentials, printed to stdout when the script runs —
-  see `README.md` § Local development.
-- Six `deliveries`, one per `DeliveryStatus` value.
-- Four `escrows`, one per `EscrowStatus` value, linked to a subset of the
-  seeded deliveries.
-- Four additional deliveries dedicated to disputes, one per `DisputeStatus`
-  value, plus one `Evidence` row on the `OPEN` dispute.
-- One `Fleet` (owned by the seeded admin) with two `FleetDriver` rows, one
-  per `FleetDriverStatus` val
+| `notifications.listByUserId` — `WHERE user_id = ? AND status = ? … ORDER BY created_at DESC` (`notifications`) | `notifications(user_id, created_at desc)` 

@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { Address } from '@stellar/stellar-sdk';
+import { Address, nativeToScVal, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
 import { SorobanClient } from '../../../blockchain/soroban-client.js';
 import { createSorobanEventSource } from './soroban-event-source.js';
@@ -82,3 +82,85 @@ describe.skipIf(!rpcIntegrationOptIn)(
     );
   },
 );
+
+/**
+ * Offline decoding tests: exercise the nonempty-event transformation path
+ * (topic/value XDR decoding, contractId resolution, ledgerClosedAt) with a
+ * fake getEvents response, so no live RPC is required.
+ */
+describe('createSorobanEventSource (offline decoding)', () => {
+  const requestedContractId = Address.contract(randomBytes(32)).toString();
+  const responseContractId = Address.contract(randomBytes(32)).toString();
+  const txHash = randomBytes(32).toString('hex');
+  const eventId = '0000000001-0000000001';
+  const ledgerClosedAt = '2024-01-02T03:04:05Z';
+  const latestLedger = 4242;
+
+  function makeEvent(contractId?: string) {
+    const topics = [
+      nativeToScVal('transfer', { type: 'symbol' }),
+      nativeToScVal([nativeToScVal(1, { type: 'u32' }), nativeToScVal('abc', { type: 'string' })], {
+        type: 'vec',
+      }),
+    ];
+    const value = nativeToScVal(1000n, { type: 'i128' });
+
+    return {
+      id: eventId,
+      type: 'contract',
+      ledger: 100,
+      ledgerClosedAt,
+      contractId,
+      txHash,
+      topic: topics.map((t) => t.toXDR().toString('base64')),
+      value: value.toXDR().toString('base64'),
+    };
+  }
+
+  function makeClient(events: unknown[]) {
+    return {
+      getEvents: async () => ({
+        events,
+        latestLedger,
+      }),
+    } as unknown as SorobanClient;
+  }
+
+  it('decodes a nonempty event with explicit contractId, preserving identity and payload', async () => {
+    const eventSource = createSorobanEventSource(makeClient([makeEvent(responseContractId)]));
+
+    const result = await eventSource.fetchEvents({
+      contractId: requestedContractId,
+      startLedger: 1,
+    });
+
+    expect(result.latestLedgerSeen).toBe(latestLedger);
+    expect(result.events).toHaveLength(1);
+
+    const [event] = result.events;
+    expect(event.id).toBe(eventId);
+    expect(event.txHash).toBe(txHash);
+    expect(event.ledger).toBe(100);
+    expect(event.ledgerClosedAt).toBe(ledgerClosedAt);
+    expect(event.contractId).toBe(responseContractId);
+
+    // Symbol topics stay strings; tuple topics use the established JSON form.
+    expect(event.topics[0]).toBe('transfer');
+    expect(typeof event.topics[1]).toBe('string');
+    expect(JSON.parse(event.topics[1] as string)).toEqual([1, 'abc']);
+
+    expect(event.value).toBe('1000');
+  });
+
+  it('falls back to the requested contractId when the response omits it', async () => {
+    const eventSource = createSorobanEventSource(makeClient([makeEvent(undefined)]));
+
+    const result = await eventSource.fetchEvents({
+      contractId: requestedContractId,
+      startLedger: 1,
+    });
+
+    expect(result.events).toHaveLength(1);
+    expect(result.events[0].contractId).toBe(requestedContractId);
+  });
+});
