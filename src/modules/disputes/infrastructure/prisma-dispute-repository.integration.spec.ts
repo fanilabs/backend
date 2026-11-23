@@ -43,8 +43,7 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
   // (same pattern as Escrow), so every test must seed the parent Delivery
   // row first.
   async function nextChainId(): Promise<bigint> {
-    const id = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
-    createdChainIds.push(id);
+    const id = BigInt(`0x${randomUUID().slice(-12)}`);
     await prisma.delivery.create({
       data: {
         chainDeliveryId: id,
@@ -59,6 +58,7 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
         createdAtChain: new Date(),
       },
     });
+    createdChainIds.push(id);
     return id;
   }
 
@@ -122,6 +122,54 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
     const evidence = await evidenceRepository.listByDisputeId(dispute.id);
     expect(evidence).toHaveLength(2);
     expect(evidence.map((e) => e.hash)).toEqual(['aa'.repeat(32), 'bb'.repeat(32)]);
+  });
+
+  it('returns null for an unknown evidence ID', async () => {
+    await expect(evidenceRepository.findById(randomUUID())).resolves.toBeNull();
+  });
+
+  it('reads exact evidence metadata and lists each dispute in creation order', async () => {
+    const uploaderId = await seedUser();
+    const expectedLists = [];
+
+    for (const raisedBy of ['GFIRST', 'GSECOND']) {
+      const dispute = await prisma.dispute.create({
+        data: {
+          chainDeliveryId: await nextChainId(),
+          raisedBy,
+          raisedAt: new Date('2026-01-01T00:00:00Z'),
+        },
+      });
+      const earlier = {
+        id: randomUUID(),
+        disputeId: dispute.id,
+        hash: '12'.repeat(32),
+        storageUrl: `${dispute.id}/earlier.png`,
+        contentType: 'image/png',
+        uploadedBy: raisedBy,
+        uploadedByUserId: null,
+        createdAt: new Date('2026-01-02T00:00:00Z'),
+      };
+      const later = {
+        ...earlier,
+        id: randomUUID(),
+        hash: '34'.repeat(32),
+        storageUrl: `${dispute.id}/later.pdf`,
+        contentType: 'application/pdf',
+        uploadedByUserId: uploaderId,
+        createdAt: new Date('2026-01-03T00:00:00Z'),
+      };
+      await prisma.evidence.create({ data: later });
+      await prisma.evidence.create({ data: earlier });
+      expectedLists.push({ disputeId: dispute.id, rows: [earlier, later] });
+    }
+
+    for (const { disputeId, rows } of expectedLists) {
+      await expect(evidenceRepository.listByDisputeId(disputeId)).resolves.toEqual(rows);
+      for (const row of rows) {
+        await expect(evidenceRepository.findById(row.id)).resolves.toEqual(row);
+      }
+    }
   });
 
   it('upsert sets raisedByUserId only on creation and never reassigns it on a later update (B2.1: raiser wallet-relink evidence authorization)', async () => {

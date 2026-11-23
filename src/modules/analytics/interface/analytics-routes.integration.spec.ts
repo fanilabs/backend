@@ -1,8 +1,9 @@
 import { randomUUID } from 'node:crypto';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { buildApp } from '../../../app.js';
 import { getPrismaClient, disconnectPrisma } from '../../../shared/database/index.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
+import { config } from '../../../shared/config/index.js';
 
 const dbAvailable = await isDatabaseAvailable();
 
@@ -13,15 +14,24 @@ interface ErrorBody {
   error: { code: string; message: string };
 }
 
+const NON_DEFAULT_TTL_SECONDS = 137;
+const LARGE_GMV_AMOUNT = '9007199254740993';
+
 describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
   let app: Awaited<ReturnType<typeof buildApp>>;
   const createdEmails: string[] = [];
+  const originalCacheTtl = config.analytics.cacheTtlSeconds;
 
   beforeAll(async () => {
     app = await buildApp();
   });
 
+  afterEach(() => {
+    config.analytics.cacheTtlSeconds = originalCacheTtl;
+  });
+
   afterAll(async () => {
+    config.analytics.cacheTtlSeconds = originalCacheTtl;
     await app.close();
     if (createdEmails.length > 0) {
       const prisma = getPrismaClient();
@@ -72,6 +82,8 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
   });
 
   it('serves aggregate metrics to an admin', async () => {
+    config.analytics.cacheTtlSeconds = NON_DEFAULT_TTL_SECONDS;
+    const expectedCacheControl = `private, max-age=${NON_DEFAULT_TTL_SECONDS}`;
     const accessToken = await registerAndLogin('ADMIN');
     const authHeader = { authorization: `Bearer ${accessToken}` };
 
@@ -81,6 +93,7 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
       headers: authHeader,
     });
     expect(gmv.statusCode).toBe(200);
+    expect(gmv.headers['cache-control']).toBe(expectedCacheControl);
     expect(Array.isArray(gmv.json<SuccessBody<unknown[]>>().data)).toBe(true);
 
     const completion = await app.inject({
@@ -89,6 +102,7 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
       headers: authHeader,
     });
     expect(completion.statusCode).toBe(200);
+    expect(completion.headers['cache-control']).toBe(expectedCacheControl);
     expect(completion.json<SuccessBody<{ completionRate: number }>>().data).toHaveProperty(
       'completionRate',
     );
@@ -99,6 +113,7 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
       headers: authHeader,
     });
     expect(disputeRate.statusCode).toBe(200);
+    expect(disputeRate.headers['cache-control']).toBe(expectedCacheControl);
     expect(disputeRate.json<SuccessBody<{ disputeRate: number }>>().data).toHaveProperty(
       'disputeRate',
     );
@@ -109,6 +124,28 @@ describe.skipIf(!dbAvailable)('analytics routes (integration)', () => {
       headers: authHeader,
     });
     expect(tiers.statusCode).toBe(200);
+    expect(tiers.headers['cache-control']).toBe(expectedCacheControl);
     expect(tiers.json<SuccessBody<{ total: number }>>().data).toHaveProperty('total');
+  });
+
+  it('serializes a GMV amount above Number.MAX_SAFE_INTEGER as an exact decimal string', async () => {
+    const accessToken = await registerAndLogin('ADMIN');
+    const authHeader = { authorization: `Bearer ${accessToken}` };
+
+    const gmv = await app.inject({
+      method: 'GET',
+      url: '/api/v1/analytics/gmv',
+      headers: authHeader,
+    });
+    expect(gmv.statusCode).toBe(200);
+
+    const rawBody = gmv.body;
+    expect(rawBody).toContain(`"releasedAmount":"${LARGE_GMV_AMOUNT}"`);
+    expect(rawBody).not.toContain(`"releasedAmount":${LARGE_GMV_AMOUNT}`);
+
+    const rows = gmv.json<SuccessBody<Array<{ releasedAmount: string }>>>().data;
+    const matching = rows.find((row) => row.releasedAmount === LARGE_GMV_AMOUNT);
+    expect(matching).toBeDefined();
+    expect(typeof matching?.releasedAmount).toBe('string');
   });
 });

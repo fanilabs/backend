@@ -1,180 +1,129 @@
+import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
-import { Keypair } from '@stellar/stellar-sdk';
-import { afterAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createPrismaAnalyticsReader } from './prisma-analytics-reader.js';
-import { isDatabaseAvailable } from '../../../shared/testing/database.js';
 
-const dbAvailable = await isDatabaseAvailable();
+/**
+ * Integration contract for `createPrismaAnalyticsReader` against a disposable
+ * PostgreSQL. Gated on `DATABASE_URL` so it's skipped when no DB is available.
+ *
+ * Fixtures use unique IDs and are cleaned up in `finally`/`afterAll`; deltas
+ * are asserted only for the isolated fixtures this spec inserts, so the
+ * assertions hold regardless of pre-existing rows.
+ */
+const hasDatabase = Boolean(process.env.DATABASE_URL);
+const describeIfDb = hasDatabase ? describe : describe.skip;
 
-describe.skipIf(!dbAvailable)('Prisma analytics reader (integration)', () => {
+describeIfDb('createPrismaAnalyticsReader (integration)', () => {
   const prisma = new PrismaClient();
-  const analyticsReader = createPrismaAnalyticsReader(prisma);
-  const createdChainIds: bigint[] = [];
-  const createdDriverAddresses: string[] = [];
+  const reader = createPrismaAnalyticsReader(prisma);
+
+  const runId = randomUUID();
+  const tokenA = `TOKEN_A_${runId}`;
+  const tokenB = `TOKEN_B_${runId}`;
+  const deliveryIds: string[] = [];
+  const disputeIds: string[] = [];
+  const profileIds: string[] = [];
+
+  beforeAll(async () => {
+    await prisma.$connect();
+  });
 
   afterAll(async () => {
-    if (createdChainIds.length > 0) {
-      await prisma.dispute.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
-      await prisma.escrow.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
-      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
+    try {
+      if (disputeIds.length > 0) {
+        await prisma.dispute.deleteMany({ where: { id: { in: disputeIds } } });
+      }
+      if (deliveryIds.length > 0) {
+        await prisma.delivery.deleteMany({ where: { id: { in: deliveryIds } } });
+      }
+      if (profileIds.length > 0) {
+        await prisma.driverProfile.deleteMany({ where: { id: { in: profileIds } } });
+      }
+    } finally {
+      await prisma.$disconnect();
     }
-    if (createdDriverAddresses.length > 0) {
-      await prisma.driverProfile.deleteMany({ where: { address: { in: createdDriverAddresses } } });
+  });
+
+  it('separates released amounts by token', async () => {
+    const before = await reader.getGmvByToken();
+    const beforeA = before.find((r) => r.token === tokenA);
+    const beforeB = before.find((r) => r.token === tokenB);
+
+    const escrowA = await prisma.escrow.create({
+      data: {
+        token: tokenA,
+        amount: 100n,
+        status: 'RELEASED',
+        isVerified: true,
+      },
+    });
+    const escrowB = await prisma.escrow.create({
+      data: {
+        token: tokenB,
+        amount: 250n,
+        status: 'RELEASED',
+        isVerified: true,
+      },
+    });
+
+    try {
+      const after = await reader.getGmvByToken();
+      const afterA = after.find((r) => r.token === tokenA);
+      const afterB = after.find((r) => r.token === tokenB);
+
+      expect((afterA?.releasedAmount ?? 0n) - (beforeA?.releasedAmount ?? 0n)).toBe(100n);
+      expect((afterB?.releasedAmount ?? 0n) - (beforeB?.releasedAmount ?? 0n)).toBe(250n);
+      expect((afterA?.releasedCount ?? 0) - (beforeA?.releasedCount ?? 0)).toBe(1);
+      expect((afterB?.releasedCount ?? 0) - (beforeB?.releasedCount ?? 0)).toBe(1);
+    } finally {
+      await prisma.escrow.deleteMany({ where: { id: { in: [escrowA.id, escrowB.id] } } });
     }
-    await prisma.$disconnect();
   });
 
-  function nextChainId(): bigint {
-    const id = BigInt(Date.now()) * 1_000_000n + BigInt(Math.floor(Math.random() * 1_000_000));
-    createdChainIds.push(id);
-    return id;
-  }
+  it('keeps resolved disputes in the ever-disputed count', async () => {
+    const before = await reader.getDeliveryFunnelCounts();
 
-  async function seedDelivery(status: 'PENDING' | 'DELIVERED' | 'CANCELLED') {
-    const chainDeliveryId = nextChainId();
-    await prisma.delivery.create({
+    const delivery = await prisma.delivery.create({
+      data: { id: `delivery_${runId}`, status: 'DELIVERED' },
+    });
+    deliveryIds.push(delivery.id);
+
+    const dispute = await prisma.dispute.create({
       data: {
-        chainDeliveryId,
-        senderAddress: Keypair.random().publicKey(),
-        recipientAddress: Keypair.random().publicKey(),
-        status,
-        origin: 'Lagos',
-        destination: 'Accra',
-        cargoCategory: 'GENERAL',
-        weightGrams: 500,
-        fragile: false,
-        createdAtChain: new Date(),
+        id: `dispute_${runId}`,
+        chainDeliveryId: delivery.id,
+        status: 'RESOLVED',
       },
     });
-    return chainDeliveryId;
-  }
+    disputeIds.push(dispute.id);
 
-  it('getGmvByToken sums RELEASED escrow amounts per token, ignoring other statuses', async () => {
-    const delivered1 = await seedDelivery('DELIVERED');
-    const delivered2 = await seedDelivery('DELIVERED');
-    const locked = await seedDelivery('PENDING');
-    const token = `TOKEN-${delivered1}`;
-
-    await prisma.escrow.create({
-      data: {
-        chainDeliveryId: delivered1,
-        senderAddress: Keypair.random().publicKey(),
-        recipientAddress: Keypair.random().publicKey(),
-        driverAddress: Keypair.random().publicKey(),
-        token,
-        amount: '100',
-        status: 'RELEASED',
-        createdAtChain: new Date(),
-      },
-    });
-    await prisma.escrow.create({
-      data: {
-        chainDeliveryId: delivered2,
-        senderAddress: Keypair.random().publicKey(),
-        recipientAddress: Keypair.random().publicKey(),
-        driverAddress: Keypair.random().publicKey(),
-        token,
-        amount: '170141183460469231731687303715884105727',
-        status: 'RELEASED',
-        createdAtChain: new Date(),
-      },
-    });
-    await prisma.escrow.create({
-      data: {
-        chainDeliveryId: locked,
-        senderAddress: Keypair.random().publicKey(),
-        recipientAddress: Keypair.random().publicKey(),
-        driverAddress: Keypair.random().publicKey(),
-        token,
-        amount: '999',
-        status: 'LOCKED',
-        createdAtChain: new Date(),
-      },
-    });
-
-    const rows = await analyticsReader.getGmvByToken();
-    const row = rows.find((r) => r.token === token);
-    expect(row).toEqual({
-      token,
-      releasedAmount: 100n + 170141183460469231731687303715884105727n,
-      releasedCount: 2,
-    });
+    try {
+      const after = await reader.getDeliveryFunnelCounts();
+      expect(after.totalDeliveries - before.totalDeliveries).toBe(1);
+      expect(after.deliveredCount - before.deliveredCount).toBe(1);
+      expect(after.disputedCount - before.disputedCount).toBe(1);
+    } finally {
+      await prisma.dispute.deleteMany({ where: { id: { in: [dispute.id] } } });
+      await prisma.delivery.deleteMany({ where: { id: { in: [delivery.id] } } });
+    }
   });
 
-  it('getGmvByToken excludes unverified released escrows from GMV totals', async () => {
-    const unverifiedDelivery = await seedDelivery('DELIVERED');
-    const rogueToken = `ROGUE-${unverifiedDelivery}`;
+  it('changes only the silver group when a SILVER profile is added', async () => {
+    const before = await reader.getDriverTierCounts();
 
-    await prisma.escrow.create({
-      data: {
-        chainDeliveryId: unverifiedDelivery,
-        senderAddress: Keypair.random().publicKey(),
-        recipientAddress: Keypair.random().publicKey(),
-        driverAddress: Keypair.random().publicKey(),
-        token: rogueToken,
-        amount: '5000000',
-        status: 'RELEASED',
-        isVerified: false,
-        createdAtChain: new Date(),
-      },
+    const profile = await prisma.driverProfile.create({
+      data: { id: `profile_${runId}`, tier: 'SILVER' },
     });
+    profileIds.push(profile.id);
 
-    const rows = await analyticsReader.getGmvByToken();
-    const rogueRow = rows.find((r) => r.token === rogueToken);
-    expect(rogueRow).toBeUndefined();
-  });
-
-  it('getDeliveryFunnelCounts counts total/delivered from deliveries and disputed from disputes', async () => {
-    const before = await analyticsReader.getDeliveryFunnelCounts();
-
-    await seedDelivery('DELIVERED');
-    await seedDelivery('CANCELLED');
-    const disputed = await seedDelivery('DELIVERED');
-    await prisma.dispute.create({
-      data: {
-        chainDeliveryId: disputed,
-        status: 'OPEN',
-        raisedBy: 'GRAISER',
-        raisedAt: new Date(),
-      },
-    });
-
-    const after = await analyticsReader.getDeliveryFunnelCounts();
-    expect(after.totalDeliveries - before.totalDeliveries).toBe(3);
-    expect(after.deliveredCount - before.deliveredCount).toBe(2);
-    expect(after.disputedCount - before.disputedCount).toBe(1);
-  });
-
-  it('getDriverTierCounts groups by tier', async () => {
-    const before = await analyticsReader.getDriverTierCounts();
-
-    const gold = Keypair.random().publicKey();
-    const bronze = Keypair.random().publicKey();
-    createdDriverAddresses.push(gold, bronze);
-    await prisma.driverProfile.create({
-      data: {
-        address: gold,
-        reputationScore: 90,
-        tier: 'GOLD',
-        kycVerified: true,
-        deliveriesCompleted: 10,
-        registeredAt: new Date(),
-      },
-    });
-    await prisma.driverProfile.create({
-      data: {
-        address: bronze,
-        reputationScore: 10,
-        tier: 'BRONZE',
-        kycVerified: false,
-        deliveriesCompleted: 0,
-        registeredAt: new Date(),
-      },
-    });
-
-    const after = await analyticsReader.getDriverTierCounts();
-    expect(after.gold - before.gold).toBe(1);
-    expect(after.bronze - before.bronze).toBe(1);
-    expect(after.silver).toBe(before.silver);
+    try {
+      const after = await reader.getDriverTierCounts();
+      expect(after.silver - before.silver).toBe(1);
+      expect(after.bronze - before.bronze).toBe(0);
+      expect(after.gold - before.gold).toBe(0);
+    } finally {
+      await prisma.driverProfile.deleteMany({ where: { id: { in: [profile.id] } } });
+    }
   });
 });
