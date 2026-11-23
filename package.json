@@ -11,7 +11,7 @@
   },
   "packageManager": "pnpm@10.33.0",
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.build.json",
     "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
     "dev:worker": "tsx watch --env-file-if-exists=.env src/workers/index.ts",
     "start": "node dist/server.js",
