@@ -52,6 +52,79 @@ Serializers convert large identifiers and dates to JSON-safe primitives. Clients
 
 Submission and on-chain observation are **outside the implemented backend surface**: this backend does not submit signed envelopes, does not track a pending transaction resource, and exposes no confirmation-polling endpoint. Clients submit the signed envelope themselves and observe resulting state through the public read models (e.g. `GET /deliveries*`) once the indexer has confirmed the event.
 
+## Analytics measurement contract
+
+The analytics routes expose four read-only metrics. They describe **existing** behavior only; caching and freshness are documented separately (#46). Dashboard authors should read the definitions below rather than inferring units or denominators from raw field names.
+
+### 1. GMV (gross merchandise value)
+
+GMV is the sum of **released, verified escrow amounts**, grouped **per token**. Each token's total is reported in that token's own base units — there is **no exchange-rate conversion** to fiat or to any other token. A GMV figure is therefore only meaningful alongside the token it is denominated in; do not add totals across tokens.
+
+```json
+{
+  "data": {
+    "gmv": [
+      { "token": "USDC", "amount": "1250000000" },
+      { "token": "XLM", "amount": "42000000" }
+    ]
+  }
+}
+```
+
+Empty dataset (no released verified escrow yet):
+
+```json
+{ "data": { "gmv": [] } }
+```
+
+### 2. Completion rate
+
+Completion rate is `completed / total`, where `total` is the number of deliveries in the dataset and `completed` is the number of those deliveries that reached the completed state. When the denominator is zero (no deliveries), the rate is reported as `0` — not `null` and not an error.
+
+```json
+{ "data": { "completed": 8, "total": 10, "rate": 0.8 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "completed": 0, "total": 0, "rate": 0 } }
+```
+
+### 3. Dispute rate
+
+Dispute rate is `disputed / total`, where `total` is the number of deliveries in the dataset and `disputed` counts **all deliveries that have ever had a dispute raised** — including disputes that have since been resolved. It is **not** a count of currently open disputes. When the denominator is zero, the rate is reported as `0`.
+
+```json
+{ "data": { "disputed": 2, "total": 10, "rate": 0.2 } }
+```
+
+A delivery that was disputed and later resolved still counts toward `disputed`:
+
+```json
+{ "data": { "disputed": 1, "total": 1, "rate": 1 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "disputed": 0, "total": 0, "rate": 0 } }
+```
+
+### 4. Delivery count
+
+The fourth metric is the total number of deliveries in the dataset — the same `total` denominator used by the completion and dispute rates. It is a plain count, not a rate.
+
+```json
+{ "data": { "total": 10 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "total": 0 } }
+```
+
 ## Implemented Today
 
 | Method | Path | Description |
