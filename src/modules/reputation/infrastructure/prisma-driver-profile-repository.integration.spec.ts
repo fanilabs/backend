@@ -2,76 +2,92 @@ import { randomUUID } from 'node:crypto';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createPrismaDriverProfileRepository } from './prisma-driver-profile-repository.js';
-import { isDatabaseAvailable } from '../../../shared/testing/database.js';
 
-const dbAvailable = await isDatabaseAvailable();
+const databaseUrl = process.env.DATABASE_URL;
+const describeIfDatabase = databaseUrl ? describe : describe.skip;
 
-describe.skipIf(!dbAvailable)('Prisma driver profile repository (integration)', () => {
-  const prisma = new PrismaClient();
-  const driverProfileRepository = createPrismaDriverProfileRepository(prisma);
-  const createdAddresses: string[] = [];
+const prisma = databaseUrl ? new PrismaClient() : null;
 
+function uniqueAddress(): string {
+  return `0x${randomUUID().replace(/-/g, '').padEnd(40, '0').slice(0, 40)}`;
+}
+
+function baseFields(address: string) {
+  return {
+    address,
+    reputationScore: 0,
+    tier: 'BRONZE' as const,
+    kycVerified: false,
+    deliveriesCompleted: 0,
+    registeredAt: new Date('2024-01-01T00:00:00.000Z'),
+  };
+}
+
+describeIfDatabase('PrismaDriverProfileRepository integration', () => {
   afterAll(async () => {
-    if (createdAddresses.length > 0) {
-      await prisma.driverProfile.deleteMany({ where: { address: { in: createdAddresses } } });
+    await prisma?.$disconnect();
+  });
+
+  it('defaults legacyDeliveriesCompleted to zero when omitted on create', async () => {
+    const address = uniqueAddress();
+    try {
+      const repository = createPrismaDriverProfileRepository(prisma!);
+      await repository.upsert(address, baseFields(address));
+
+      const stored = await prisma!.driverProfile.findUnique({ where: { address } });
+      expect(stored?.legacyDeliveriesCompleted).toBe(0);
+    } finally {
+      await prisma!.driverProfile.deleteMany({ where: { address } });
     }
-    await prisma.$disconnect();
   });
 
-  function nextAddress(): string {
-    const address = `GDRIVER-${randomUUID()}`;
-    createdAddresses.push(address);
-    return address;
-  }
+  it('preserves legacyDeliveriesCompleted when omitted on update', async () => {
+    const address = uniqueAddress();
+    try {
+      const repository = createPrismaDriverProfileRepository(prisma!);
+      await repository.upsert(address, {
+        ...baseFields(address),
+        legacyDeliveriesCompleted: 7,
+      });
+      await repository.upsert(address, baseFields(address));
 
-  it('upsert creates a driver profile when none exists, defaulting legacyDeliveriesCompleted to 0', async () => {
-    const address = nextAddress();
-    const registeredAt = new Date('2026-01-01T00:00:00Z');
-
-    await driverProfileRepository.upsert(address, {
-      reputationScore: 50,
-      tier: 'SILVER',
-      kycVerified: false,
-      deliveriesCompleted: 0,
-      registeredAt,
-    });
-
-    const created = await driverProfileRepository.findByAddress(address);
-    expect(created).toMatchObject({
-      reputationScore: 50,
-      tier: 'SILVER',
-      kycVerified: false,
-      legacyDeliveriesCompleted: 0,
-    });
-    expect(created?.createdAt).toBeInstanceOf(Date);
+      const stored = await prisma!.driverProfile.findUnique({ where: { address } });
+      expect(stored?.legacyDeliveriesCompleted).toBe(7);
+    } finally {
+      await prisma!.driverProfile.deleteMany({ where: { address } });
+    }
   });
 
-  it('upsert updates in place and preserves legacyDeliveriesCompleted when omitted from a later call', async () => {
-    const address = nextAddress();
-    await driverProfileRepository.upsert(address, {
-      reputationScore: 50,
-      tier: 'SILVER',
-      kycVerified: false,
-      deliveriesCompleted: 0,
-      registeredAt: new Date(),
-      legacyDeliveriesCompleted: 4,
-    });
+  it('replaces a prior nonzero legacyDeliveriesCompleted with explicit zero and preserves zero on omission', async () => {
+    const address = uniqueAddress();
+    try {
+      const repository = createPrismaDriverProfileRepository(prisma!);
 
-    await driverProfileRepository.upsert(address, {
-      reputationScore: 63,
-      tier: 'SILVER',
-      kycVerified: true,
-      deliveriesCompleted: 1,
-      registeredAt: new Date(),
-    });
+      await repository.upsert(address, {
+        ...baseFields(address),
+        legacyDeliveriesCompleted: 5,
+      });
+      const afterNonzero = await prisma!.driverProfile.findUnique({ where: { address } });
+      expect(afterNonzero?.legacyDeliveriesCompleted).toBe(5);
+      const originalId = afterNonzero!.id;
+      const originalCreatedAt = afterNonzero!.createdAt;
 
-    const updated = await driverProfileRepository.findByAddress(address);
-    expect(updated).toMatchObject({
-      reputationScore: 63,
-      kycVerified: true,
-      deliveriesCompleted: 1,
-      legacyDeliveriesCompleted: 4,
-    });
-    expect(updated?.createdAt).toBeInstanceOf(Date);
+      await repository.upsert(address, {
+        ...baseFields(address),
+        legacyDeliveriesCompleted: 0,
+      });
+      const afterZero = await prisma!.driverProfile.findUnique({ where: { address } });
+      expect(afterZero?.legacyDeliveriesCompleted).toBe(0);
+      expect(afterZero?.id).toBe(originalId);
+      expect(afterZero?.createdAt).toEqual(originalCreatedAt);
+
+      await repository.upsert(address, baseFields(address));
+      const afterOmission = await prisma!.driverProfile.findUnique({ where: { address } });
+      expect(afterOmission?.legacyDeliveriesCompleted).toBe(0);
+      expect(afterOmission?.id).toBe(originalId);
+      expect(afterOmission?.createdAt).toEqual(originalCreatedAt);
+    } finally {
+      await prisma!.driverProfile.deleteMany({ where: { address } });
+    }
   });
 });

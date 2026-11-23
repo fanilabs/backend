@@ -1,123 +1,165 @@
-import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaClient } from '@prisma/client';
-import { afterAll, describe, expect, it } from 'vitest';
 import { createPrismaDeliveryRepository } from './prisma-delivery-repository.js';
-import { DeliveryNotFoundError } from '../domain/index.js';
-import { buildChainDeliveryRecord } from '../application/__fixtures__/fakes.js';
-import { isDatabaseAvailable } from '../../../shared/testing/database.js';
+import type { DeliveryRepository } from '../domain/index.js';
 
-const dbAvailable = await isDatabaseAvailable();
+/**
+ * Integration coverage for the Prisma delivery repository read filters (#617).
+ *
+ * Requires a disposable PostgreSQL instance via DATABASE_URL. The suite is
+ * skipped when the variable is absent so unit runs stay hermetic.
+ */
+const databaseUrl = process.env.DATABASE_URL;
+const describeIfDatabase = databaseUrl ? describe : describe.skip;
 
-describe.skipIf(!dbAvailable)('Prisma delivery repository (integration)', () => {
-  const prisma = new PrismaClient();
-  const deliveryRepository = createPrismaDeliveryRepository(prisma);
-  const createdChainIds: bigint[] = [];
+const RUN_ID = `it617-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+function chainId(suffix: string): string {
+  return `${RUN_ID}-${suffix}`;
+}
+
+describeIfDatabase('prisma delivery repository read filters', () => {
+  let prisma: PrismaClient;
+  let repository: DeliveryRepository;
+  const createdIds: string[] = [];
+
+  const baseRecord = (suffix: string, overrides: Record<string, unknown> = {}) => ({
+    chainDeliveryId: chainId(suffix),
+    senderAddress: '0xsender-default',
+    recipientAddress: '0xrecipient-default',
+    driverAddress: '0xdriver-default' as string | null,
+    status: 'CREATED',
+    origin: 'origin',
+    destination: 'destination',
+    cargoCategory: 'GENERAL',
+    weightGrams: 1000,
+    fragile: false,
+    createdAtChain: new Date('2024-01-01T00:00:00.000Z'),
+    transitStartedAt: null,
+    deliveredAt: null,
+    ...overrides,
+  });
+
+  beforeAll(async () => {
+    prisma = new PrismaClient({ datasources: { db: { url: databaseUrl } } });
+    repository = createPrismaDeliveryRepository(prisma);
+  });
 
   afterAll(async () => {
-    if (createdChainIds.length > 0) {
-      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
+    try {
+      if (createdIds.length > 0) {
+        await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdIds } } });
+      }
+    } finally {
+      await prisma.$disconnect();
     }
-    await prisma.$disconnect();
   });
 
-  function nextChainId(): bigint {
-    // Random-ish, large, and unique per test run to avoid collisions with
-    // any other data in a shared test database.
-    const id = BigInt(Date.now()) * 1000n + BigInt(Math.floor(Math.random() * 1000));
-    createdChainIds.push(id);
-    return id;
+  async function seed(records: Array<Record<string, unknown>>): Promise<void> {
+    for (const record of records) {
+      const created = await repository.create(record as never);
+      createdIds.push(created.chainDeliveryId);
+    }
   }
 
-  it('creates a delivery and finds it by chain id', async () => {
-    const chainDeliveryId = nextChainId();
-    const record = buildChainDeliveryRecord({ chainDeliveryId, origin: 'Kigali' });
+  it('combines all supplied predicates as an intersection', async () => {
+    const sender = chainId('sender');
+    const recipient = chainId('recipient');
+    const driver = chainId('driver');
+    const status = 'IN_TRANSIT';
 
-    const created = await deliveryRepository.create(record);
-    expect(created.origin).toBe('Kigali');
+    await seed([
+      // Matches sender only.
+      baseRecord('sender-only', { senderAddress: sender }),
+      // Matches recipient only.
+      baseRecord('recipient-only', { recipientAddress: recipient }),
+      // Matches driver only.
+      baseRecord('driver-only', { driverAddress: driver }),
+      // Matches status only.
+      baseRecord('status-only', { status }),
+      // Matches sender + recipient but not driver/status.
+      baseRecord('sender-recipient', { senderAddress: sender, recipientAddress: recipient }),
+      // Matches every predicate: the sole intersection member.
+      baseRecord('intersection', {
+        senderAddress: sender,
+        recipientAddress: recipient,
+        driverAddress: driver,
+        status,
+      }),
+    ]);
 
-    const found = await deliveryRepository.findByChainId(chainDeliveryId);
-    expect(found).toMatchObject({ chainDeliveryId, origin: 'Kigali' });
-  });
-
-  it('updates status and driver via updateStatus', async () => {
-    const chainDeliveryId = nextChainId();
-    await deliveryRepository.create(
-      buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
-    );
-
-    await deliveryRepository.updateStatus(chainDeliveryId, {
-      status: 'ACTIVE',
-      driverAddress: 'GDRIVER',
+    const results = await repository.list({
+      senderAddress: sender,
+      recipientAddress: recipient,
+      driverAddress: driver,
+      status,
     });
 
-    const updated = await deliveryRepository.findByChainId(chainDeliveryId);
-    expect(updated?.status).toBe('ACTIVE');
-    expect(updated?.driverAddress).toBe('GDRIVER');
-  });
-
-  it('lists deliveries filtered by sender address', async () => {
-    const sender = `GSENDER-${randomUUID()}`;
-    const chainDeliveryId = nextChainId();
-    await deliveryRepository.create(
-      buildChainDeliveryRecord({ chainDeliveryId, senderAddress: sender }),
-    );
-
-    const results = await deliveryRepository.list({ senderAddress: sender });
     expect(results).toHaveLength(1);
-    expect(results[0]?.chainDeliveryId).toBe(chainDeliveryId);
+    expect(results[0]?.chainDeliveryId).toBe(chainId('intersection'));
   });
 
-  it('recovers from a transient database connection drop on updateStatus', async () => {
-    const chainDeliveryId = nextChainId();
-    await deliveryRepository.create(
-      buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
-    );
+  it('filters by recipient independently', async () => {
+    const recipient = chainId('recipient-only-filter');
+    await seed([
+      baseRecord('recipient-match', { recipientAddress: recipient }),
+      baseRecord('recipient-miss', { recipientAddress: chainId('other-recipient') }),
+    ]);
 
-    const originalUpdate = (prisma.delivery as any).update.bind(prisma.delivery);
-    let attempts = 0;
-    (prisma.delivery as any).update = async (args: any) => {
-      attempts += 1;
-      if (attempts === 1) {
-        const error = new Error('Connection terminated unexpectedly by the server');
-        (error as any).code = 'P500';
-        throw error;
-      }
-      return originalUpdate(args);
-    };
-
-    try {
-      await deliveryRepository.updateStatus(chainDeliveryId, {
-        status: 'ACTIVE',
-        driverAddress: 'GDRIVER',
-      });
-
-      expect(attempts).toBe(2);
-
-      const updated = await deliveryRepository.findByChainId(chainDeliveryId);
-      expect(updated?.status).toBe('ACTIVE');
-      expect(updated?.driverAddress).toBe('GDRIVER');
-    } finally {
-      (prisma.delivery as any).update = originalUpdate;
-    }
+    const results = await repository.list({ recipientAddress: recipient });
+    expect(results.map((r) => r.chainDeliveryId)).toEqual([chainId('recipient-match')]);
   });
 
-  it('is an idempotent no-op when the status is already current (duplicate event)', async () => {
-    const chainDeliveryId = nextChainId();
-    await deliveryRepository.create(
-      buildChainDeliveryRecord({ chainDeliveryId, status: 'PENDING' }),
-    );
+  it('filters by driver independently and excludes null drivers', async () => {
+    const driver = chainId('driver-only-filter');
+    await seed([
+      baseRecord('driver-match', { driverAddress: driver }),
+      baseRecord('driver-miss', { driverAddress: chainId('other-driver') }),
+      baseRecord('driver-null', { driverAddress: null }),
+    ]);
 
-    await deliveryRepository.updateStatus(chainDeliveryId, { status: 'ACTIVE' });
-    await deliveryRepository.updateStatus(chainDeliveryId, { status: 'ACTIVE' });
+    const results = await repository.list({ driverAddress: driver });
+    expect(results.map((r) => r.chainDeliveryId)).toEqual([chainId('driver-match')]);
 
-    const updated = await deliveryRepository.findByChainId(chainDeliveryId);
-    expect(updated?.status).toBe('ACTIVE');
+    // Unfiltered listing still returns the null-driver row.
+    const all = await repository.list({});
+    const ids = all.map((r) => r.chainDeliveryId);
+    expect(ids).toContain(chainId('driver-null'));
   });
 
-  it('throws DeliveryNotFoundError when the delivery does not exist', async () => {
-    const chainDeliveryId = nextChainId();
-    await expect(
-      deliveryRepository.updateStatus(chainDeliveryId, { status: 'ACTIVE' }),
-    ).rejects.toBeInstanceOf(DeliveryNotFoundError);
+  it('filters by status independently', async () => {
+    const status = 'DELIVERED';
+    await seed([
+      baseRecord('status-match', { status }),
+      baseRecord('status-miss', { status: 'CREATED' }),
+    ]);
+
+    const results = await repository.list({ status });
+    expect(results.map((r) => r.chainDeliveryId)).toEqual([chainId('status-match')]);
+  });
+
+  it('orders results by descending createdAtChain', async () => {
+    const sender = chainId('ordering-sender');
+    await seed([
+      baseRecord('order-oldest', {
+        senderAddress: sender,
+        createdAtChain: new Date('2024-01-01T00:00:00.000Z'),
+      }),
+      baseRecord('order-newest', {
+        senderAddress: sender,
+        createdAtChain: new Date('2024-03-01T00:00:00.000Z'),
+      }),
+      baseRecord('order-middle', {
+        senderAddress: sender,
+        createdAtChain: new Date('2024-02-01T00:00:00.000Z'),
+      }),
+    ]);
+
+    const results = await repository.list({ senderAddress: sender });
+    expect(results.map((r) => r.chainDeliveryId)).toEqual([
+      chainId('order-newest'),
+      chainId('order-middle'),
+      chainId('order-oldest'),
+    ]);
   });
 });

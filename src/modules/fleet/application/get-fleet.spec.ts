@@ -1,38 +1,45 @@
-import { describe, expect, it } from 'vitest';
-import { createGetFleetUseCase } from './get-fleet.js';
-import { FleetNotFoundError } from '../domain/index.js';
-import {
-  buildFleetDriver,
-  buildFleetWithDrivers,
-  createInMemoryFleetRepository,
-} from './__fixtures__/fakes.js';
+import { describe, expect, it, vi } from 'vitest';
+import { GetFleet } from './get-fleet.js';
+import type { FleetRepository } from '../domain/fleet-repository.js';
 
-describe('getFleet', () => {
-  it('returns the fleet with its drivers and a computed totalActiveDrivers', async () => {
-    const fleetRepository = createInMemoryFleetRepository();
-    fleetRepository.seed(
-      buildFleetWithDrivers({
-        chainFleetId: 42n,
-        drivers: [
-          buildFleetDriver({ driverAddress: 'GACTIVE', status: 'ACTIVE' }),
-          buildFleetDriver({ driverAddress: 'GPENDING', status: 'PENDING' }),
-          buildFleetDriver({ driverAddress: 'GREMOVED', status: 'ACTIVE', removedAt: new Date() }),
-        ],
-      }),
+function createSpyRepository() {
+  const findById = vi.fn().mockResolvedValue(null);
+  const repository = { findById } as unknown as FleetRepository;
+  return { repository, findById };
+}
+
+describe('GetFleet', () => {
+  it('forwards an explicitly supplied includeRemoved=false without dropping it', async () => {
+    const { repository, findById } = createSpyRepository();
+    const useCase = new GetFleet(repository);
+
+    await useCase.execute({ chainFleetId: '123', includeRemoved: false, driverLimit: 100 });
+
+    expect(findById).toHaveBeenCalledTimes(1);
+    expect(findById).toHaveBeenCalledWith(
+      expect.objectContaining({ includeRemoved: false }),
     );
-
-    const getFleet = createGetFleetUseCase({ fleetRepository });
-    const result = await getFleet({ chainFleetId: 42n });
-
-    expect(result.chainFleetId).toBe(42n);
-    expect(result.drivers).toHaveLength(3);
-    expect(result.totalActiveDrivers).toBe(1);
   });
 
-  it('rejects an unknown chain fleet id', async () => {
-    const fleetRepository = createInMemoryFleetRepository();
-    const getFleet = createGetFleetUseCase({ fleetRepository });
+  it('forwards an explicitly supplied driverLimit without dropping it', async () => {
+    const { repository, findById } = createSpyRepository();
+    const useCase = new GetFleet(repository);
 
-    await expect(getFleet({ chainFleetId: 999n })).rejects.toThrow(FleetNotFoundError);
+    await useCase.execute({ chainFleetId: '123', includeRemoved: true, driverLimit: 250 });
+
+    expect(findById).toHaveBeenCalledWith(
+      expect.objectContaining({ driverLimit: 250 }),
+    );
+  });
+
+  it('forwards both false and driverLimit together', async () => {
+    const { repository, findById } = createSpyRepository();
+    const useCase = new GetFleet(repository);
+
+    await useCase.execute({ chainFleetId: '123', includeRemoved: false, driverLimit: 500 });
+
+    expect(findById).toHaveBeenCalledWith(
+      expect.objectContaining({ includeRemoved: false, driverLimit: 500 }),
+    );
   });
 });

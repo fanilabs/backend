@@ -2,6 +2,34 @@
 
 ## Development
 
+### Package manager
+
+The `packageManager` field in `package.json` is the authoritative source for
+the pnpm version contributors must use. CI selects the same release, so a
+fresh checkout should install with that exact version.
+
+The `engines` range (for example `pnpm >=9`) is only a minimum compatibility
+range — it is not the recommended or tested toolchain. Do not interpret it as
+the version to install.
+
+Select the pinned release with Corepack (this does not change any dependency
+versions):
+
+```sh
+corepack prepare pnpm@10.33.0 --activate
+```
+
+Verify the active version matches the pin before installing:
+
+```sh
+pnpm --version   # must print 10.33.0
+pnpm install --frozen-lockfile
+```
+
+When the `packageManager` pin changes, update the version in the
+`corepack prepare` command above to match it, then re-run the verification
+step.
+
 ### Host-run setup
 
 1. Copy the example environment file:
@@ -37,3 +65,8 @@ variable.
 > Docker Compose uses its own `env_file` directive and is configured
 > separately. The host-run env-file loading described here does not affect
 > Compose behavior.
+
+## Handsoff notes
+
+<!-- handsoff-issue-655 -->
+- #655: Validate Grafana provisioning references before local startup
