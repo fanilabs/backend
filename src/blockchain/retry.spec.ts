@@ -114,6 +114,60 @@ describe('withRetry', () => {
     expect(delays).toEqual([100, 200, 400]);
   });
 
+  // Issue #694: invalid maxAttempts must be caught before any fn() or timer
+  it('rejects maxAttempts of zero before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow(RangeError);
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow('maxAttempts');
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects negative maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: -1 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects NaN maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: NaN })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects Infinity maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: Infinity })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects fractional maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 1.5 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('accepts maxAttempts=1 and performs exactly one attempt', async () => {
+    const fn = vi.fn().mockResolvedValue('done');
+    const result = await withRetry(fn, { maxAttempts: 1 });
+    expect(result).toBe('done');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the default maxAttempts when options are omitted', async () => {
+    const fn = vi.fn().mockResolvedValue('ok');
+    await withRetry(fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects maxAttempts of zero without scheduling any timer', async () => {
+    const timerSpy = vi.spyOn(global, 'setTimeout');
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+    expect(timerSpy).not.toHaveBeenCalled();
+    timerSpy.mockRestore();
+  });
+
   // Issue #344: with large maxAttempts the exponent must be capped so the
   // backoff never overflows into NaN/Infinity — a NaN delay would make
   // setTimeout fire immediately and turn the retry loop into a hot spin

@@ -29,6 +29,7 @@ help:
 	@echo "  make docker-up-observability   Also start local Prometheus + Grafana (see docs/OBSERVABILITY.md)"
 	@echo "  make docker-migrate        Re-run Prisma migrations against the Docker Compose stack"
 	@echo "  make load-test             Run scripts/load-test.ts against BASE_URL (default localhost:3000)"
+	@echo "  make check-dockerfile-parity   Verify Dockerfile and Dockerfile.worker shared stages are in sync"
 
 install:
 	pnpm install
@@ -104,3 +105,6 @@ docker-migrate:
 
 load-test:
 	pnpm load-test
+
+check-dockerfile-parity:
+	bash scripts/check-dockerfile-parity.sh
