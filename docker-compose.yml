@@ -54,6 +54,7 @@ services:
       target: api
     env_file: .env
     environment:
+      PORT: '3000'
       DATABASE_URL: postgresql://fanilab:fanilab@postgres:5432/fanilab_backend?schema=public
       REDIS_URL: redis://redis:6379
       EVIDENCE_STORAGE_DIR: /var/lib/fanilab/evidence
