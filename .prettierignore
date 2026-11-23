@@ -3,4 +3,5 @@ coverage
 node_modules
 pnpm-lock.yaml
 prisma/migrations
+prisma/schema.prisma
 *.md

@@ -18,6 +18,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
       - run: pnpm typecheck:eslint
+      - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm test
       - name: Upload JUnit test report

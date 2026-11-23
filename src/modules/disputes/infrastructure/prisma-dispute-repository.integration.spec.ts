@@ -4,6 +4,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 import { createPrismaDisputeRepository } from './prisma-dispute-repository.js';
 import { createPrismaEvidenceRepository } from './prisma-evidence-repository.js';
 import { isDatabaseAvailable } from '../../../shared/testing/database.js';
+import { createChainIdAllocator } from '../../../shared/testing/id-allocator.js';
 
 const dbAvailable = await isDatabaseAvailable();
 
@@ -11,16 +12,16 @@ describe.skipIf(!dbAvailable)('Prisma dispute + evidence repositories (integrati
   const prisma = new PrismaClient();
   const disputeRepository = createPrismaDisputeRepository(prisma);
   const evidenceRepository = createPrismaEvidenceRepository(prisma);
-  const createdChainIds: bigint[] = [];
+  const allocator = createChainIdAllocator();
   const createdUserIds: string[] = [];
 
   afterAll(async () => {
-    if (createdChainIds.length > 0) {
+    if (allocator.allocated.length > 0) {
       await prisma.evidence.deleteMany({
-        where: { dispute: { chainDeliveryId: { in: createdChainIds } } },
+        where: { dispute: { chainDeliveryId: { in: [...allocator.allocated] } } },
       });
-      await prisma.dispute.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
-      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: createdChainIds } } });
+      await prisma.dispute.deleteMany({ where: { chainDeliveryId: { in: [...allocator.allocated] } } });
+      await prisma.delivery.deleteMany({ where: { chainDeliveryId: { in: [...allocator.allocated] } } });
     }
     if (createdUserIds.length > 0) {
       await prisma.user.deleteMany({ where: { id: { in: createdUserIds } } });
