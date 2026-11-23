@@ -14,6 +14,8 @@ help:
 	@echo "  make format-check          Run Prettier in check mode (read-only)"
 	@echo "  make test                  Run the test suite once"
 	@echo "  make test-watch            Run the test suite in watch mode"
+	@echo "  make test-coverage         Run the test suite with coverage report (pnpm test:coverage)"
+	@echo "  make test-e2e              Run the E2E test suite (requires Postgres + Redis; see tests/e2e/README.md)"
 	@echo "  make typecheck             Run the TypeScript compiler with no output"
 	@echo "  make db-up                 Start Postgres + Redis only (docker compose)"
 	@echo "  make db-down               Stop Postgres + Redis"
@@ -57,6 +59,12 @@ test:
 
 test-watch:
 	pnpm test:watch
+
+test-coverage:
+	pnpm test:coverage
+
+test-e2e:
+	pnpm test:e2e
 
 typecheck:
 	pnpm typecheck
