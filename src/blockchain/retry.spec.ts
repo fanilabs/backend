@@ -234,6 +234,44 @@ describe('CircuitBreaker', () => {
     expect(breaker.getState()).toBe('closed');
   });
 
+  it('resets the consecutive-failure streak on an intervening closed-state success', async () => {
+    const threshold = 3;
+    const breaker = new CircuitBreaker({ failureThreshold: threshold, cooldownMs: 60_000 });
+    const fn = vi.fn();
+    const failing = () => Promise.reject(new Error('boom'));
+    const succeeding = () => Promise.resolve('ok');
+
+    // threshold - 1 failures: stays closed, doesn't open.
+    for (let i = 0; i < threshold - 1; i += 1) {
+      fn.mockImplementationOnce(failing);
+      await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    }
+    expect(breaker.getState()).toBe('closed');
+
+    // One success resets consecutiveFailures to 0.
+    fn.mockImplementationOnce(succeeding);
+    await expect(breaker.execute(fn)).resolves.toBe('ok');
+    expect(breaker.getState()).toBe('closed');
+
+    // Another threshold - 1 failures: still closed, because the earlier
+    // streak was reset by the success above rather than carrying over.
+    for (let i = 0; i < threshold - 1; i += 1) {
+      fn.mockImplementationOnce(failing);
+      await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    }
+    expect(breaker.getState()).toBe('closed');
+
+    // One more failure is now the threshold-th consecutive failure since
+    // the reset, so the breaker opens.
+    fn.mockImplementationOnce(failing);
+    await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    expect(breaker.getState()).toBe('open');
+
+    // Every call above was actually executed — the breaker never
+    // short-circuited a call before it opened.
+    expect(fn).toHaveBeenCalledTimes(2 * (threshold - 1) + 2);
+  });
+
   it('re-opens after a failing half-open probe and requires a new cooldown', async () => {
     const breaker = new CircuitBreaker({ failureThreshold: 1, cooldownMs: 1 });
 
