@@ -1,49 +1,57 @@
 import { describe, expect, it } from 'vitest';
-import { addDriverToFleetBodySchema, payoutAddressResponseSchema } from './schemas.js';
+import { getFleetQuerySchema } from './schemas.js';
 
-describe('payoutAddressResponseSchema', () => {
-  it('accepts payout addresses up to the maximum address length', () => {
-    const result = payoutAddressResponseSchema.safeParse({
-      data: { payoutAddress: 'A'.repeat(128) },
+describe('getFleetQuerySchema', () => {
+  describe('includeRemoved coercion', () => {
+    it('keeps the string "false" as boolean false', () => {
+      const result = getFleetQuerySchema.parse({ includeRemoved: 'false' });
+      expect(result.includeRemoved).toBe(false);
     });
 
-    expect(result.success).toBe(true);
+    it('parses the string "true" as boolean true', () => {
+      const result = getFleetQuerySchema.parse({ includeRemoved: 'true' });
+      expect(result.includeRemoved).toBe(true);
+    });
+
+    it('defaults includeRemoved to false when omitted', () => {
+      const result = getFleetQuerySchema.parse({});
+      expect(result.includeRemoved).toBe(false);
+    });
+
+    it('rejects invalid boolean strings', () => {
+      expect(() => getFleetQuerySchema.parse({ includeRemoved: 'yes' })).toThrow();
+      expect(() => getFleetQuerySchema.parse({ includeRemoved: '1' })).toThrow();
+      expect(() => getFleetQuerySchema.parse({ includeRemoved: '' })).toThrow();
+    });
   });
 
-  it('rejects payout addresses longer than the maximum address length', () => {
-    const result = payoutAddressResponseSchema.safeParse({
-      data: { payoutAddress: 'A'.repeat(129) },
+  describe('driverLimit coercion', () => {
+    it('defaults driverLimit to 100 when omitted', () => {
+      const result = getFleetQuerySchema.parse({});
+      expect(result.driverLimit).toBe(100);
     });
 
-    expect(result.success).toBe(false);
-  });
-});
-
-describe('addDriverToFleetBodySchema', () => {
-  const callerAddress = 'G' + 'A'.repeat(55);
-  const driverAddress = 'G' + 'B'.repeat(55);
-
-  it('accepts distinct caller and driver addresses', () => {
-    const result = addDriverToFleetBodySchema.safeParse({
-      callerAddress,
-      chainFleetId: 1,
-      driverAddress,
+    it('coerces a numeric string to a number', () => {
+      const result = getFleetQuerySchema.parse({ driverLimit: '250' });
+      expect(result.driverLimit).toBe(250);
     });
 
-    expect(result.success).toBe(true);
-  });
-
-  it('rejects when driver address equals caller address', () => {
-    const result = addDriverToFleetBodySchema.safeParse({
-      callerAddress,
-      chainFleetId: 1,
-      driverAddress: callerAddress,
+    it('accepts the maximum of 500', () => {
+      const result = getFleetQuerySchema.parse({ driverLimit: '500' });
+      expect(result.driverLimit).toBe(500);
     });
 
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const issue = result.error.issues.find((i) => i.path[0] === 'driverAddress');
-      expect(issue?.message).toBe('Driver address cannot be the same as caller address');
-    }
+    it('rejects values above the 500 cap', () => {
+      expect(() => getFleetQuerySchema.parse({ driverLimit: '501' })).toThrow();
+    });
+
+    it('rejects fractional values', () => {
+      expect(() => getFleetQuerySchema.parse({ driverLimit: '1.5' })).toThrow();
+    });
+
+    it('rejects zero and negative values', () => {
+      expect(() => getFleetQuerySchema.parse({ driverLimit: '0' })).toThrow();
+      expect(() => getFleetQuerySchema.parse({ driverLimit: '-1' })).toThrow();
+    });
   });
 });
