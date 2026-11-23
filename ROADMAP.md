@@ -170,4 +170,4 @@ Each module, before moving to the next, must ship with:
 
 ---
 
-**Current status:** Phase 5 in progress. `auth`, `users`, `indexer` (minimal scope), and `deliveries` modules complete. Next: `escrow`.
+**Current status:** Phases 1–6 complete. All twelve modules (`auth`, `users`, `indexer`, `deliveries`, `escrow`, `fleet`, `disputes`, `reputation`, `notifications`, `analytics`, `fraud-detection`, `admin`) are live. `v1.0.0` has been tagged and `docker compose up` validated end-to-end. Active work is post-v1 contributor issues and enhancements tracked in the GitHub issue backlog.

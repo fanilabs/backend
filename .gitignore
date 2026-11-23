@@ -12,6 +12,8 @@ dist/
 
 # Testing
 coverage/
+**/__snapshots__/
+*.snap
 
 # Logs
 *.log

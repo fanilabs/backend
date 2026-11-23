@@ -139,11 +139,25 @@ Empty dataset:
 | `POST` | `/api/v1/auth/verify-email` | Consume an email verification token (idempotent) |
 | `POST` | `/api/v1/auth/request-password-reset` | Always returns success — no user enumeration; sends a reset email only if the address is registered |
 | `POST` | `/api/v1/auth/reset-password` | Consume a password reset token, set a new password, revoke all existing sessions |
-| `GET` | `/api/v1/notifications` | List the authenticated user's notifications, including nullable `readAt` |
+| `GET` | `/api/v1/notifications` | List the authenticated user's notifications; optional `status`, `unread`, `channel`, `limit`, and `before` query filters |
 | `GET` | `/api/v1/notifications/:id` | Get one of the authenticated user's notifications |
 | `POST` | `/api/v1/notifications/mark-read` | Mark all unread notifications for the authenticated user as read; returns `{ "data": { "count": 5 } }` |
 
 All `/api/v1/notifications*` routes require authentication. The mark-read endpoint scopes updates to the authenticated user and does not change notification delivery status.
+
+#### Notification list filters
+
+`GET /api/v1/notifications` accepts five optional query filters:
+
+| Parameter | Type | Description |
+|---|---|---|
+| `status` | `PENDING` \| `SENT` \| `FAILED` | Returns only notifications with this delivery status. |
+| `unread` | `true` \| `false` | `true` returns only rows whose `readAt` is null; `false` returns only rows whose `readAt` is non-null. Omitting the parameter places no constraint on read state. |
+| `channel` | `EMAIL` \| `SMS` \| `PUSH` | Returns only notifications from this channel. |
+| `limit` | integer 1–100 | Page size. Default: 20. |
+| `before` | ISO 8601 datetime | Cursor — returns only notifications older than this timestamp. Pass the previous page's `meta.nextCursor` to fetch the next page. |
+
+All supplied filters combine as a logical AND. `meta.nextCursor` is `null` on the last page.
 
 All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate email), `401 UNAUTHORIZED` (bad credentials / invalid or expired token), `400 VALIDATION_ERROR` (malformed request body). See `AUTHENTICATION.md` for the full design (token formats, rotation, password-reset fingerprinting).
 
