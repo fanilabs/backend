@@ -66,6 +66,30 @@ describe('scValToNative', () => {
     expect(scValToNative(map)).toEqual({ amount: 100, fragile: true });
   });
 
+  const unicode = 'café 東京 🚚';
+
+  it.each([
+    { name: 'null vector', value: xdr.ScVal.scvVec(null), expected: null },
+    { name: 'empty vector', value: xdr.ScVal.scvVec([]), expected: [] },
+    { name: 'null map', value: xdr.ScVal.scvMap(null), expected: null },
+    { name: 'empty map', value: xdr.ScVal.scvMap([]), expected: {} },
+    {
+      name: 'nested containers',
+      value: xdr.ScVal.scvVec([
+        xdr.ScVal.scvMap([
+          new xdr.ScMapEntry({
+            key: xdr.ScVal.scvSymbol('items'),
+            val: xdr.ScVal.scvVec([xdr.ScVal.scvString(unicode), xdr.ScVal.scvMap([])]),
+          }),
+        ]),
+      ]),
+      expected: [{ items: [unicode, {}] }],
+    },
+    { name: 'multibyte string', value: xdr.ScVal.scvString(unicode), expected: unicode },
+  ])('round-trips $name through XDR', ({ value, expected }) => {
+    expect(scValToNative(xdr.ScVal.fromXDR(value.toXDR()))).toStrictEqual(expected);
+  });
+
   it('decodes a real Stellar address', () => {
     const keypair = Keypair.random();
     const scVal = new Address(keypair.publicKey()).toScVal();
