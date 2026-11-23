@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import metricsPlugin from './metrics.js';
-import { httpRequestsTotal } from '../../metrics/index.js';
+import { httpRequestDuration, httpRequestsTotal } from '../../metrics/index.js';
 
 async function buildInstance() {
   const app = Fastify();
@@ -26,6 +26,44 @@ async function countMatching(match: Record<string, string>): Promise<number> {
 }
 
 describe('metrics plugin', () => {
+  it('observes one duration in seconds with the method, route pattern and response status', async () => {
+    const app = Fastify();
+    const route = '/metrics-test/items/:id';
+    app.addHook('onRequest', async (_request, reply) => {
+      vi.spyOn(reply, 'elapsedTime', 'get').mockReturnValue(250);
+    });
+    await app.register(metricsPlugin);
+    app.post(route, async (_request, reply) => reply.code(201).send());
+
+    async function histogramTotals() {
+      const { name, values } = await httpRequestDuration.get();
+      const sum = values.find(
+        ({ metricName, labels }) =>
+          metricName === `${name}_sum` &&
+          labels.method === 'POST' &&
+          labels.route === route &&
+          labels.status_code === '201',
+      );
+      const count = values
+        .filter(({ metricName }) => metricName === `${name}_count`)
+        .reduce((total, series) => total + series.value, 0);
+      return { sum: sum?.value ?? 0, count };
+    }
+
+    try {
+      const before = await histogramTotals();
+
+      const response = await app.inject({ method: 'POST', url: '/metrics-test/items/123' });
+
+      const after = await histogramTotals();
+      expect(response.statusCode).toBe(201);
+      expect(after.count - before.count).toBe(1);
+      expect(after.sum - before.sum).toBeCloseTo(0.25);
+    } finally {
+      await app.close();
+    }
+  });
+
   it('labels a parameterized route by its pattern, not the concrete requested URL', async () => {
     const app = await buildInstance();
     const pattern = '/api/v1/deliveries/:chainDeliveryId';

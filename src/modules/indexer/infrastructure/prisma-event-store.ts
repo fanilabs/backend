@@ -16,6 +16,9 @@ function isUniqueConstraintViolation(error: unknown): boolean {
  * insert attempt is caught and reported as "already there" (`false`)
  * rather than propagated as an error, which is the whole point: re-polling
  * an overlapping ledger range must be a harmless no-op.
+ *
+ * Only P2002 (unique constraint) failures are swallowed; any other error
+ * (connection loss, validation, etc.) is rethrown so callers can react.
  */
 export function createPrismaEventStore(prisma: PrismaClient): EventStore {
   return {

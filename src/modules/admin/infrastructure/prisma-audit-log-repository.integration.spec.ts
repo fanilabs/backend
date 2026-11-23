@@ -60,20 +60,26 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
     // rows, filtered back out of the full result, since other integration
     // test files can write unrelated audit_logs rows concurrently.
     const actorId = await seedActor();
-    await auditLogRepository.record({
-      actorId,
-      actorLabel: 'admin@example.com',
-      action: 'first',
-      entityType: 'User',
-      entityId: 'x',
+    const t0 = Date.now();
+    await prisma.auditLog.create({
+      data: {
+        actorId,
+        actorLabel: 'admin@example.com',
+        action: 'first',
+        entityType: 'User',
+        entityId: 'x',
+        createdAt: new Date(t0),
+      },
     });
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    await auditLogRepository.record({
-      actorId,
-      actorLabel: 'admin@example.com',
-      action: 'second',
-      entityType: 'User',
-      entityId: 'x',
+    await prisma.auditLog.create({
+      data: {
+        actorId,
+        actorLabel: 'admin@example.com',
+        action: 'second',
+        entityType: 'User',
+        entityId: 'x',
+        createdAt: new Date(t0 + 1000),
+      },
     });
 
     const entries = (await auditLogRepository.list({ limit: 1000 })).filter(
@@ -84,44 +90,50 @@ describe.skipIf(!dbAvailable)('Prisma audit log repository (integration)', () =>
 
   it('pages through entries without duplicates or gaps using ID cursor', async () => {
     const actorId = await seedActor();
-    // Insert 5 entries with explicit delays to guarantee distinct createdAt values
-    // and thus a reliable ordering without depending on same-millisecond tiebreaking.
+    // Use explicit timestamps spaced 1 s apart so ordering is deterministic
+    // without relying on sleep-based timing or insertion order.
+    const baseTime = Date.now();
     for (let i = 0; i < 5; i += 1) {
-      await auditLogRepository.record({
-        actorId,
-        actorLabel: 'admin@example.com',
-        action: `cursor-test-${i}`,
-        entityType: 'User',
-        entityId: `u-${i}`,
+      await prisma.auditLog.create({
+        data: {
+          actorId,
+          actorLabel: 'admin@example.com',
+          action: `cursor-test-${i}`,
+          entityType: 'User',
+          entityId: `u-${i}`,
+          createdAt: new Date(baseTime + i * 1000),
+        },
       });
-      if (i < 4) {
-        await new Promise((resolve) => setTimeout(resolve, 5));
-      }
     }
 
-    // Page 1: fetch 2 entries.
-    const page1 = await auditLogRepository.list({ limit: 2 });
-    const ourPage1 = page1.filter((e) => e.actorId === actorId);
-    expect(ourPage1).toHaveLength(2);
+    // Fetch a wide window so concurrent inserts from other suites cannot
+    // displace our 5 rows off the first page, then narrow to this actor.
+    const allEntries = await auditLogRepository.list({ limit: 1000 });
+    const ours = allEntries.filter((e) => e.actorId === actorId);
+    expect(ours).toHaveLength(5);
 
-    // Page 2: fetch the next 2 entries using the last item's ID as cursor.
-    const cursor1 = ourPage1[ourPage1.length - 1]!.id;
-    const page2 = await auditLogRepository.list({ limit: 2, before: cursor1 });
-    const ourPage2 = page2.filter((e) => e.actorId === actorId);
-    expect(ourPage2).toHaveLength(2);
+    // Simulate page-of-2 navigation using the cursor the repository exposes.
+    // Page 1: first 2 of our rows (newest first from the global list).
+    const page1Ids = ours.slice(0, 2).map((e) => e.id);
+    const cursor1 = page1Ids[page1Ids.length - 1]!;
 
-    // Page 3: fetch remaining entry.
-    const cursor2 = ourPage2[ourPage2.length - 1]!.id;
-    const page3 = await auditLogRepository.list({ limit: 2, before: cursor2 });
-    const ourPage3 = page3.filter((e) => e.actorId === actorId);
-    expect(ourPage3).toHaveLength(1);
+    const page2Raw = await auditLogRepository.list({ limit: 1000, before: cursor1 });
+    const page2 = page2Raw.filter((e) => e.actorId === actorId);
+    expect(page2).toHaveLength(3);
+    const page2SliceIds = page2.slice(0, 2).map((e) => e.id);
+    const cursor2 = page2SliceIds[page2SliceIds.length - 1]!;
 
-    // No duplicates across the three pages.
-    const allIds = [...ourPage1, ...ourPage2, ...ourPage3].map((e) => e.id);
+    const page3Raw = await auditLogRepository.list({ limit: 1000, before: cursor2 });
+    const page3 = page3Raw.filter((e) => e.actorId === actorId);
+    expect(page3).toHaveLength(1);
+
+    // No duplicates across the three simulated pages.
+    const allIds = [...page1Ids, ...page2SliceIds, ...page3.map((e) => e.id)];
     expect(new Set(allIds).size).toBe(5);
 
-    // Ordering is newest-first across all pages.
-    const createdAts = [...ourPage1, ...ourPage2, ...ourPage3].map((e) => e.createdAt.getTime());
+    // All 5 combined, ordered newest-first (largest createdAt first).
+    const combined = [...ours.slice(0, 2), ...page2.slice(0, 2), ...page3];
+    const createdAts = combined.map((e) => e.createdAt.getTime());
     for (let i = 1; i < createdAts.length; i += 1) {
       expect(createdAts[i]).toBeLessThanOrEqual(createdAts[i - 1]!);
     }
