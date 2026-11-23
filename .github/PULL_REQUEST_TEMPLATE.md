@@ -16,7 +16,7 @@
 - [ ] Integration tests added/updated (if this touches infrastructure/repositories)
 - [ ] API tests added/updated (if this touches routes)
 - [ ] Manually verified locally (`docker compose up`, exercised the relevant endpoint(s))
-- [ ] `pnpm lint`, `pnpm typecheck`, `pnpm test` all pass locally
+- [ ] `pnpm format:check`, `pnpm lint`, `pnpm typecheck`, `pnpm test` all pass locally
 
 ## Architecture Checklist
 
