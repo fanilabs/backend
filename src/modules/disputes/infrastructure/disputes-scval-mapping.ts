@@ -76,25 +76,25 @@ export function resolveDisputeSplitFundsArgsToScVal(
   ];
 }
 
-function unwrapTupleStruct(value: unknown): unknown {
+function unwrapTupleStruct(value: unknown, field: string): unknown {
   if (!Array.isArray(value) || value.length !== 1) {
-    throw new Error('Expected a one-element Vec (tuple struct encoding)');
+    throw new Error(`Expected "${field}" to be a one-element Vec (tuple struct encoding)`);
   }
   return value[0];
 }
 
-function unwrapUnitEnum(value: unknown): string {
-  const inner = unwrapTupleStruct(value);
+function unwrapUnitEnum(value: unknown, field: string): string {
+  const inner = unwrapTupleStruct(value, field);
   if (typeof inner !== 'string') {
-    throw new Error('Expected a Symbol (unit enum encoding)');
+    throw new Error(`Expected "${field}" to be a Symbol (unit enum encoding)`);
   }
   return inner;
 }
 
 function mapDisputeStatus(value: unknown): DisputeStatus {
-  const variant = unwrapUnitEnum(value);
+  const variant = unwrapUnitEnum(value, 'status');
   const mapped = DISPUTE_STATUS_FROM_RUST[variant];
-  if (!mapped) throw new Error(`Unknown DisputeStatus variant: ${variant}`);
+  if (!mapped) throw new Error(`Unknown DisputeStatus variant for "status": ${variant}`);
   return mapped;
 }
 

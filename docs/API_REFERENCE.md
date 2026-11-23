@@ -161,6 +161,10 @@ All supplied filters combine as a logical AND. `meta.nextCursor` is `null` on th
 
 All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate email), `401 UNAUTHORIZED` (bad credentials / invalid or expired token), `400 VALIDATION_ERROR` (malformed request body). See `AUTHENTICATION.md` for the full design (token formats, rotation, password-reset fingerprinting).
 
+### Users
+
+| Method | Path | Description |
+|---|---|---|
 | `GET` | `/api/v1/users/me` | The authenticated user's profile plus linked wallet addresses (requires `Authorization: Bearer <access token>`) |
 | `GET` | `/api/v1/users/me/wallets` | List the authenticated user's linked wallet addresses |
 | `POST` | `/api/v1/users/me/wallets/challenge` | Issue a short-TTL (5m) challenge string for a Stellar address the client wants to link — `{ address }` → `{ challenge }` |
@@ -169,6 +173,10 @@ All `auth` error responses use the shared envelope: `409 CONFLICT` (duplicate em
 
 All `/api/v1/users/*` routes require authentication; unauthenticated requests get `401 UNAUTHORIZED`. See `AUTHENTICATION.md` § Wallet Linking for the full challenge/signature design and why it never touches a private key.
 
+### Deliveries
+
+| Method | Path | Description |
+|---|---|---|
 | `GET` | `/api/v1/deliveries` | List deliveries — public read model, optional `senderAddress`/`recipientAddress`/`driverAddress`/`status` query filters |
 | `GET` | `/api/v1/deliveries/:chainDeliveryId` | Get one delivery by its on-chain id (`404` if not yet indexed) |
 | `POST` | `/api/v1/transactions/build/create-delivery` | Unsigned XDR for `delivery_contract.create_delivery` — `{ senderAddress, recipientAddress, origin, destination, ... }` |

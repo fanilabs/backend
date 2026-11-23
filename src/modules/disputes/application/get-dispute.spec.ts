@@ -9,6 +9,23 @@ import {
   createInMemoryEvidenceRepository,
 } from './__fixtures__/fakes.js';
 import { DisputeNotFoundError } from '../domain/index.js';
+import type { ChainDisputeCase, DisputeContractReader } from '../domain/index.js';
+
+/** Returns a different seeded `ChainDisputeCase` on each successive call,
+ * so a test can assert confirmation flags are recomputed from the latest
+ * chain data rather than cached from the first read. */
+function createSequencedDisputeContractReader(
+  responses: ChainDisputeCase[],
+): DisputeContractReader {
+  let call = 0;
+  return {
+    async getDispute() {
+      const response = responses[Math.min(call, responses.length - 1)]!;
+      call += 1;
+      return response;
+    },
+  };
+}
 
 function setup() {
   const disputeRepository = createInMemoryDisputeRepository();
@@ -60,5 +77,60 @@ describe('getDispute', () => {
 
     expect(result.evidence).toHaveLength(1);
     expect(result.evidence[0]?.confirmedOnChain).toBe(false);
+  });
+
+  it('recomputes confirmedOnChain from the latest chain read on repeated calls, without mutating the stored evidence/metadata', async () => {
+    const disputeRepository = createInMemoryDisputeRepository();
+    const evidenceRepository = createInMemoryEvidenceRepository();
+
+    const dispute = Object.freeze(buildDispute({ chainDeliveryId: 3n }));
+    const evidenceA = Object.freeze(
+      buildEvidence({ disputeId: dispute.id, hash: 'aa'.repeat(32) }),
+    );
+    const evidenceB = Object.freeze(
+      buildEvidence({ disputeId: dispute.id, hash: 'bb'.repeat(32) }),
+    );
+    disputeRepository.seed(dispute);
+    evidenceRepository.seed(evidenceA);
+    evidenceRepository.seed(evidenceB);
+
+    const originalDisputeSnapshot = { ...dispute };
+    const originalEvidenceASnapshot = { ...evidenceA };
+    const originalEvidenceBSnapshot = { ...evidenceB };
+
+    // Second read's chain response drops hash A, adds a chain-only hash
+    // that has no corresponding stored evidence row at all.
+    const contractReader = createSequencedDisputeContractReader([
+      buildChainDisputeCase({ chainDeliveryId: 3n, evidenceHashes: ['aa'.repeat(32)] }),
+      buildChainDisputeCase({
+        chainDeliveryId: 3n,
+        evidenceHashes: ['bb'.repeat(32), 'cc'.repeat(32)],
+      }),
+    ]);
+
+    const getDispute = createGetDisputeUseCase({
+      disputeRepository,
+      evidenceRepository,
+      contractReader,
+    });
+
+    const first = await getDispute({ chainDeliveryId: 3n });
+    expect(first.evidence.find((e) => e.hash === 'aa'.repeat(32))?.confirmedOnChain).toBe(true);
+    expect(first.evidence.find((e) => e.hash === 'bb'.repeat(32))?.confirmedOnChain).toBe(false);
+
+    const second = await getDispute({ chainDeliveryId: 3n });
+    expect(second.evidence.find((e) => e.hash === 'aa'.repeat(32))?.confirmedOnChain).toBe(false);
+    expect(second.evidence.find((e) => e.hash === 'bb'.repeat(32))?.confirmedOnChain).toBe(true);
+    // The extra chain-only hash ('cc'...) has no stored evidence row, so it
+    // cannot appear in the response at all, even though the chain reports it.
+    expect(second.evidence).toHaveLength(2);
+
+    // Repository-owned metadata is untouched by either read — frozen
+    // objects would throw on write in strict mode, so getting here without
+    // throwing already proves no in-place mutation; this double-checks the
+    // actual values too.
+    expect(dispute).toEqual(originalDisputeSnapshot);
+    expect(evidenceA).toEqual(originalEvidenceASnapshot);
+    expect(evidenceB).toEqual(originalEvidenceBSnapshot);
   });
 });
