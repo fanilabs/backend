@@ -19,6 +19,6 @@
     "declaration": false,
     "sourceMap": true
   },
-  "include": ["src", "prisma", "tests", "vitest.config.ts"],
+  "include": ["src", "prisma", "tests", "scripts", "vitest.config.ts", "vitest.e2e.config.ts"],
   "exclude": ["node_modules", "dist"]
 }

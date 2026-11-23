@@ -10,6 +10,32 @@ The live, authoritative reference is generated from the same Zod schemas that va
 - Endpoints that require a wallet-owned signature (`sender`, `recipient`, `driver`, `fleet owner` actions per `PHASE_1_DOMAIN_ANALYSIS.md`) live under `/transactions/build/*` and return unsigned XDR — this backend never signs on a user's behalf (`AUTHENTICATION.md`).
 - A successful build response contains **only** the unsigned envelope (`{ "data": { "xdr": "<unsigned envelope>" } }`, matching `transactionResponseSchema` in `src/shared/validation/transaction-response.ts`). It does **not** create a pending transaction record, return a receipt ID, or confirm any chain state — construction success is not on-chain confirmation. The underlying resource only reaches its new state once the client signs, submits, and the blockchain indexer observes the corresponding on-chain event. See `ARCHITECTURE.md` §9.
 
+### Wire formats for client authors
+
+Serializers convert large identifiers and dates to JSON-safe primitives. Clients must preserve these representations rather than reinterpreting them.
+
+**Large identifiers are decimal strings.** Delivery IDs (and other bigint-backed identifiers) are serialized as base-10 strings by `serializeDelivery` (`src/modules/deliveries/domain/serialization.ts`). Keep them as strings end-to-end — do **not** coerce to `Number`, which loses precision above `Number.MAX_SAFE_INTEGER` (`9007199254740991`).
+
+```json
+{ "data": { "id": "123456789012345678901234567890" } }
+```
+
+**Lifecycle timestamps are ISO-8601 UTC strings or explicit `null`.** Date fields on delivery DTOs are serialized with `Date.prototype.toISOString()` (e.g. `"2024-01-15T12:34:56.000Z"`). A lifecycle timestamp that has not yet occurred is serialized as JSON `null` — it is **not** epoch zero (`"1970-01-01T00:00:00.000Z"`). Treat `null` as "not yet set" and only render a date when the value is a non-null string.
+
+```json
+{
+  "data": {
+    "id": "123456789012345678901234567890",
+    "createdAt": "2024-01-15T12:34:56.000Z",
+    "assignedAt": null,
+    "pickedUpAt": null,
+    "deliveredAt": null
+  }
+}
+```
+
+**HTTP dates vs. internal ledger timestamps.** All dates on HTTP responses (delivery DTOs, reputation routes in `src/modules/reputation/interface/routes.ts`, admin schemas in `src/modules/admin/interface/schemas.ts`) are ISO-8601 UTC strings as above. Internal ledger timestamps — e.g. Stellar ledger close times — are Unix seconds (integer), not ISO strings; they are an internal representation and are not exposed as-is on the HTTP surface. Do not assume a numeric field on a response is a Unix-seconds timestamp unless the schema documents it as such.
+
 ### Build / sign / submit / observe responsibilities
 
 ```
@@ -25,6 +51,79 @@ The live, authoritative reference is generated from the same Zod schemas that va
 ```
 
 Submission and on-chain observation are **outside the implemented backend surface**: this backend does not submit signed envelopes, does not track a pending transaction resource, and exposes no confirmation-polling endpoint. Clients submit the signed envelope themselves and observe resulting state through the public read models (e.g. `GET /deliveries*`) once the indexer has confirmed the event.
+
+## Analytics measurement contract
+
+The analytics routes expose four read-only metrics. They describe **existing** behavior only; caching and freshness are documented separately (#46). Dashboard authors should read the definitions below rather than inferring units or denominators from raw field names.
+
+### 1. GMV (gross merchandise value)
+
+GMV is the sum of **released, verified escrow amounts**, grouped **per token**. Each token's total is reported in that token's own base units — there is **no exchange-rate conversion** to fiat or to any other token. A GMV figure is therefore only meaningful alongside the token it is denominated in; do not add totals across tokens.
+
+```json
+{
+  "data": {
+    "gmv": [
+      { "token": "USDC", "amount": "1250000000" },
+      { "token": "XLM", "amount": "42000000" }
+    ]
+  }
+}
+```
+
+Empty dataset (no released verified escrow yet):
+
+```json
+{ "data": { "gmv": [] } }
+```
+
+### 2. Completion rate
+
+Completion rate is `completed / total`, where `total` is the number of deliveries in the dataset and `completed` is the number of those deliveries that reached the completed state. When the denominator is zero (no deliveries), the rate is reported as `0` — not `null` and not an error.
+
+```json
+{ "data": { "completed": 8, "total": 10, "rate": 0.8 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "completed": 0, "total": 0, "rate": 0 } }
+```
+
+### 3. Dispute rate
+
+Dispute rate is `disputed / total`, where `total` is the number of deliveries in the dataset and `disputed` counts **all deliveries that have ever had a dispute raised** — including disputes that have since been resolved. It is **not** a count of currently open disputes. When the denominator is zero, the rate is reported as `0`.
+
+```json
+{ "data": { "disputed": 2, "total": 10, "rate": 0.2 } }
+```
+
+A delivery that was disputed and later resolved still counts toward `disputed`:
+
+```json
+{ "data": { "disputed": 1, "total": 1, "rate": 1 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "disputed": 0, "total": 0, "rate": 0 } }
+```
+
+### 4. Delivery count
+
+The fourth metric is the total number of deliveries in the dataset — the same `total` denominator used by the completion and dispute rates. It is a plain count, not a rate.
+
+```json
+{ "data": { "total": 10 } }
+```
+
+Empty dataset:
+
+```json
+{ "data": { "total": 0 } }
+```
 
 ## Implemented Today
 
@@ -58,60 +157,20 @@ All `/api/v1/users/*` routes require authentication; unauthenticated requests ge
 
 | `GET` | `/api/v1/deliveries` | List deliveries — public read model, optional `senderAddress`/`recipientAddress`/`driverAddress`/`status` query filters |
 | `GET` | `/api/v1/deliveries/:chainDeliveryId` | Get one delivery by its on-chain id (`404` if not yet indexed) |
-| `POST` | `/api/v1/transactions/build/create-delivery` | Unsigned XDR for `delivery_contract.create_delivery` — `{ senderAddress, recipientAddress, origin, destination, cargoCategory, weightGrams, fragile, estimatedDelivery }`; `origin` must differ from `destination` (case/whitespace-insensitive) and `recipientAddress` from `senderAddress`, or the request fails with `400 VALIDATION_ERROR` |
-| `POST` | `/api/v1/transactions/build/assign-driver` | Unsigned XDR for `assign_driver` — caller is admin or the driver self-assigning |
-| `POST` | `/api/v1/transactions/build/mark-in-transit` | Unsigned XDR for `mark_in_transit` — the assigned driver only |
-| `POST` | `/api/v1/transactions/build/confirm-delivery` | Unsigned XDR for `confirm_delivery` — the recipient only |
-| `POST` | `/api/v1/transactions/build/cancel-delivery` | Unsigned XDR for `cancel_delivery` — the sender only |
-| `POST` | `/api/v1/transactions/build/raise-delivery-dispute` | Unsigned XDR for `delivery_contract.raise_dispute` — sender or recipient. Distinct from the `disputes` module's own `POST /transactions/build/raise-dispute` (`dispute_resolution_contract.raise_dispute`, the richer Layer B arbitration-case path) — the two previously collided under the identical path, crashing `buildApp()`. |
+| `POST` | `/api/v1/transactions/build/create-delivery` | Unsigned XDR for `delivery_contract.create_delivery` — `{ senderAddress, recipientAddress, origin, destination, ... }` |
 
-All `/api/v1/transactions/build/*` routes require authentication (anti-abuse — each call does real RPC work: an account fetch and a full simulate/prepare). All return `{ "data": { "xdr": "<unsigned envelope>" } }`. `GET /deliveries*` is public — it mirrors public on-chain state, like a block explorer. If `DELIVERY_CONTRACT_ID` isn't configured for the running environment (blank by default, see `.env.example`), the build endpoints return `502 BLOCKCHAIN_ERROR` with a clear message rather than a generic failure.
+## Prisma / database error mapping
 
-### Delivery list filters
+The shared error handler (`src/shared/errors/error-handler.ts`) translates Prisma errors into the standard error envelope. The table below lists every Prisma code that currently has an explicit mapping; the contract is asserted by `src/shared/errors/error-handler.spec.ts`.
 
-`GET /api/v1/deliveries` accepts four optional query filters, validated by `listDeliveriesQuerySchema` (`src/modules/deliveries/interface/schemas.ts`):
+| Prisma code | HTTP status | Error `code` | `Retry-After` | Notes |
+|---|---|---|---|---|
+| `P1001` | `503` | `SERVICE_UNAVAILABLE` | — | Database unreachable |
+| `P1002` | `504` | `GATEWAY_TIMEOUT` | — | Database operation timed out |
+| `P2000` | `400` | `VALIDATION_ERROR` | — | Value too long for a column |
+| `P2004` | `400` | `VALIDATION_ERROR` | — | Constraint failed on the database |
+| `P2011` | `400` | `VALIDATION_ERROR` | — | Null constraint violation |
+| `P2024` | `503` | `SERVICE_UNAVAILABLE` | `1` (one second) | Transient connection-pool pressure — safe to retry after the advertised delay |
+| any other code | `500` | `INTERNAL_ERROR` | — | Unmapped Prisma codes are masked as generic `500` responses; raw database metadata is never returned to clients |
 
-| Query param | Type | Notes |
-|---|---|---|
-| `senderAddress` | string | Exact match on the delivery's sender address |
-| `recipientAddress` | string | Exact match on the delivery's recipient address |
-| `driverAddress` | string | Exact match on the assigned driver address |
-| `status` | enum | One of `PENDING`, `ASSIGNED`, `IN_TRANSIT`, `DELIVERED`, `CANCELLED`, `DISPUTED` |
-
-All supplied filters are combined as an **intersection (logical AND)** — a delivery is returned only if it matches every filter present in the request. Omitting a filter places no constraint on that field. The repository applies each supplied filter as an additional `where` predicate (`src/modules/deliveries/infrastructure/prisma-delivery-repository.ts`).
-
-Combined-filter example — deliveries from a given sender that are currently in transit:
-
-```
-GET /api/v1/deliveries?senderAddress=GABC...&status=IN_TRANSIT
-```
-
-```json
-{ "data": [ { "chainDeliveryId": "42", "senderAddress": "GABC...", "status": "IN_TRANSIT", "...": "..." } ] }
-```
-
-An empty result is **not** an error: a successful list request that matches nothing returns `200` with `{ "data": [] }`. This differs from `GET /api/v1/deliveries/:chainDeliveryId`, where an unknown single id returns `404 NOT_FOUND`.
-
-```
-GET /api/v1/deliveries?driverAddress=GXYZ...&status=DELIVERED
-```
-
-```json
-{ "data": [] }
-```
-
-**Encoding caveat**: `create-delivery`'s request body is encoded into `delivery_contract`'s `DeliveryMetadata`/`CargoDescriptor` Soroban struct types following the documented `#[contracttype]` conventions (see `src/modules/deliveries/infrastructure/delivery-scval-mapping.ts`), verified by construction and by round-tripping through this repo's own decoder — but not yet against a live deployed `delivery_contract`, since none is deployed anywhere reachable from this repository's environment. Treat this as the first thing to verify once a real testnet deployment exists.
-
-Everything else below is the **planned surface**, matching the module boundaries in `ARCHITECTURE.md` §4 — it will be filled in endpoint-by-endpoint as each module ships in Phase 5, not written speculatively ahead of the code that implements it.
-
-## Prisma Error Mapping
-
-`handleError` (`src/shared/errors/error-handler.ts`) maps the following Prisma known-request-error codes to distinguishable HTTP responses. Any Prisma code not listed here still falls through to a masked `500 INTERNAL_ERROR`.
-
-| Prisma code | HTTP status | `error.code` | Notes |
-|---|---|---|---|
-| `P2002` | 409 | `CONFLICT` | Unique constraint violation; `details` includes `meta` (offending fields) |
-| `P2025` | 404 | `NOT_FOUND` | Record required for the operation was not found |
-| `P2003` | 409 | `RELATED_RESOURCE_MISSING` | For
-
-/* … truncated 1458 chars — edit only what you need near the top … */
+Clients should treat `P2024` as a transient condition: honor the `Retry-After` header (in seconds) before retrying the request. All other mapped codes are deterministic and should not be retried without changing the request.
