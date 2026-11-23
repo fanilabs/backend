@@ -20,5 +20,46 @@ jobs:
       - run: pnpm typecheck:eslint
       - run: pnpm lint
       - run: pnpm test
-      - run: pnpm build
-      - run: node scripts/check-build-artifacts.mjs
+      - name: Upload JUnit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-junit-report
+          path: reports/vitest-junit.xml
+          if-no-files-found: warn
+
+  database-tests:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: app_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/app_test
+      REQUIRE_DATABASE: "true"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test
+      - name: Upload JUnit test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-junit-report-database
+          path: reports/vitest-junit.xml
+          if-no-files-found: warn

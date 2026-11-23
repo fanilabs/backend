@@ -1,113 +1,43 @@
 # Contributing
 
-Thanks for your interest in improving this project. This guide covers local setup, the test layers we use, and conventions for writing deterministic tests.
+Thanks for your interest in improving this project. This guide covers local setup, the checks we run in CI, and the conventions we follow.
 
 ## Getting started
 
-1. Select the pinned package manager (see [Package manager](#package-manager)).
-2. Install dependencies with `pnpm install --frozen-lockfile`.
-3. Copy the example environment file and fill in local values.
-4. Run the test suite before opening a pull request.
+1. Install dependencies with your package manager of choice.
+2. Copy any example environment file to a local `.env` and fill in the values you need.
+3. Run the test suite before opening a pull request.
 
-## Package manager
+## Tests and coverage
 
-The `packageManager` field in `package.json` is the authoritative source for the pnpm version contributors must use. CI selects the same release, so a fresh checkout should match it exactly.
+We use [Vitest](https://vitest.dev/) for unit and integration tests. Coverage is collected with the V8 provider and reported in `lcov` format.
 
-The `engines` range (for example `pnpm >=9`) is only a minimum compatibility floor — it is not the recommended or tested toolchain. Do not treat it as the version to install.
+### Coverage denominator
 
-### Selecting the pinned release
+Coverage totals are meant to measure **production code only**. Test-support code — fixture construction and test environment setup — is excluded from the reported denominator so it neither earns credit nor incurs penalties.
 
-Read the pin from `package.json` and activate it with Corepack. For the current pin (`pnpm@10.33.0`):
+Concretely, `vitest.config.ts`:
 
-```sh
-corepack prepare pnpm@10.33.0 --activate
-```
+- includes `src/**/*.ts` as the coverage surface,
+- excludes spec files and barrel (`index.ts`) files,
+- excludes test-support directories: `**/__fixtures__/**` and `src/shared/testing/**`.
 
-This only selects the package manager release; it does not change any dependency versions in `package.json` or the lockfile.
+Module composition roots (for example a module's `index.ts` wiring) remain part of the coverage surface and must not be excluded.
 
-### Verifying before installing
+### Thresholds
 
-Confirm the active version matches the pin before installing:
+Coverage thresholds are enforced in CI. Do **not** lower thresholds to compensate for changes in the denominator — if totals shift, add tests for the production code that is now being measured.
 
-```sh
-pnpm --version   # must print 10.33.0
-pnpm install --frozen-lockfile
-```
+### Verifying the denominator
 
-If `pnpm --version` does not match the `packageManager` field, re-run the `corepack prepare` command above before continuing.
+When changing coverage configuration, compare the file list in the generated `lcov` report before and after on the same source. Confirm that:
 
-### Refreshing this guide when the pin changes
-
-When the `packageManager` field in `package.json` is bumped, update the version in the `corepack prepare` command and the expected `pnpm --version` output in this section to match. Keep the `engines` range as the minimum floor unless the supported baseline itself changes.
-
-## Editor setup
-
-The workspace recommends the Prisma extension (see `.vscode/extensions.json`). Prisma schema files (`prisma/schema.prisma`) format on save with the Prisma formatter via a `[prisma]` override in `.vscode/settings.json`; all other languages keep Prettier as the default formatter. No per-user formatter setting is required.
-
-## Test layers
-
-We keep three layers of tests:
-
-- **Unit tests** exercise pure use cases and adapters in isolation, using port fakes.
-- **Integration tests** exercise real repositories and infrastructure against a local database or container.
-- **API tests** exercise HTTP handlers end to end through the router.
-
-## Testing cookbook: deterministic adapter tests
-
-Prefer the existing test seams over new infrastructure. Pure use cases should not reach for external services when a fake already exists.
-
-### Port fakes vs. real repository tests
-
-Port fakes implement the outbound port interface and live next to the module they serve:
-
-- `src/modules/analytics/application/__fixtures__/fakes.ts`
-- `src/modules/deliveries/application/__fixtures__/fakes.ts`
-
-Use these when testing a use case that depends on the port. They record calls and return canned results, so assertions stay deterministic.
-
-Real repository tests belong in the module's `infrastructure` layer and talk to an actual database. Do not substitute a fake there — the point is to verify the query and mapping against real storage.
-
-### Deterministic addresses
-
-When a test needs an address, use `testAddress` from `src/shared/testing/addresses.ts` instead of inventing literals. It derives a valid address from a single byte, so pass a value in the `0x00`–`0xff` range:
-
-```ts
-testAddress(0x01); // deterministic, valid address
-testAddress(0xff); // still within the byte constraint
-```
-
-Passing a value outside that byte range is a bug in the test, not the helper.
-
-### Fake timers and global mocks
-
-Always restore fake timers and global mocks in the example lifecycle so state does not leak between tests:
-
-```ts
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-
-describe('adapter', () => {
-  beforeEach(() => {
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2024-01-01T00:00:00Z'));
-  });
-
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.restoreAllMocks();
-  });
-
-  it('uses deterministic time', () => {
-    expect(Date.now()).toBe(new Date('2024-01-01T00:00:00Z').getTime());
-  });
-});
-```
-
-If a mock is installed once for a whole file, restore it in `afterAll` instead. Never leave `vi.useFakeTimers()` or a global spy active across files.
-
-### Fixture naming
-
-Name fixtures after the port or scenario they represent (for example `createAnalyticsFake` or `createDeliveriesFake`) and keep them in the module's `__fixtures__` directory. Do not create new shared event fixture infrastructure — reuse the per-module helpers.
+- no `__fixtures__` or `shared/testing` sources appear in `lcov`,
+- module composition roots still appear in `lcov`,
+- a temporary production module added to `src/` is still included.
 
 ## Pull requests
 
-Keep changes focused, include tests for new behavior, and describe the motivation in the PR body.
+- Keep changes focused; one concern per pull request where practical.
+- Describe the motivation and the behavior change in the PR body.
+- Make sure the full test suite and coverage checks pass locally before requesting review.
