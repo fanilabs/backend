@@ -16,6 +16,28 @@ interface RelayOptions {
   advertiseStarttls?: boolean;
   authMechanisms?: string[];
   rejectRecipient?: boolean;
+  /** Writes the initial 220 greeting across several TCP chunks, splitting
+   * mid-CRLF (a bare `\r` arrives in one chunk, the `\n` in the next). */
+  chunkGreeting?: boolean;
+  /** Writes the (multiline) EHLO reply across several TCP chunks instead of
+   * one, with a split point that does not land on a line boundary. */
+  chunkEhloReply?: boolean;
+  /** Destroys the socket partway through writing the greeting, before a
+   * complete status line has been sent. */
+  closeDuringGreeting?: boolean;
+}
+
+/** Writes each string in `chunks` as its own `socket.write` call, yielding
+ * an event-loop turn between them so Node delivers them as separate `data`
+ * events rather than coalescing them back into one read. */
+function writeChunks(socket: Socket | TLSSocket, chunks: string[]): void {
+  let index = 0;
+  const next = () => {
+    if (index >= chunks.length) return;
+    socket.write(chunks[index++]!);
+    setTimeout(next, 0);
+  };
+  next();
 }
 
 interface Relay {
@@ -100,7 +122,16 @@ async function startRelay(options: RelayOptions = {}): Promise<Relay> {
           capabilities.push(`250-AUTH ${options.authMechanisms.join(' ')}`);
         }
         capabilities.push('250 SMTPUTF8');
-        respond(capabilities.join('\r\n'));
+        const text = `${capabilities.join('\r\n')}\r\n`;
+        if (options.chunkEhloReply) {
+          // Split off-line-boundary: midway through the capability text,
+          // not at a '\r\n' seam, so a correct parser must still recognize
+          // each physical line only once its terminating '\n' has arrived.
+          const splitAt = Math.floor(text.length / 2);
+          writeChunks(socket, [text.slice(0, splitAt), text.slice(splitAt)]);
+        } else {
+          socket.write(text);
+        }
         return;
       }
       case 'STARTTLS': {
@@ -157,7 +188,16 @@ async function startRelay(options: RelayOptions = {}): Promise<Relay> {
   } = { mode: 'command', dataBuffer: '', loginStage: null };
 
   const server: Server = createServer((socket) => {
-    socket.write('220 relay.test.invalid ESMTP ready\r\n');
+    if (options.closeDuringGreeting) {
+      socket.write('220 relay.test.invalid ESMTP re');
+      setTimeout(() => socket.end(), 0);
+      return;
+    }
+    if (options.chunkGreeting) {
+      writeChunks(socket, ['220 relay.test.invalid ESMTP read', 'y\r', '\n']);
+    } else {
+      socket.write('220 relay.test.invalid ESMTP ready\r\n');
+    }
     attach(socket);
   });
   await new Promise<void>((resolve, reject) => {
@@ -319,5 +359,57 @@ describe('createSmtpClient', () => {
         caPath: '/nonexistent/smtp-ca.pem',
       }),
     ).toThrow(/ENOENT|no such file/i);
+  });
+
+  it('recognizes the greeting only once a reply split mid-CRLF across TCP chunks has fully arrived', async () => {
+    relay = await startRelay({ authMechanisms: ['PLAIN'], chunkGreeting: true });
+    const client = createSmtpClient(settingsFor(relay));
+
+    await client.send({
+      to: 'user@example.com',
+      subject: 'split greeting',
+      text: 'delivered despite a chunked 220 reply',
+    });
+
+    expect(relay.messages).toHaveLength(1);
+    expect(relay.messages[0]).toContain('Subject: split greeting');
+  });
+
+  it('parses a multiline EHLO reply correctly whether it arrives whole or split off a line boundary', async () => {
+    relay = await startRelay({
+      advertiseStarttls: true,
+      authMechanisms: ['LOGIN'],
+      chunkEhloReply: true,
+    });
+    const client = createSmtpClient(
+      settingsFor(relay, { caPath: fixturePath('test-only-ca.pem') }),
+    );
+
+    // Success here depends on both the pre-STARTTLS EHLO (STARTTLS keyword)
+    // and the post-upgrade EHLO (AUTH LOGIN) being parsed correctly even
+    // though the relay split each one's multiline reply mid-text.
+    await client.send({ to: 'user@example.com', subject: 'chunked EHLO', text: 'ok' });
+
+    expect(relay.messages).toHaveLength(1);
+    expect(relay.authAttempts).toEqual(['LOGIN']);
+  });
+
+  it('still parses a multiline EHLO reply when all of its lines arrive concatenated in one chunk', async () => {
+    relay = await startRelay({ authMechanisms: ['PLAIN'] });
+    const client = createSmtpClient(settingsFor(relay));
+
+    await client.send({ to: 'user@example.com', subject: 'single-chunk EHLO', text: 'ok' });
+
+    expect(relay.messages).toHaveLength(1);
+    expect(relay.authAttempts).toEqual(['PLAIN']);
+  });
+
+  it('surfaces a clear error instead of hanging when the relay closes during a partial reply', async () => {
+    relay = await startRelay({ closeDuringGreeting: true });
+    const client = createSmtpClient(settingsFor(relay, { user: undefined, password: undefined }));
+
+    await expect(
+      client.send({ to: 'user@example.com', subject: 'x', text: 'x' }),
+    ).rejects.toThrow(/SMTP connection closed unexpectedly/);
   });
 });
