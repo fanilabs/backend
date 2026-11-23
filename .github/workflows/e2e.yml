@@ -25,6 +25,9 @@ env:
   REDIS_URL: redis://localhost:6379
   JWT_ACCESS_SECRET: ci-only-access-secret-not-for-production-use-000000
   JWT_REFRESH_SECRET: ci-only-refresh-secret-not-for-production-use-00000
+  # This job provisions PostgreSQL, so a missing database must fail the run
+  # instead of silently skipping every repository case.
+  REQUIRE_DATABASE: 'true'
 
 jobs:
   e2e:
@@ -60,3 +63,16 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma:migrate:deploy
       - run: pnpm test:e2e
+      # Upload the machine-readable JUnit report so maintainers can inspect
+      # failed/passed/skipped cases without reconstructing them from logs.
+      # `if: always()` keeps this step running after an assertion failure;
+      # `if-no-files-found: warn` flags a missing report without masking the
+      # test step's exit status.
+      - name: Upload E2E JUnit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-junit-report
+          path: reports/e2e-junit.xml
+          if-no-files-found: warn
+          retention-days: 14
