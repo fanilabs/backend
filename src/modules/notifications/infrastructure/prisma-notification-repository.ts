@@ -37,6 +37,24 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
     },
 
     async listByUserId(userId, filter) {
+      // Issue #695: composite (createdAt DESC, id DESC) keyset cursor so
+      // timestamp ties never cause rows to be skipped at a page boundary.
+      // The predicate mirrors the Prisma cursor syntax: rows are "before"
+      // the cursor when they sort lower under (createdAt DESC, id DESC),
+      // i.e. createdAt < cursor.createdAt OR
+      //      (createdAt = cursor.createdAt AND id < cursor.id).
+      const cursorWhere: Prisma.NotificationWhereInput | undefined = filter.cursor
+        ? {
+            OR: [
+              { createdAt: { lt: filter.cursor.createdAt } },
+              {
+                createdAt: { equals: filter.cursor.createdAt },
+                id: { lt: filter.cursor.id },
+              },
+            ],
+          }
+        : undefined;
+
       const records = await prisma.notification.findMany({
         where: {
           userId,
@@ -44,9 +62,9 @@ export function createPrismaNotificationRepository(prisma: PrismaClient): Notifi
           ...(filter.unread === true && { readAt: null }),
           ...(filter.unread === false && { readAt: { not: null } }),
           ...(filter.channel !== undefined && { channel: filter.channel }),
-          ...(filter.before && { createdAt: { lt: filter.before } }),
+          ...cursorWhere,
         },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: filter.limit,
       });
       return records.map(toDomain);

@@ -1,14 +1,24 @@
-export type { Notification, NotificationChannel, NotificationStatus } from './entities.js';
+export type {
+  Notification,
+  NotificationChannel,
+  NotificationEventType,
+  NotificationPreference,
+  NotificationStatus,
+} from './entities.js';
 export type {
   CreateNotificationInput,
-  ListNotificationsFilter,
-  NotificationRepository,
-  UserContact,
-  UserContactLookup,
-  NotificationEmailInput,
-  NotificationSender,
-  NotificationJobScheduler,
   DeliveryParties,
   DeliveryPartyLookup,
+  ListNotificationsFilter,
+  NotificationCursor,
+  NotificationEmailInput,
+  NotificationJobScheduler,
+  NotificationPreferenceRepository,
+  NotificationRepository,
+  NotificationSender,
+  NotificationSenderRegistry,
+  UpsertNotificationPreferenceInput,
+  UserContact,
+  UserContactLookup,
 } from './ports.js';
-export { NotificationNotFoundError, ForbiddenNotificationAccessError } from './errors.js';
+export { ForbiddenNotificationAccessError, NotificationNotFoundError, UnknownNotificationEventTypeError } from './errors.js';

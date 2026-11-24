@@ -1,10 +1,12 @@
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { authenticate, ok, requireUser } from '../../../shared/http/index.js';
-import type { Notification } from '../domain/index.js';
+import type { Notification, NotificationPreference } from '../domain/index.js';
 import type {
   createGetNotificationUseCase,
+  createGetNotificationPreferencesUseCase,
   createListNotificationsUseCase,
   createMarkNotificationsReadUseCase,
+  createUpdateNotificationPreferencesUseCase,
 } from '../application/index.js';
 import {
   getNotificationResponseSchema,
@@ -12,12 +14,16 @@ import {
   listNotificationsResponseSchema,
   markNotificationsReadResponseSchema,
   notificationIdParamsSchema,
+  notificationPreferencesResponseSchema,
+  updateNotificationPreferencesBodySchema,
 } from './schemas.js';
 
 export interface NotificationsUseCases {
   listNotifications: ReturnType<typeof createListNotificationsUseCase>;
   getNotification: ReturnType<typeof createGetNotificationUseCase>;
   markNotificationsRead: ReturnType<typeof createMarkNotificationsReadUseCase>;
+  getNotificationPreferences: ReturnType<typeof createGetNotificationPreferencesUseCase>;
+  updateNotificationPreferences: ReturnType<typeof createUpdateNotificationPreferencesUseCase>;
 }
 
 function serializeNotification(notification: Notification) {
@@ -40,6 +46,10 @@ function serializeNotification(notification: Notification) {
     failureReason: notification.failureReason,
     createdAt: notification.createdAt.toISOString(),
   };
+}
+
+function serializePreference(pref: NotificationPreference) {
+  return { eventType: pref.eventType, disabled: pref.disabled };
 }
 
 export function createNotificationsRoutes(useCases: NotificationsUseCases): FastifyPluginAsyncZod {
@@ -107,6 +117,44 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
           notificationId: request.params.id,
         });
         void reply.status(200).send(ok(serializeNotification(notification)));
+      },
+    );
+
+    // #698 — per-event notification preference endpoints
+
+    app.get(
+      '/notifications/preferences',
+      {
+        onRequest: [authenticate],
+        schema: {
+          security: [{ bearerAuth: [] }],
+          response: { 200: notificationPreferencesResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        const { preferences } = await useCases.getNotificationPreferences({
+          userId: requireUser(request).id,
+        });
+        void reply.status(200).send(ok(preferences.map(serializePreference)));
+      },
+    );
+
+    app.patch(
+      '/notifications/preferences',
+      {
+        onRequest: [authenticate],
+        schema: {
+          security: [{ bearerAuth: [] }],
+          body: updateNotificationPreferencesBodySchema,
+          response: { 200: notificationPreferencesResponseSchema },
+        },
+      },
+      async (request, reply) => {
+        const { preferences } = await useCases.updateNotificationPreferences({
+          userId: requireUser(request).id,
+          updates: request.body.preferences,
+        });
+        void reply.status(200).send(ok(preferences.map(serializePreference)));
       },
     );
   };

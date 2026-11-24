@@ -1,5 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
-import { createListNotificationsUseCase } from './list-notifications.js';
+import { createListNotificationsUseCase, decodeCursor, encodeCursor } from './list-notifications.js';
 import { buildNotification, createInMemoryNotificationRepository } from './__fixtures__/fakes.js';
 
 describe('listNotifications', () => {
@@ -78,11 +79,9 @@ describe('listNotifications', () => {
 
   it('composes unread and channel filters together', async () => {
     const notificationRepository = createInMemoryNotificationRepository();
-    // unread EMAIL — should match
     notificationRepository.seed(
       buildNotification({ userId: 'user-1', channel: 'EMAIL', readAt: null }),
     );
-    // read EMAIL — should not match unread=true
     notificationRepository.seed(
       buildNotification({
         userId: 'user-1',
@@ -90,7 +89,6 @@ describe('listNotifications', () => {
         readAt: new Date('2026-01-02T00:00:00Z'),
       }),
     );
-    // unread SMS — wrong channel
     notificationRepository.seed(
       buildNotification({ userId: 'user-1', channel: 'SMS', readAt: null }),
     );
@@ -127,7 +125,7 @@ describe('listNotifications', () => {
     expect(result.items[0]?.status).toBe('SENT');
   });
 
-  it('never returns another user\'s notifications even when filters match', async () => {
+  it("never returns another user's notifications even when filters match", async () => {
     const notificationRepository = createInMemoryNotificationRepository();
     notificationRepository.seed(
       buildNotification({ userId: 'user-1', channel: 'EMAIL', readAt: null }),
@@ -189,7 +187,7 @@ describe('listNotifications', () => {
     expect(result.limit).toBe(10);
   });
 
-  it('returns null nextCursor on the last page', async () => {
+  it('returns null nextCursor on the last page (fewer than limit rows)', async () => {
     const notificationRepository = createInMemoryNotificationRepository();
     for (let i = 0; i < 5; i += 1) {
       notificationRepository.seed(buildNotification({ userId: 'user-1' }));
@@ -201,5 +199,67 @@ describe('listNotifications', () => {
     expect(result.items).toHaveLength(5);
     expect(result.nextCursor).toBeNull();
     expect(result.limit).toBe(20);
+  });
+
+  // #695 — exact-size final page must not advertise a cursor
+  it('returns null nextCursor when exactly limit rows exist and no more follow', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    // Seed exactly 10 notifications — the same count as the requested limit.
+    for (let i = 0; i < 10; i += 1) {
+      notificationRepository.seed(buildNotification({ userId: 'user-exact' }));
+    }
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const result = await listNotifications({ userId: 'user-exact', limit: 10 });
+
+    expect(result.items).toHaveLength(10);
+    expect(result.nextCursor).toBeNull();
+  });
+
+  // #695 — timestamp ties must not drop rows at a page boundary
+  it('returns every row exactly once across pages when several share the same createdAt', async () => {
+    const notificationRepository = createInMemoryNotificationRepository();
+    const sharedTimestamp = new Date('2026-06-01T12:00:00Z');
+    // 6 notifications all with the same createdAt but distinct ids
+    const ids: string[] = [];
+    for (let i = 0; i < 6; i += 1) {
+      const id = randomUUID();
+      ids.push(id);
+      notificationRepository.seed(
+        buildNotification({ id, userId: 'user-ties', createdAt: sharedTimestamp }),
+      );
+    }
+    const listNotifications = createListNotificationsUseCase({ notificationRepository });
+
+    const page1 = await listNotifications({ userId: 'user-ties', limit: 4 });
+    expect(page1.items).toHaveLength(4);
+    expect(page1.nextCursor).not.toBeNull();
+
+    const page2 = await listNotifications({
+      userId: 'user-ties',
+      limit: 4,
+      before: page1.nextCursor!,
+    });
+    expect(page2.items).toHaveLength(2);
+    expect(page2.nextCursor).toBeNull();
+
+    const allIds = [...page1.items, ...page2.items].map((n) => n.id).sort();
+    expect(allIds).toEqual([...ids].sort());
+  });
+
+  // #695 — cursor encode/decode round-trip
+  it('encodes and decodes a cursor losslessly', () => {
+    const date = new Date('2026-06-15T09:30:00.000Z');
+    const id = randomUUID();
+    const encoded = encodeCursor(date, id);
+    const decoded = decodeCursor(encoded);
+    expect(decoded).not.toBeNull();
+    expect(decoded!.createdAt.toISOString()).toBe(date.toISOString());
+    expect(decoded!.id).toBe(id);
+  });
+
+  it('decodeCursor returns null for a malformed value', () => {
+    expect(decodeCursor('not-base64!')).toBeNull();
+    expect(decodeCursor(Buffer.from('{"bad":"shape"}').toString('base64'))).toBeNull();
   });
 });

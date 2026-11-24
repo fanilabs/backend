@@ -1,6 +1,7 @@
 import type {
   Notification,
   NotificationChannel,
+  NotificationCursor,
   NotificationRepository,
   NotificationStatus,
 } from '../domain/index.js';
@@ -19,22 +20,53 @@ export interface ListNotificationsInput {
   /** When supplied, only notifications from this channel are returned. */
   channel?: NotificationChannel;
   limit?: number;
-  /** ISO timestamp cursor — returns only notifications older than this,
-   * i.e. the `nextCursor` from a previous page's response. */
+  /** Opaque composite cursor returned as `nextCursor` from a previous page.
+   * Encodes both `createdAt` and `id` as a JSON base64 string so timestamp
+   * ties never cause rows to be skipped or duplicated. */
   before?: string;
 }
 
 export interface ListNotificationsResult {
   items: Notification[];
-  /** ISO timestamp to pass as `before` to fetch the next page, or `null`
-   * once the last page has been reached (fewer than `limit` rows came
-   * back, so there is nothing older left to page through). */
+  /** Opaque cursor to pass as `before` on the next request, or `null` once
+   * the last page has been reached. The value is a base64-encoded JSON
+   * object carrying both `createdAt` (ISO string) and `id` (UUID) — clients
+   * must treat it as opaque and never construct it themselves. */
   nextCursor: string | null;
   limit: number;
 }
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 100;
+
+/** Encode a composite cursor to the opaque string clients pass as `before`. */
+export function encodeCursor(createdAt: Date, id: string): string {
+  return Buffer.from(JSON.stringify({ createdAt: createdAt.toISOString(), id })).toString(
+    'base64',
+  );
+}
+
+/** Decode a client-supplied cursor. Returns `null` if the value is malformed
+ * so the caller can silently treat it as "no cursor" rather than crashing. */
+export function decodeCursor(raw: string): NotificationCursor | null {
+  try {
+    const parsed = JSON.parse(Buffer.from(raw, 'base64').toString('utf8')) as unknown;
+    if (
+      typeof parsed !== 'object' ||
+      parsed === null ||
+      typeof (parsed as Record<string, unknown>).createdAt !== 'string' ||
+      typeof (parsed as Record<string, unknown>).id !== 'string'
+    ) {
+      return null;
+    }
+    const { createdAt, id } = parsed as { createdAt: string; id: string };
+    const date = new Date(createdAt);
+    if (Number.isNaN(date.getTime())) return null;
+    return { createdAt: date, id };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Builds the use case that lists a user's notifications, newest first.
@@ -43,37 +75,44 @@ const MAX_LIMIT = 100;
  * `request.user.id`, never a caller-supplied id) — there is no notion of
  * an admin reading another user's notifications in this v1 slice.
  *
- * Paginated via an opaque `before` cursor (the previous page's oldest
- * `createdAt`) rather than `skip`/offset, so results stay stable even as
- * new notifications are dispatched between page fetches — see #96/#101.
+ * Paginated via an opaque composite cursor (createdAt + id) rather than
+ * `skip`/offset or a timestamp-only `before`, so results stay stable even
+ * as new notifications are dispatched between page fetches and timestamp
+ * ties never drop rows at a page boundary — see #695.
+ *
+ * The repository is asked for `limit + 1` rows. If more than `limit` come
+ * back there is a next page, the cursor is built from item at index
+ * `limit - 1` (the last item that belongs to this page), and the extra row
+ * is stripped before returning. If exactly `limit` or fewer rows come back,
+ * `nextCursor` is `null` — an exact-size final page no longer triggers a
+ * spurious extra request.
  *
  * @param deps - Injected dependencies for the use case.
- * @param deps.notificationRepository - Repository used to read notifications
- *   for the given user, applying the limit, optional status filter, and
- *   optional `before` cursor.
- * @returns An async `listNotifications` function that accepts a
- *   {@link ListNotificationsInput} (`userId`, optional `status`, optional
- *   `limit`, optional `before` cursor) and resolves to a
- *   {@link ListNotificationsResult} containing the page of `items`, the
- *   `nextCursor` to fetch the next page (or `null` when the last page has
- *   been reached), and the effective `limit` that was applied.
+ * @returns An async `listNotifications` function.
  */
 export function createListNotificationsUseCase(deps: ListNotificationsDeps) {
   return async function listNotifications(
     input: ListNotificationsInput,
   ): Promise<ListNotificationsResult> {
     const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
-    const items = await deps.notificationRepository.listByUserId(input.userId, {
-      limit,
+    const cursor = input.before ? decodeCursor(input.before) : undefined;
+
+    // Fetch one extra row so we can tell whether there is a next page
+    // without making a separate COUNT query.
+    const rows = await deps.notificationRepository.listByUserId(input.userId, {
+      limit: limit + 1,
       ...(input.status && { status: input.status }),
       ...(input.unread !== undefined && { unread: input.unread }),
       ...(input.channel !== undefined && { channel: input.channel }),
-      ...(input.before && { before: new Date(input.before) }),
+      ...(cursor && { cursor }),
     });
+
+    const hasMore = rows.length > limit;
+    const items = hasMore ? rows.slice(0, limit) : rows;
 
     const lastItem = items[items.length - 1];
     const nextCursor =
-      items.length === limit && lastItem ? lastItem.createdAt.toISOString() : null;
+      hasMore && lastItem ? encodeCursor(lastItem.createdAt, lastItem.id) : null;
 
     return { items, nextCursor, limit };
   };

@@ -5,7 +5,10 @@ import type {
   DeliveryParties,
   DeliveryPartyLookup,
   Notification,
+  NotificationEventType,
   NotificationJobScheduler,
+  NotificationPreference,
+  NotificationPreferenceRepository,
   NotificationRepository,
   NotificationSender,
   UserContact,
@@ -46,13 +49,26 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
       return notifications.get(id) ?? null;
     },
     async listByUserId(userId, filter) {
-      return [...notifications.values()]
+      let results = [...notifications.values()]
         .filter((n) => n.userId === userId)
         .filter((n) => !filter.status || n.status === filter.status)
         .filter((n) => filter.unread === undefined || (filter.unread ? n.readAt === null : n.readAt !== null))
         .filter((n) => filter.channel === undefined || n.channel === filter.channel)
-        .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())
-        .slice(0, filter.limit);
+        // Apply composite cursor: rows older than (cursor.createdAt, cursor.id)
+        .filter((n) => {
+          if (!filter.cursor) return true;
+          const { createdAt, id } = filter.cursor;
+          if (n.createdAt.getTime() < createdAt.getTime()) return true;
+          if (n.createdAt.getTime() === createdAt.getTime() && n.id < id) return true;
+          return false;
+        })
+        .sort((a, b) => {
+          const timeDiff = b.createdAt.getTime() - a.createdAt.getTime();
+          if (timeDiff !== 0) return timeDiff;
+          return b.id < a.id ? -1 : b.id > a.id ? 1 : 0;
+        });
+
+      return results.slice(0, filter.limit);
     },
     async markAllRead(userId) {
       const readAt = new Date();
@@ -70,7 +86,7 @@ export function createInMemoryNotificationRepository(): NotificationRepository &
       if (!existing) return;
       notifications.set(id, { ...existing, status: 'SENT', sentAt });
     },
-    async markFailed(id: string, reason: string | null) {
+    async markFailed(id: string, reason?: string) {
       const existing = notifications.get(id);
       if (!existing) return;
       notifications.set(id, {
@@ -151,6 +167,47 @@ export function createFakeDeliveryPartyLookup(): DeliveryPartyLookup & {
     },
     async findParties(chainDeliveryId) {
       return byDeliveryId.get(chainDeliveryId) ?? null;
+    },
+  };
+}
+
+export function createFakeNotificationPreferenceRepository(): NotificationPreferenceRepository & {
+  seedPreference(pref: NotificationPreference): void;
+} {
+  const preferences = new Map<string, NotificationPreference>();
+
+  function key(userId: string, eventType: NotificationEventType): string {
+    return `${userId}:${eventType}`;
+  }
+
+  const now = new Date();
+
+  return {
+    seedPreference(pref) {
+      preferences.set(key(pref.userId, pref.eventType), pref);
+    },
+    async listByUserId(userId) {
+      return [...preferences.values()].filter((p) => p.userId === userId);
+    },
+    async upsert(input) {
+      const k = key(input.userId, input.eventType);
+      const existing = preferences.get(k);
+      const updated: NotificationPreference = existing
+        ? { ...existing, disabled: input.disabled, updatedAt: new Date() }
+        : {
+            id: randomUUID(),
+            userId: input.userId,
+            eventType: input.eventType,
+            disabled: input.disabled,
+            createdAt: now,
+            updatedAt: now,
+          };
+      preferences.set(k, updated);
+      return updated;
+    },
+    async isDisabled(userId, eventType) {
+      const pref = preferences.get(key(userId, eventType));
+      return pref?.disabled === true;
     },
   };
 }

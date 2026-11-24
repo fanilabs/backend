@@ -21,6 +21,8 @@ coverage/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
 # Prisma
 prisma/dev.db
@@ -40,3 +42,4 @@ Thumbs.db
 
 # Misc
 *.local
+*.pem

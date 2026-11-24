@@ -6,14 +6,17 @@ import { smtpSettingsFromEnv } from '../../shared/smtp/index.js';
 import {
   createDispatchNotificationsFromEventUseCase,
   createGetNotificationUseCase,
+  createGetNotificationPreferencesUseCase,
   createListNotificationsUseCase,
   createMarkNotificationsReadUseCase,
   createSendNotificationUseCase,
+  createUpdateNotificationPreferencesUseCase,
 } from './application/index.js';
 import {
   createNotificationJobScheduler,
   createNotificationsWorker,
   createPrismaDeliveryPartyLookup,
+  createPrismaNotificationPreferenceRepository,
   createPrismaNotificationRepository,
   createPrismaUserContactLookup,
   selectNotificationSender,
@@ -34,12 +37,14 @@ import { createNotificationsRoutes } from './interface/routes.js';
  */
 export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAsyncZod {
   const notificationRepository = createPrismaNotificationRepository(prisma);
+  const notificationPreferenceRepository = createPrismaNotificationPreferenceRepository(prisma);
   const userContactLookup = createPrismaUserContactLookup(prisma);
   const deliveryPartyLookup = createPrismaDeliveryPartyLookup(prisma);
   const jobScheduler = createNotificationJobScheduler();
 
   const dispatchNotificationsFromEvent = createDispatchNotificationsFromEventUseCase({
     notificationRepository,
+    notificationPreferenceRepository,
     userContactLookup,
     deliveryPartyLookup,
     jobScheduler,
@@ -50,6 +55,12 @@ export function createNotificationsModule(prisma: PrismaClient): FastifyPluginAs
     listNotifications: createListNotificationsUseCase({ notificationRepository }),
     getNotification: createGetNotificationUseCase({ notificationRepository }),
     markNotificationsRead: createMarkNotificationsReadUseCase({ notificationRepository }),
+    getNotificationPreferences: createGetNotificationPreferencesUseCase({
+      notificationPreferenceRepository,
+    }),
+    updateNotificationPreferences: createUpdateNotificationPreferencesUseCase({
+      notificationPreferenceRepository,
+    }),
   };
 
   return createNotificationsRoutes(useCases);

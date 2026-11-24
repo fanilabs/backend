@@ -155,4 +155,59 @@ describe.skipIf(!dbAvailable)('Prisma notification repository (integration)', ()
     const limited = await notificationRepository.listByUserId(userId, { limit: 1 });
     expect(limited).toHaveLength(1);
   });
+
+  // #695 — composite (createdAt, id) cursor pagination
+  it('fetches the next page using the composite cursor without duplicates', async () => {
+    const userId = await seedUser();
+    // Insert 5 rows with a small delay between each to get distinct createdAt values.
+    const ids: string[] = [];
+    for (let i = 0; i < 5; i += 1) {
+      const n = await notificationRepository.create({
+        userId,
+        channel: 'EMAIL',
+        type: `cursor-test-${i}`,
+        payload: {},
+      });
+      ids.push(n.id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const page1 = await notificationRepository.listByUserId(userId, { limit: 3 });
+    expect(page1).toHaveLength(3);
+
+    const lastOfPage1 = page1[page1.length - 1]!;
+    const page2 = await notificationRepository.listByUserId(userId, {
+      limit: 3,
+      cursor: { createdAt: lastOfPage1.createdAt, id: lastOfPage1.id },
+    });
+    expect(page2).toHaveLength(2);
+
+    const allIds = [...page1, ...page2].map((n) => n.id).sort();
+    expect(allIds).toEqual([...ids].sort());
+  });
+
+  it('exact-size final page returns empty second page when cursor is applied', async () => {
+    const userId = await seedUser();
+    // Create exactly 3 rows
+    for (let i = 0; i < 3; i += 1) {
+      await notificationRepository.create({
+        userId,
+        channel: 'EMAIL',
+        type: `exact-${i}`,
+        payload: {},
+      });
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+
+    const page1 = await notificationRepository.listByUserId(userId, { limit: 3 });
+    expect(page1).toHaveLength(3);
+
+    const last = page1[page1.length - 1]!;
+    const page2 = await notificationRepository.listByUserId(userId, {
+      limit: 3,
+      cursor: { createdAt: last.createdAt, id: last.id },
+    });
+    // The second page should be empty — no rows older than the last one on page 1.
+    expect(page2).toHaveLength(0);
+  });
 });

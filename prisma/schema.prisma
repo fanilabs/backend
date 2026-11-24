@@ -104,6 +104,35 @@ enum NotificationChannel {
   @@map("notification_channel")
 }
 
+/// The set of blockchain event types that `dispatchNotificationsFromEvent`
+/// can produce a notification for. Each value mirrors the `type` field
+/// that dispatch writes to `Notification.type` for the corresponding event.
+/// Stored here so preference rows are validated against a known set at the
+/// DB level as well as the API validation layer.
+enum NotificationEventType {
+  DELIVERY_DRIVER_ASSIGNED
+  DELIVERY_IN_TRANSIT
+  DELIVERY_CONFIRMED
+  DELIVERY_CANCELLED
+  ESCROW_DELIVERY_DISPUTED
+  ESCROW_RELEASED
+  ESCROW_REFUNDED
+  DISPUTE_RAISED
+  DISPUTE_RESOLVED_REFUND
+  DISPUTE_RESOLVED_SPLIT
+  DISPUTE_RESOLVED_PAYOUT
+  REPUTATION_DRIVER_REGISTERED
+  REPUTATION_KYC_STATUS_UPDATED
+  REPUTATION_INCREASED
+  REPUTATION_DECREASED
+  FLEET_REGISTERED
+  FLEET_DRIVER_INVITED
+  FLEET_INVITE_ACCEPTED
+  FLEET_DRIVER_REMOVED
+
+  @@map("notification_event_type")
+}
+
 enum NotificationStatus {
   PENDING
   SENT
@@ -136,13 +165,14 @@ model User {
   createdAt       DateTime  @default(now()) @map("created_at")
   updatedAt       DateTime  @updatedAt @map("updated_at")
 
-  wallets          WalletAddress[]
-  refreshTokens    RefreshToken[]
-  notifications    Notification[]
-  auditLogs        AuditLog[]
-  ownedFleets      Fleet[]
-  uploadedEvidence Evidence[]
-  raisedDisputes   Dispute[]
+  wallets                  WalletAddress[]
+  refreshTokens            RefreshToken[]
+  notifications            Notification[]
+  notificationPreferences  NotificationPreference[]
+  auditLogs                AuditLog[]
+  ownedFleets              Fleet[]
+  uploadedEvidence         Evidence[]
+  raisedDisputes           Dispute[]
 
   @@map("users")
 }
@@ -485,13 +515,38 @@ model Notification {
 
   @@index([userId])
   @@index([status])
-  @@index([userId, createdAt(sort: Desc)])
+  // Issue #695: stable composite (createdAt DESC, id DESC) so the cursor
+  // is lossless at timestamp ties — both fields are carried in the opaque
+  // cursor and used as the keyset predicate in listByUserId.
+  @@index([userId, createdAt(sort: Desc), id(sort: Desc)])
   // Issue #367: GET /notifications?status=PENDING combines userId + status +
   // createdAt DESC — served index-only by this composite with no separate
   // sort step, which neither single-column nor (userId, createdAt) index can
   // do once a status filter narrows the rows.
   @@index([userId, status, createdAt(sort: Desc)])
   @@map("notifications")
+}
+
+/// Per-user, per-event-type opt-out preference (#698). Absence of a row
+/// for a given (userId, eventType) pair means the user has the default
+/// behaviour: notifications ARE created for that event type. Only a
+/// disabled: true row suppresses creation. This model is never queried by
+/// the read path (list/get); it is only consulted at dispatch time.
+model NotificationPreference {
+  id        String                @id @default(uuid())
+  userId    String                @map("user_id")
+  eventType NotificationEventType @map("event_type")
+  /// When true, `dispatchNotificationsFromEvent` skips creating a
+  /// Notification row (and scheduling delivery) for this user+eventType.
+  disabled  Boolean               @default(false)
+  createdAt DateTime              @default(now()) @map("created_at")
+  updatedAt DateTime              @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, eventType])
+  @@index([userId])
+  @@map("notification_preferences")
 }
 
 model AuditLog {
