@@ -112,7 +112,12 @@ export function createInMemoryAuditLogRepository(): AuditLogRepository & {
       });
     },
     async list(filter) {
-      const ordered = [...entries].sort(
+      let ordered = [...entries].filter(
+        (entry) =>
+          (filter.actorId === undefined || entry.actorId === filter.actorId) &&
+          (filter.action === undefined || entry.action === filter.action),
+      );
+      ordered = ordered.sort(
         (left, right) =>
           right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id),
       );
@@ -122,8 +127,12 @@ export function createInMemoryAuditLogRepository(): AuditLogRepository & {
       const start = filter.before ? cursorIndex + 1 : 0;
       return ordered.slice(start, start + filter.limit);
     },
-    async count() {
-      return entries.length;
+    async count(filter) {
+      return entries.filter(
+        (entry) =>
+          (filter.actorId === undefined || entry.actorId === filter.actorId) &&
+          (filter.action === undefined || entry.action === filter.action),
+      ).length;
     },
   };
 }

@@ -175,4 +175,151 @@ describe('listAuditLog', () => {
     expect(seenIds).toContain(firstId);
     expect(seenIds).toContain(secondId);
   });
+
+  it('filters by actorId, returning only that actor\'s entries', async () => {
+    const auditLogRepository = createInMemoryAuditLogRepository();
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-1',
+    });
+    await auditLogRepository.record({
+      actorId: 'admin-2',
+      actorLabel: 'other@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-2',
+    });
+    const listAuditLog = createListAuditLogUseCase({ auditLogRepository });
+
+    const result = await listAuditLog({ filters: { actorId: 'admin-2' } });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.actorId).toBe('admin-2');
+    // totalCount reflects the filtered set.
+    expect(result.totalCount).toBe(1);
+  });
+
+  it('filters by action, returning only that action\'s entries', async () => {
+    const auditLogRepository = createInMemoryAuditLogRepository();
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-1',
+    });
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'escrow.refunded',
+      entityType: 'Escrow',
+      entityId: 'escrow-1',
+    });
+    const listAuditLog = createListAuditLogUseCase({ auditLogRepository });
+
+    const result = await listAuditLog({ filters: { action: 'escrow.refunded' } });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.action).toBe('escrow.refunded');
+    expect(result.totalCount).toBe(1);
+  });
+
+  it('composes actorId and action filters', async () => {
+    const auditLogRepository = createInMemoryAuditLogRepository();
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-1',
+    });
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'escrow.refunded',
+      entityType: 'Escrow',
+      entityId: 'escrow-1',
+    });
+    await auditLogRepository.record({
+      actorId: 'admin-2',
+      actorLabel: 'other@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-2',
+    });
+    const listAuditLog = createListAuditLogUseCase({ auditLogRepository });
+
+    const result = await listAuditLog({
+      filters: { actorId: 'admin-1', action: 'user.role_updated' },
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]!.actorId).toBe('admin-1');
+    expect(result.items[0]!.action).toBe('user.role_updated');
+    expect(result.totalCount).toBe(1);
+  });
+
+  it('composes filters with cursor pagination without duplicates', async () => {
+    const auditLogRepository = createInMemoryAuditLogRepository();
+    for (let i = 0; i < 5; i += 1) {
+      await auditLogRepository.record({
+        actorId: 'admin-1',
+        actorLabel: 'admin@example.com',
+        action: `action-${i}`,
+        entityType: 'User',
+        entityId: `user-${i}`,
+      });
+    }
+    const listAuditLog = createListAuditLogUseCase({ auditLogRepository });
+
+    const page1 = await listAuditLog({
+      limit: 2,
+      filters: { actorId: 'admin-1' },
+    });
+    expect(page1.items).toHaveLength(2);
+    expect(page1.nextCursor).not.toBeNull();
+    expect(page1.totalCount).toBe(5);
+
+    const page2 = await listAuditLog({
+      limit: 2,
+      before: page1.nextCursor!,
+      filters: { actorId: 'admin-1' },
+    });
+    expect(page2.items).toHaveLength(2);
+    expect(page2.nextCursor).not.toBeNull();
+    expect(page2.totalCount).toBe(5);
+
+    const page3 = await listAuditLog({
+      limit: 2,
+      before: page2.nextCursor!,
+      filters: { actorId: 'admin-1' },
+    });
+    expect(page3.items).toHaveLength(1);
+    expect(page3.nextCursor).toBeNull();
+    expect(page3.totalCount).toBe(5);
+
+    const allIds = [...page1.items, ...page2.items, ...page3.items].map((e) => e.id);
+    expect(new Set(allIds).size).toBe(5);
+  });
+
+  it('returns an empty page and totalCount 0 when no entry matches', async () => {
+    const auditLogRepository = createInMemoryAuditLogRepository();
+    await auditLogRepository.record({
+      actorId: 'admin-1',
+      actorLabel: 'admin@example.com',
+      action: 'user.role_updated',
+      entityType: 'User',
+      entityId: 'user-1',
+    });
+    const listAuditLog = createListAuditLogUseCase({ auditLogRepository });
+
+    const result = await listAuditLog({ filters: { actorId: 'admin-9' } });
+
+    expect(result.items).toEqual([]);
+    expect(result.nextCursor).toBeNull();
+    expect(result.totalCount).toBe(0);
+  });
 });

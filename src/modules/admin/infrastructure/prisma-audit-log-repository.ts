@@ -34,16 +34,24 @@ export function createPrismaAuditLogRepository(
     },
 
     async list(filter) {
+      const where: Record<string, unknown> = {};
+      if (filter.actorId) where.actorId = filter.actorId;
+      if (filter.action) where.action = filter.action;
+
       const records = await prisma.auditLog.findMany({
         ...(filter.before && { cursor: { id: filter.before }, skip: 1 }),
+        where,
         orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         take: filter.limit,
       });
       return records.map(toDomain);
     },
 
-    async count() {
-      return prisma.auditLog.count();
+    async count(filter) {
+      const where: Record<string, unknown> = {};
+      if (filter.actorId) where.actorId = filter.actorId;
+      if (filter.action) where.action = filter.action;
+      return prisma.auditLog.count({ where });
     },
   };
 }
