@@ -74,6 +74,12 @@ export async function buildApp() {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.setErrorHandler(handleError);
+  app.setNotFoundHandler((request, reply) => {
+    void reply.status(404).send({
+      error: { code: 'NOT_FOUND', message: 'Route not found' },
+      requestId: request.id,
+    });
+  });
 
   const prisma = getPrismaClient();
 

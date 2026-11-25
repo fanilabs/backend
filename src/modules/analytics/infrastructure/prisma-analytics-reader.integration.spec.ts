@@ -126,4 +126,75 @@ describeIfDb('createPrismaAnalyticsReader (integration)', () => {
       await prisma.driverProfile.deleteMany({ where: { id: { in: [profile.id] } } });
     }
   });
+
+  it('getGmvByToken returns token groups in ascending token order', async () => {
+    const chainId1 = nextChainId();
+    const chainId2 = nextChainId();
+    const tokenZZZ = `TOKEN-ZZZ-${chainId1}`;
+    const tokenAAA = `TOKEN-AAA-${chainId2}`;
+
+    await prisma.delivery.create({
+      data: {
+        chainDeliveryId: chainId1,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        status: 'DELIVERED',
+        origin: 'Lagos',
+        destination: 'Accra',
+        cargoCategory: 'GENERAL',
+        weightGrams: 500,
+        fragile: false,
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.delivery.create({
+      data: {
+        chainDeliveryId: chainId2,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        status: 'DELIVERED',
+        origin: 'Lagos',
+        destination: 'Accra',
+        cargoCategory: 'GENERAL',
+        weightGrams: 500,
+        fragile: false,
+        createdAtChain: new Date(),
+      },
+    });
+
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: chainId1,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token: tokenZZZ,
+        amount: '100',
+        status: 'RELEASED',
+        isVerified: true,
+        createdAtChain: new Date(),
+      },
+    });
+    await prisma.escrow.create({
+      data: {
+        chainDeliveryId: chainId2,
+        senderAddress: Keypair.random().publicKey(),
+        recipientAddress: Keypair.random().publicKey(),
+        driverAddress: Keypair.random().publicKey(),
+        token: tokenAAA,
+        amount: '200',
+        status: 'RELEASED',
+        isVerified: true,
+        createdAtChain: new Date(),
+      },
+    });
+
+    const rows = await analyticsReader.getGmvByToken();
+    const aaaIndex = rows.findIndex((r) => r.token === tokenAAA);
+    const zzzIndex = rows.findIndex((r) => r.token === tokenZZZ);
+
+    expect(aaaIndex).toBeGreaterThanOrEqual(0);
+    expect(zzzIndex).toBeGreaterThanOrEqual(0);
+    expect(aaaIndex).toBeLessThan(zzzIndex);
+  });
 });
