@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+.cache/
+tmp/
 
 # Environment
 .env
@@ -12,6 +14,19 @@ dist/
 
 # Testing
 coverage/
+**/__snapshots__/
+*.snap
+
+# Test snapshots
+**/__snapshots__/
+*.snap
+
+# Vitest cache
+.vitest-cache/
+**/.vitest/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
 
 # Logs
 *.log
@@ -29,9 +44,15 @@ storage/evidence/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/launch.json
 .idea/
 .DS_Store
 Thumbs.db
+
+# OS / editor extras
+*.swp
+*.swo
+*~
 
 # Misc
 *.local

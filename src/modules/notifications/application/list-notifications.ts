@@ -1,4 +1,9 @@
-import type { Notification, NotificationRepository, NotificationStatus } from '../domain/index.js';
+import type {
+  Notification,
+  NotificationChannel,
+  NotificationRepository,
+  NotificationStatus,
+} from '../domain/index.js';
 
 export interface ListNotificationsDeps {
   notificationRepository: NotificationRepository;
@@ -7,6 +12,12 @@ export interface ListNotificationsDeps {
 export interface ListNotificationsInput {
   userId: string;
   status?: NotificationStatus;
+  /** When `true`, only unread (readAt is null) notifications are returned.
+   * When `false`, only read notifications are returned.
+   * Omitted means no read-state constraint. */
+  unread?: boolean;
+  /** When supplied, only notifications from this channel are returned. */
+  channel?: NotificationChannel;
   limit?: number;
   /** ISO timestamp cursor — returns only notifications older than this,
    * i.e. the `nextCursor` from a previous page's response. */
@@ -55,6 +66,8 @@ export function createListNotificationsUseCase(deps: ListNotificationsDeps) {
     const items = await deps.notificationRepository.listByUserId(input.userId, {
       limit,
       ...(input.status && { status: input.status }),
+      ...(input.unread !== undefined && { unread: input.unread }),
+      ...(input.channel !== undefined && { channel: input.channel }),
       ...(input.before && { before: new Date(input.before) }),
     });
 

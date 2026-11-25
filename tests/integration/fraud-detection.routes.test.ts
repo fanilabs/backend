@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance } from 'fastify';
 
 // Mock the auth plugin so we can control authentication/authorization outcomes
 // without depending on real token issuance.
-vi.mock('../../../src/modules/auth/interface/plugins/authenticate', () => ({
+vi.mock('../../src/modules/auth/interface/plugins/authenticate', () => ({
   authenticate: async (request: any, reply: any) => {
     const header = request.headers['authorization'];
     if (!header) {
@@ -14,7 +14,7 @@ vi.mock('../../../src/modules/auth/interface/plugins/authenticate', () => ({
   },
 }));
 
-vi.mock('../../../src/modules/auth/interface/plugins/require-role', () => ({
+vi.mock('../../src/modules/auth/interface/plugins/require-role', () => ({
   requireRole: (role: string) => async (request: any, reply: any) => {
     if (!request.user || request.user.role !== role) {
       return reply.code(403).send({ error: 'Forbidden' });
@@ -22,7 +22,7 @@ vi.mock('../../../src/modules/auth/interface/plugins/require-role', () => ({
   },
 }));
 
-import { createFraudDetectionRoutes } from '../../../src/modules/fraud-detection/interface/routes';
+import { createFraudDetectionRoutes } from '../../src/modules/fraud-detection/interface/routes';
 
 describe('fraud-detection routes auth lifecycle', () => {
   let app: FastifyInstance;

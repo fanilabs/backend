@@ -74,6 +74,12 @@ export async function buildApp() {
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
   app.setErrorHandler(handleError);
+  app.setNotFoundHandler((request, reply) => {
+    void reply.status(404).send({
+      error: { code: 'NOT_FOUND', message: 'Route not found' },
+      requestId: request.id,
+    });
+  });
 
   const prisma = getPrismaClient();
 
@@ -118,4 +124,42 @@ export async function buildApp() {
   await app.register(createAdminModule(prisma), { prefix: '/api/v1' });
 
   return app;
+}
+
+/**
+ * Recursively sorts object keys so the exported OpenAPI document has a
+ * deterministic ordering suitable for review and diffing. Arrays keep their
+ * original order (route/schema ordering is meaningful).
+ */
+function sortKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortKeysDeep);
+  }
+  if (value !== null && typeof value === 'object') {
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      sorted[key] = sortKeysDeep((value as Record<string, unknown>)[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+/**
+ * Builds the API from the real route registrations and returns the current
+ * OpenAPI document as a deterministically-ordered JSON string. Never calls
+ * `listen()` and never starts background workers, so it is safe to run in a
+ * disposable environment for client tooling or offline API review.
+ *
+ * The caller is responsible for closing the returned app (see
+ * scripts/export-openapi.ts) so initialized dependencies are released.
+ */
+export async function exportOpenApiDocument(): Promise<{
+  app: Awaited<ReturnType<typeof buildApp>>;
+  document: string;
+}> {
+  const app = await buildApp();
+  await app.ready();
+  const document = sortKeysDeep(app.swagger());
+  return { app, document: JSON.stringify(document, null, 2) + '\n' };
 }

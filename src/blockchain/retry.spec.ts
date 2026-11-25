@@ -114,6 +114,60 @@ describe('withRetry', () => {
     expect(delays).toEqual([100, 200, 400]);
   });
 
+  // Issue #694: invalid maxAttempts must be caught before any fn() or timer
+  it('rejects maxAttempts of zero before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow(RangeError);
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow('maxAttempts');
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects negative maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: -1 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects NaN maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: NaN })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects Infinity maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: Infinity })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('rejects fractional maxAttempts before invoking the operation', async () => {
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 1.5 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('accepts maxAttempts=1 and performs exactly one attempt', async () => {
+    const fn = vi.fn().mockResolvedValue('done');
+    const result = await withRetry(fn, { maxAttempts: 1 });
+    expect(result).toBe('done');
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses the default maxAttempts when options are omitted', async () => {
+    const fn = vi.fn().mockResolvedValue('ok');
+    await withRetry(fn);
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects maxAttempts of zero without scheduling any timer', async () => {
+    const timerSpy = vi.spyOn(global, 'setTimeout');
+    const fn = vi.fn();
+    await expect(withRetry(fn, { maxAttempts: 0 })).rejects.toThrow(RangeError);
+    expect(fn).not.toHaveBeenCalled();
+    expect(timerSpy).not.toHaveBeenCalled();
+    timerSpy.mockRestore();
+  });
+
   // Issue #344: with large maxAttempts the exponent must be capped so the
   // backoff never overflows into NaN/Infinity — a NaN delay would make
   // setTimeout fire immediately and turn the retry loop into a hot spin
@@ -232,6 +286,44 @@ describe('CircuitBreaker', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(results.filter((r) => r.status === 'rejected')).toHaveLength(9);
     expect(breaker.getState()).toBe('closed');
+  });
+
+  it('resets the consecutive-failure streak on an intervening closed-state success', async () => {
+    const threshold = 3;
+    const breaker = new CircuitBreaker({ failureThreshold: threshold, cooldownMs: 60_000 });
+    const fn = vi.fn();
+    const failing = () => Promise.reject(new Error('boom'));
+    const succeeding = () => Promise.resolve('ok');
+
+    // threshold - 1 failures: stays closed, doesn't open.
+    for (let i = 0; i < threshold - 1; i += 1) {
+      fn.mockImplementationOnce(failing);
+      await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    }
+    expect(breaker.getState()).toBe('closed');
+
+    // One success resets consecutiveFailures to 0.
+    fn.mockImplementationOnce(succeeding);
+    await expect(breaker.execute(fn)).resolves.toBe('ok');
+    expect(breaker.getState()).toBe('closed');
+
+    // Another threshold - 1 failures: still closed, because the earlier
+    // streak was reset by the success above rather than carrying over.
+    for (let i = 0; i < threshold - 1; i += 1) {
+      fn.mockImplementationOnce(failing);
+      await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    }
+    expect(breaker.getState()).toBe('closed');
+
+    // One more failure is now the threshold-th consecutive failure since
+    // the reset, so the breaker opens.
+    fn.mockImplementationOnce(failing);
+    await expect(breaker.execute(fn)).rejects.toThrow('boom');
+    expect(breaker.getState()).toBe('open');
+
+    // Every call above was actually executed — the breaker never
+    // short-circuited a call before it opened.
+    expect(fn).toHaveBeenCalledTimes(2 * (threshold - 1) + 2);
   });
 
   it('re-opens after a failing half-open probe and requires a new cooldown', async () => {

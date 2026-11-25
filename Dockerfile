@@ -1,4 +1,9 @@
 # syntax=docker/dockerfile:1
+# API build entrypoint — exposes `api` as the default build target.
+# The shared stages (base, deps, build, prod-deps) are kept byte-for-byte
+# identical to Dockerfile.worker; run `scripts/check-dockerfile-parity.sh`
+# (also wired into `make check-dockerfile-parity`) to verify they have not
+# drifted. Edit shared stages in BOTH files.
 
 FROM node:26-slim AS base
 # `node:20-slim` doesn't ship OpenSSL as an OS package — Prisma's query

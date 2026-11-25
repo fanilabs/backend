@@ -18,6 +18,26 @@ const moduleElementTypes = [
   { type: 'interface', pattern: 'src/modules/*/interface/**' },
 ];
 
+// Layers that are internal to a module: importing these from a *different*
+// module is a boundary violation even when the layer type is otherwise
+// allowed. Own-module imports stay valid via the `module` capture match.
+const internalLayers = ['domain', 'infrastructure'];
+
+/**
+ * Build an element-types rule that allows the given layer types but only
+ * when they belong to the same module (captured as `module`). Shared,
+ * blockchain, bootstrap, workers and module-root elements carry no module
+ * capture, so they are matched by type alone.
+ */
+const ownModuleRule = (from, allow) => ({
+  from,
+  allow: allow.map((type) =>
+    internalLayers.includes(type)
+      ? { type, module: '${from.module}' }
+      : { type },
+  ),
+});
+
 export default tseslint.config(
   {
     ignores: ['dist/**', 'node_modules/**', 'coverage/**', 'prisma/migrations/**'],
@@ -39,7 +59,7 @@ export default tseslint.config(
         // one place per module allowed to see all four of its own layers —
         // it wires infrastructure adapters into application use cases and
         // hands the interface layer a ready-to-register Fastify plugin.
-        { type: 'module-root', pattern: 'src/modules/*/index.ts', mode: 'file' },
+        { type: 'module-root', pattern: 'src/modules/*/index.ts', mode: 'file', capture: ['module'] },
       ],
     },
     rules: {
@@ -55,34 +75,71 @@ export default tseslint.config(
             // exists. Domain code must import shared/errors/app-error.js
             // directly, not the shared/errors barrel, to avoid pulling in
             // the Fastify-typed error-handler module even at the type level.
-            { from: 'domain', allow: ['domain', 'shared'] },
-            { from: 'application', allow: ['domain', 'application', 'shared'] },
-            {
-              from: 'infrastructure',
-              allow: ['domain', 'application', 'infrastructure', 'shared', 'blockchain'],
-            },
-            { from: 'interface', allow: ['application', 'domain', 'shared'] },
+            // The narrow shared exception is enforced by the restricted
+            // import rule below; here we only allow own-module domain.
+            { from: 'domain', allow: [{ type: 'domain', module: '${from.module}' }, { type: 'shared' }] },
+            ownModuleRule('application', ['domain', 'application', 'shared']),
+            ownModuleRule('infrastructure', [
+              'domain',
+              'application',
+              'infrastructure',
+              'shared',
+              'blockchain',
+            ]),
+            ownModuleRule('interface', ['application', 'domain', 'shared']),
             {
               from: 'module-root',
               allow: [
-                'domain',
-                'application',
-                'infrastructure',
-                'interface',
-                'shared',
-                'blockchain',
+                { type: 'domain', module: '${from.module}' },
+                { type: 'application', module: '${from.module}' },
+                { type: 'infrastructure', module: '${from.module}' },
+                { type: 'interface', module: '${from.module}' },
+                { type: 'shared' },
+                { type: 'blockchain' },
               ],
             },
             {
               from: ['bootstrap', 'workers'],
-              allow: ['shared', 'blockchain', 'module-root'],
+              allow: [{ type: 'shared' }, { type: 'blockchain' }, { type: 'module-root' }],
             },
-            { from: 'shared', allow: ['shared'] },
-            { from: 'blockchain', allow: ['blockchain', 'shared'] },
+            { from: 'shared', allow: [{ type: 'shared' }] },
+            { from: 'blockchain', allow: [{ type: 'blockchain' }, { type: 'shared' }] },
           ],
         },
       ],
       'boundaries/no-private': ['error'],
+      // Domain may only reach into shared/errors (the documented pure-TS
+      // error base). Any other shared import — e.g. shared/database — is a
+      // domain-to-infrastructure leak and must fail lint.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/shared/*', '!**/shared/errors', '!**/shared/errors/*'],
+              message:
+                'Domain may only import from shared/errors (the documented error base); other shared code is infrastructure.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ['src/modules/*/domain/**/*.ts'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['**/shared/*', '!**/shared/errors', '!**/shared/errors/*'],
+              message:
+                'Domain may only import from shared/errors (the documented error base); other shared code is infrastructure.',
+            },
+          ],
+        },
+      ],
     },
   },
   {
@@ -106,6 +163,19 @@ export default tseslint.config(
     // Standalone CLI tools (scripts/load-test.ts, ...), not application
     // code reachable from src/ — console output is the actual point.
     files: ['scripts/**/*.ts'],
+    rules: {
+      'no-console': 'off',
+    },
+  },
+  {
+    // Plain Node.js ESM scripts (*.mjs) — no TypeScript, needs Node globals.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+      },
+    },
     rules: {
       'no-console': 'off',
     },

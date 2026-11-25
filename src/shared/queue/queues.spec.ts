@@ -61,3 +61,50 @@ describe('pauseAllQueues / resumeAllQueues / drainAllQueues (#360)', () => {
     await closeAllQueues();
   });
 });
+
+describe('getQueue producer reuse and recreation (#676)', () => {
+  beforeEach(async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+  });
+
+  it('reuses one cached handle per queue within a lifecycle, keeps names separate, and constructs a fresh handle after a full close', async () => {
+    const closeResolvers: Array<() => void> = [];
+    const QueueMock = vi.fn().mockImplementation(() => ({
+      pause,
+      resume,
+      drain,
+      isPaused,
+      close: vi.fn(() => new Promise<void>((resolve) => closeResolvers.push(resolve))),
+    }));
+    vi.doMock('bullmq', () => ({ Queue: QueueMock }));
+    vi.doMock('./connection.js', () => ({ getQueueConnection: vi.fn(() => ({})) }));
+
+    const { getQueue, closeAllQueues, QueueName } = await import('./queues.js');
+
+    // Reuse: two calls for the same name return the same cached handle.
+    const first = getQueue(QueueName.Notifications);
+    const second = getQueue(QueueName.Notifications);
+    expect(second).toBe(first);
+    expect(QueueMock).toHaveBeenCalledTimes(1);
+
+    // Per-name separation: a different name constructs a distinct handle.
+    const other = getQueue(QueueName.BlockchainIndexer);
+    expect(other).not.toBe(first);
+    expect(QueueMock).toHaveBeenCalledTimes(2);
+
+    // Close everything; the handles stay cached until every close resolves.
+    const closePromise = closeAllQueues();
+    expect(closeResolvers).toHaveLength(2);
+    for (const resolve of closeResolvers) resolve();
+    await closePromise;
+
+    // After the full close completes, requesting the same name again
+    // constructs a genuinely new handle rather than returning a stale one.
+    const afterClose = getQueue(QueueName.Notifications);
+    expect(afterClose).not.toBe(first);
+    expect(QueueMock).toHaveBeenCalledTimes(3);
+
+    await closeAllQueues();
+  });
+});

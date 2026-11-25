@@ -23,4 +23,21 @@ describe('getGmv', () => {
 
     await expect(getGmv()).resolves.toEqual([]);
   });
+
+  it('preserves the reader\'s ordering contract — tokens come back sorted', async () => {
+    // ordering is enforced at the infrastructure layer (prisma-analytics-reader); the use case preserves whatever order the reader returns
+    const analyticsReader = createFakeAnalyticsReader();
+    analyticsReader.setGmv([
+      { token: 'ZZZ', releasedAmount: 300n, releasedCount: 3 },
+      { token: 'MMM', releasedAmount: 200n, releasedCount: 2 },
+      { token: 'AAA', releasedAmount: 100n, releasedCount: 1 },
+    ]);
+    const getGmv = createGetGmvUseCase({ analyticsReader });
+
+    await expect(getGmv()).resolves.toEqual([
+      { token: 'ZZZ', releasedAmount: 300n, releasedCount: 3 },
+      { token: 'MMM', releasedAmount: 200n, releasedCount: 2 },
+      { token: 'AAA', releasedAmount: 100n, releasedCount: 1 },
+    ]);
+  });
 });
