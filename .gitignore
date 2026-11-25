@@ -4,6 +4,8 @@ node_modules/
 # Build output
 dist/
 *.tsbuildinfo
+.cache/
+tmp/
 
 # Environment
 .env
@@ -12,6 +14,8 @@ dist/
 
 # Testing
 coverage/
+**/__snapshots__/
+*.snap
 
 # Test snapshots
 **/__snapshots__/
@@ -40,6 +44,7 @@ storage/evidence/
 .vscode/*
 !.vscode/settings.json
 !.vscode/extensions.json
+!.vscode/launch.json
 .idea/
 .DS_Store
 Thumbs.db

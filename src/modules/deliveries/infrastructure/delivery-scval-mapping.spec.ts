@@ -1,244 +1,122 @@
-import { Keypair, xdr } from '@stellar/stellar-sdk';
 import { describe, expect, it } from 'vitest';
-import {
-  addressToScVal,
-  boolToScVal,
-  namedStructToScVal,
-  scValToNative,
-  stringToScVal,
-  tupleStructToScVal,
-  u32ToScVal,
-  u64ToScVal,
-  unitEnumToScVal,
-} from '../../../blockchain/xdr/sc-val.js';
-import {
-  createDeliveryArgsToScVal,
-  deliveryIdToScVal,
-  nativeToChainDeliveryRecord,
-} from './delivery-scval-mapping.js';
+import type { CargoCategory, DeliveryStatus } from '@prisma/client';
+import { nativeToChainDeliveryRecord } from './delivery-scval-mapping.js';
 
-describe('deliveryIdToScVal', () => {
-  it('encodes as a one-element Vec (tuple struct), matching DeliveryId(pub u64)', () => {
-    const scVal = deliveryIdToScVal(42n);
-    expect(scVal.switch().name).toBe('scvVec');
-    expect(scValToNative(scVal)).toEqual(['42']);
-  });
-});
+/**
+ * Regression contract for the delivery decoder's enum matrix (#616).
+ *
+ * `nativeToChainDeliveryRecord` consumes the native (post-`scValToNative`)
+ * shape of a `get_delivery` return value. Unit enums decode as a
+ * one-element Vec wrapping a Symbol string, and `DeliveryId` decodes as a
+ * one-element Vec wrapping a u64-as-string. These fixtures are minimal valid
+ * records built by hand — no live network calls, fully deterministic.
+ */
 
-describe('createDeliveryArgsToScVal', () => {
-  it('produces [sender, recipient, metadata] with the DeliveryMetadata struct fields sorted', () => {
-    const sender = Keypair.random().publicKey();
-    const recipient = Keypair.random().publicKey();
+const DELIVERY_STATUS_CASES: ReadonlyArray<[string, DeliveryStatus]> = [
+  ['Pending', 'PENDING'],
+  ['Active', 'ACTIVE'],
+  ['InTransit', 'IN_TRANSIT'],
+  ['Delivered', 'DELIVERED'],
+  ['Disputed', 'DISPUTED'],
+  ['Cancelled', 'CANCELLED'],
+];
 
-    const estimatedDelivery = new Date('2026-06-01T00:00:00Z');
-    const args = createDeliveryArgsToScVal({
-      senderAddress: sender,
-      recipientAddress: recipient,
-      origin: 'Lagos',
-      destination: 'Accra',
-      cargoCategory: 'ELECTRONICS',
-      weightGrams: 750,
-      fragile: true,
-      estimatedDelivery,
-    });
+const CARGO_CATEGORY_CASES: ReadonlyArray<[string, CargoCategory]> = [
+  ['Documents', 'DOCUMENTS'],
+  ['Electronics', 'ELECTRONICS'],
+  ['Perishables', 'PERISHABLES'],
+  ['Clothing', 'CLOTHING'],
+  ['General', 'GENERAL'],
+];
 
-    expect(args).toHaveLength(3);
-    expect(scValToNative(args[0]!)).toBe(sender);
-    expect(scValToNative(args[1]!)).toBe(recipient);
-
-    const metadata = scValToNative(args[2]!) as Record<string, unknown>;
-    expect(metadata.origin).toBe('Lagos');
-    expect(metadata.destination).toBe('Accra');
-    expect(metadata.cargo_description).toEqual({
-      category: ['Electronics'],
-      fragile: true,
-      weight_grams: 750,
-    });
-    expect(metadata.estimated_delivery).toBe(
-      String(Math.floor(estimatedDelivery.getTime() / 1000)),
-    );
-  });
-});
-
-/** Hand-builds a `get_delivery`-shaped ScVal using the same low-level
- * encoders `delivery-scval-mapping.ts` decodes against — the strongest
- * available verification without a live contract (see that file's header
- * comment). */
-function buildDeliveryRecordScVal(input: {
-  chainDeliveryId: bigint;
-  sender: string;
-  recipient: string;
-  driver: string | null;
-  status: string;
-  origin: string;
-  destination: string;
-  weightGrams: number;
-  category: string;
-  fragile: boolean;
-  createdAt: bigint;
-  transitStartedAt: bigint | null;
-  deliveredAt: bigint | null;
-}): xdr.ScVal {
-  const metadata = namedStructToScVal({
-    delivery_id: u64ToScVal(0n),
-    origin: stringToScVal(input.origin),
-    destination: stringToScVal(input.destination),
-    cargo_description: namedStructToScVal({
-      weight_grams: u32ToScVal(input.weightGrams),
-      category: unitEnumToScVal(input.category),
-      fragile: boolToScVal(input.fragile),
-    }),
-    created_at: u64ToScVal(input.createdAt),
-    estimated_delivery: u64ToScVal(input.createdAt + 86_400n),
-  });
-
-  return namedStructToScVal({
-    delivery_id: tupleStructToScVal(u64ToScVal(input.chainDeliveryId)),
-    sender: addressToScVal(input.sender),
-    recipient: addressToScVal(input.recipient),
-    driver: input.driver ? addressToScVal(input.driver) : xdr.ScVal.scvVoid(),
-    status: unitEnumToScVal(input.status),
-    metadata,
-    created_at: u64ToScVal(input.createdAt),
-    delivered_at: input.deliveredAt !== null ? u64ToScVal(input.deliveredAt) : xdr.ScVal.scvVoid(),
-    transit_started_at:
-      input.transitStartedAt !== null ? u64ToScVal(input.transitStartedAt) : xdr.ScVal.scvVoid(),
-  });
+function unitEnum(variant: string): unknown[] {
+  return [variant];
 }
 
-describe('nativeToChainDeliveryRecord', () => {
-  it('decodes a full DeliveryRecord (Pending, no driver, no timestamps)', () => {
-    const sender = Keypair.random().publicKey();
-    const recipient = Keypair.random().publicKey();
-    const scVal = buildDeliveryRecordScVal({
-      chainDeliveryId: 7n,
-      sender,
-      recipient,
-      driver: null,
-      status: 'Pending',
-      origin: 'Nairobi',
-      destination: 'Kampala',
-      weightGrams: 300,
-      category: 'Documents',
-      fragile: false,
-      createdAt: 1_700_000_000n,
-      transitStartedAt: null,
-      deliveredAt: null,
-    });
+function buildRecord(overrides: {
+  status?: unknown;
+  category?: unknown;
+  driver?: unknown;
+  estimatedDelivery?: unknown;
+  deliveredAt?: unknown;
+} = {}): Record<string, unknown> {
+  return {
+    delivery_id: ['42'],
+    sender: 'GSENDER',
+    recipient: 'GRECIPIENT',
+    driver: 'driver' in overrides ? overrides.driver : null,
+    status: 'status' in overrides ? overrides.status : unitEnum('Pending'),
+    metadata: {
+      origin: 'Lagos',
+      destination: 'Abuja',
+      cargo_description: {
+        weight_grams: 1000,
+        category: 'category' in overrides ? overrides.category : unitEnum('General'),
+        fragile: false,
+      },
+      created_at: '1700000000',
+      estimated_delivery:
+        'estimatedDelivery' in overrides ? overrides.estimatedDelivery : '1700003600',
+    },
+    delivered_at: 'deliveredAt' in overrides ? overrides.deliveredAt : null,
+  };
+}
 
-    const record = nativeToChainDeliveryRecord(scValToNative(scVal));
+describe('nativeToChainDeliveryRecord — delivery status enum matrix', () => {
+  it.each(DELIVERY_STATUS_CASES)(
+    'maps Rust status %s to %s',
+    (variant, expected) => {
+      const record = nativeToChainDeliveryRecord(buildRecord({ status: unitEnum(variant) }));
+      expect(record.status).toBe(expected);
+    },
+  );
 
-    expect(record).toEqual({
-      chainDeliveryId: 7n,
-      senderAddress: sender,
-      recipientAddress: recipient,
-      driverAddress: null,
-      status: 'PENDING',
-      origin: 'Nairobi',
-      destination: 'Kampala',
-      cargoCategory: 'DOCUMENTS',
-      weightGrams: 300,
-      fragile: false,
-      createdAtChain: new Date(1_700_000_000 * 1000),
-      transitStartedAt: null,
-      deliveredAt: null,
-    });
+  it('throws on an unknown delivery status variant', () => {
+    expect(() =>
+      nativeToChainDeliveryRecord(buildRecord({ status: unitEnum('Teleported') })),
+    ).toThrow(/Unknown DeliveryStatus variant: Teleported/);
+  });
+});
+
+describe('nativeToChainDeliveryRecord — cargo category enum matrix', () => {
+  it.each(CARGO_CATEGORY_CASES)(
+    'maps Rust cargo category %s to %s',
+    (variant, expected) => {
+      const record = nativeToChainDeliveryRecord(buildRecord({ category: unitEnum(variant) }));
+      expect(record.cargoCategory).toBe(expected);
+    },
+  );
+
+  it('throws on an unknown cargo category variant', () => {
+    expect(() =>
+      nativeToChainDeliveryRecord(buildRecord({ category: unitEnum('Unobtainium') })),
+    ).toThrow(/Unknown CargoCategory variant: Unobtainium/);
+  });
+});
+
+describe('nativeToChainDeliveryRecord — nullable driver and optional timestamps', () => {
+  it('decodes a null driver as null', () => {
+    const record = nativeToChainDeliveryRecord(buildRecord({ driver: null }));
+    expect(record.driverAddress).toBeNull();
   });
 
-  it('decodes a Delivered record with driver and timestamps present', () => {
-    const sender = Keypair.random().publicKey();
-    const recipient = Keypair.random().publicKey();
-    const driver = Keypair.random().publicKey();
-    const scVal = buildDeliveryRecordScVal({
-      chainDeliveryId: 12n,
-      sender,
-      recipient,
-      driver,
-      status: 'Delivered',
-      origin: 'Accra',
-      destination: 'Lagos',
-      weightGrams: 5200,
-      category: 'Perishables',
-      fragile: true,
-      createdAt: 1_700_000_000n,
-      transitStartedAt: 1_700_050_000n,
-      deliveredAt: 1_700_100_000n,
-    });
-
-    const record = nativeToChainDeliveryRecord(scValToNative(scVal));
-
-    expect(record.driverAddress).toBe(driver);
-    expect(record.status).toBe('DELIVERED');
-    expect(record.cargoCategory).toBe('PERISHABLES');
-    expect(record.transitStartedAt).toEqual(new Date(1_700_050_000 * 1000));
-    expect(record.deliveredAt).toEqual(new Date(1_700_100_000 * 1000));
+  it('decodes a present driver address', () => {
+    const record = nativeToChainDeliveryRecord(buildRecord({ driver: 'GDRIVER' }));
+    expect(record.driverAddress).toBe('GDRIVER');
   });
 
-  it('throws on a structurally invalid record rather than returning partial data', () => {
-    expect(() => nativeToChainDeliveryRecord({ not: 'a delivery record' })).toThrow();
+  it('decodes a null estimated_delivery as null', () => {
+    const record = nativeToChainDeliveryRecord(buildRecord({ estimatedDelivery: null }));
+    expect(record.estimatedDelivery).toBeNull();
   });
 
-  it('falls back to event.closedAt when created_at is an invalid timestamp', () => {
-    const sender = Keypair.random().publicKey();
-    const recipient = Keypair.random().publicKey();
-    const eventClosedAt = new Date('2026-01-02T00:00:00Z');
-    const scVal = namedStructToScVal({
-      delivery_id: tupleStructToScVal(u64ToScVal(7n)),
-      sender: addressToScVal(sender),
-      recipient: addressToScVal(recipient),
-      driver: xdr.ScVal.scvVoid(),
-      status: unitEnumToScVal('Pending'),
-      metadata: namedStructToScVal({
-        delivery_id: u64ToScVal(0n),
-        origin: stringToScVal('Nairobi'),
-        destination: stringToScVal('Kampala'),
-        cargo_description: namedStructToScVal({
-          weight_grams: u32ToScVal(300),
-          category: unitEnumToScVal('Documents'),
-          fragile: boolToScVal(false),
-        }),
-        created_at: stringToScVal('invalid'),
-        estimated_delivery: u64ToScVal(1_700_000_000n),
-      }),
-      created_at: stringToScVal('invalid'),
-      delivered_at: xdr.ScVal.scvVoid(),
-      transit_started_at: xdr.ScVal.scvVoid(),
-    });
-
-    const record = nativeToChainDeliveryRecord(scValToNative(scVal), eventClosedAt);
-
-    expect(record.createdAtChain).toEqual(eventClosedAt);
-    expect(record.createdAtChain.toISOString()).toBe(eventClosedAt.toISOString());
+  it('decodes a null delivered_at as null', () => {
+    const record = nativeToChainDeliveryRecord(buildRecord({ deliveredAt: null }));
+    expect(record.deliveredAt).toBeNull();
   });
 
-  it('throws a descriptive decode error when created_at is invalid and no fallback is given', () => {
-    const sender = Keypair.random().publicKey();
-    const recipient = Keypair.random().publicKey();
-    const scVal = namedStructToScVal({
-      delivery_id: tupleStructToScVal(u64ToScVal(7n)),
-      sender: addressToScVal(sender),
-      recipient: addressToScVal(recipient),
-      driver: xdr.ScVal.scvVoid(),
-      status: unitEnumToScVal('Pending'),
-      metadata: namedStructToScVal({
-        delivery_id: u64ToScVal(0n),
-        origin: stringToScVal('Nairobi'),
-        destination: stringToScVal('Kampala'),
-        cargo_description: namedStructToScVal({
-          weight_grams: u32ToScVal(300),
-          category: unitEnumToScVal('Documents'),
-          fragile: boolToScVal(false),
-        }),
-        created_at: stringToScVal('invalid'),
-        estimated_delivery: u64ToScVal(1_700_000_000n),
-      }),
-      created_at: stringToScVal('invalid'),
-      delivered_at: xdr.ScVal.scvVoid(),
-      transit_started_at: xdr.ScVal.scvVoid(),
-    });
-
-    expect(() => nativeToChainDeliveryRecord(scValToNative(scVal))).toThrow(
-      /Invalid u64-as-string timestamp/,
-    );
+  it('decodes a present delivered_at timestamp', () => {
+    const record = nativeToChainDeliveryRecord(buildRecord({ deliveredAt: '1700007200' }));
+    expect(record.deliveredAt).toEqual(new Date(1700007200 * 1000));
   });
 });

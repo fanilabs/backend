@@ -159,4 +159,46 @@ describe('nativeToChainDisputeCase', () => {
   it('throws on a structurally invalid case rather than returning partial data', () => {
     expect(() => nativeToChainDisputeCase({ not: 'a dispute case' }, 1n)).toThrow();
   });
+
+  /** Each case below is otherwise a valid, fully-formed record — only the
+   * one field under test is malformed — isolating which field decoding
+   * actually rejects on and asserting the error names that field, rather
+   * than a single generic `{ not: ... }` smoke test. Timestamp ranges and
+   * hash validation are intentionally out of scope here. */
+  describe('field-level structural errors with an otherwise valid record', () => {
+    function validRecord(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+      return {
+        delivery_id: [u64ToScVal(1n)],
+        status: ['Open'],
+        raised_by: Keypair.random().publicKey(),
+        raised_at: '1700000000',
+        evidence_hashes: [],
+        ...overrides,
+      };
+    }
+
+    it('rejects a non-string raised_by naming the field', () => {
+      expect(() => nativeToChainDisputeCase(validRecord({ raised_by: 42 }), 1n)).toThrow(
+        /"raised_by"/,
+      );
+    });
+
+    it('rejects a malformed status vector naming the field', () => {
+      expect(() => nativeToChainDisputeCase(validRecord({ status: 'Open' }), 1n)).toThrow(
+        /"status"/,
+      );
+    });
+
+    it('rejects a status vector with a non-Symbol inner value naming the field', () => {
+      expect(() => nativeToChainDisputeCase(validRecord({ status: [42] }), 1n)).toThrow(
+        /"status"/,
+      );
+    });
+
+    it('rejects a non-array evidence_hashes naming the field', () => {
+      expect(() =>
+        nativeToChainDisputeCase(validRecord({ evidence_hashes: 'not-an-array' }), 1n),
+      ).toThrow(/"evidence_hashes"/);
+    });
+  });
 });

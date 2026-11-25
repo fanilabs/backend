@@ -26,6 +26,15 @@ function sleep(ms: number): Promise<void> {
  */
 export async function withRetry<T>(fn: () => Promise<T>, options: RetryOptions = {}): Promise<T> {
   const opts = { ...defaultOptions, ...options };
+
+  if (
+    !Number.isFinite(opts.maxAttempts) ||
+    !Number.isInteger(opts.maxAttempts) ||
+    opts.maxAttempts < 1
+  ) {
+    throw new RangeError('maxAttempts must be a finite positive integer');
+  }
+
   let lastError: unknown;
 
   for (let attempt = 1; attempt <= opts.maxAttempts; attempt += 1) {

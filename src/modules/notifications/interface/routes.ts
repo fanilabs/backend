@@ -72,7 +72,7 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
         },
       },
       async (request, reply) => {
-        const { status, limit, before } = request.query;
+        const { status, unread, channel, limit, before } = request.query;
         const {
           items,
           nextCursor,
@@ -80,6 +80,8 @@ export function createNotificationsRoutes(useCases: NotificationsUseCases): Fast
         } = await useCases.listNotifications({
           userId: requireUser(request).id,
           ...(status && { status }),
+          ...(unread !== undefined && { unread }),
+          ...(channel !== undefined && { channel }),
           ...(limit !== undefined && { limit }),
           ...(before !== undefined && { before }),
         });
