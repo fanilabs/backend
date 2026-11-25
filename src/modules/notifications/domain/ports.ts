@@ -1,10 +1,25 @@
-import type { Notification, NotificationChannel, NotificationStatus } from './entities.js';
+import type {
+  Notification,
+  NotificationChannel,
+  NotificationEventType,
+  NotificationPreference,
+  NotificationStatus,
+} from './entities.js';
 
 export interface CreateNotificationInput {
   userId: string;
   channel: NotificationChannel;
   type: string;
   payload: Record<string, unknown>;
+}
+
+/** Opaque pagination cursor carrying both `createdAt` and `id` so ties on
+ * timestamp never cause rows to be skipped. Clients treat this as an opaque
+ * string — the internal structure is an implementation detail of the
+ * repository. */
+export interface NotificationCursor {
+  createdAt: Date;
+  id: string;
 }
 
 export interface ListNotificationsFilter {
@@ -16,11 +31,10 @@ export interface ListNotificationsFilter {
   /** When supplied, only rows whose `channel` matches this value are returned. */
   channel?: NotificationChannel;
   limit: number;
-  /** Cursor for keyset pagination — only rows strictly older than this
-   * timestamp are returned, so the response's `nextCursor` (the oldest
-   * row's `createdAt`) can be fed back in to fetch the next page without
-   * relying on an unstable `skip` offset. */
-  before?: Date;
+  /** Composite keyset cursor — only rows strictly older than this
+   * (createdAt, id) pair are returned. Replaces the former timestamp-only
+   * `before` field, eliminating duplicate/missing rows at timestamp ties. */
+  cursor?: NotificationCursor;
 }
 
 /**
@@ -155,4 +169,28 @@ export interface DeliveryParties {
  */
 export interface DeliveryPartyLookup {
   findParties(chainDeliveryId: string): Promise<DeliveryParties | null>;
+}
+
+export interface UpsertNotificationPreferenceInput {
+  userId: string;
+  eventType: NotificationEventType;
+  disabled: boolean;
+}
+
+/**
+ * Persists and reads per-user, per-event-type notification preferences
+ * (#698). Missing rows mean the user has the default (enabled) behavior —
+ * the repository never fabricates a default row; absence is the default.
+ */
+export interface NotificationPreferenceRepository {
+  /** Returns all stored preferences for the user. Event types with no row
+   * are implicitly enabled — callers must not treat an empty list as "all
+   * disabled". */
+  listByUserId(userId: string): Promise<NotificationPreference[]>;
+  /** Creates or updates the preference for (userId, eventType). */
+  upsert(input: UpsertNotificationPreferenceInput): Promise<NotificationPreference>;
+  /** Returns true when the user has an explicit disabled:true row for this
+   * eventType. Returns false for absent rows (default-enabled) and for
+   * rows with disabled:false. */
+  isDisabled(userId: string, eventType: NotificationEventType): Promise<boolean>;
 }

@@ -12,6 +12,8 @@ export {
   type ListNotificationsDeps,
   type ListNotificationsInput,
   type ListNotificationsResult,
+  encodeCursor,
+  decodeCursor,
 } from './list-notifications.js';
 export {
   createGetNotificationUseCase,
@@ -23,3 +25,16 @@ export {
   type MarkNotificationsReadDeps,
   type MarkNotificationsReadInput,
 } from './mark-notifications-read.js';
+export {
+  createGetNotificationPreferencesUseCase,
+  type GetNotificationPreferencesDeps,
+  type GetNotificationPreferencesInput,
+  type GetNotificationPreferencesResult,
+} from './get-notification-preferences.js';
+export {
+  createUpdateNotificationPreferencesUseCase,
+  type UpdateNotificationPreferencesDeps,
+  type UpdateNotificationPreferencesInput,
+  type UpdateNotificationPreferencesResult,
+  type PreferenceUpdate,
+} from './update-notification-preferences.js';

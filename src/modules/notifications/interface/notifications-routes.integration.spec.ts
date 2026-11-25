@@ -459,4 +459,144 @@ describe.skipIf(!dbAvailable)('notifications routes (integration)', () => {
     expect(response.statusCode).toBe(403);
     expect(response.json<ErrorBody>().error.code).toBe('FORBIDDEN');
   });
+
+  // #698 — per-event notification preference endpoints
+  describe('notification preferences', () => {
+    it('rejects an unauthenticated GET /preferences request', async () => {
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/notifications/preferences',
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('rejects an unauthenticated PATCH /preferences request', async () => {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        payload: { preferences: [{ eventType: 'DELIVERY_DRIVER_ASSIGNED', disabled: true }] },
+      });
+      expect(response.statusCode).toBe(401);
+    });
+
+    it('returns an empty list when the user has no stored preferences', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json<SuccessBody<unknown[]>>().data).toEqual([]);
+    });
+
+    it('PATCH creates preferences and GET returns them', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      const patch = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          preferences: [
+            { eventType: 'DELIVERY_DRIVER_ASSIGNED', disabled: true },
+            { eventType: 'ESCROW_RELEASED', disabled: false },
+          ],
+        },
+      });
+
+      expect(patch.statusCode).toBe(200);
+      const patchBody = patch.json<SuccessBody<Array<{ eventType: string; disabled: boolean }>>>();
+      expect(patchBody.data).toHaveLength(2);
+
+      const get = await app.inject({
+        method: 'GET',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+      expect(get.statusCode).toBe(200);
+      const getBody = get.json<SuccessBody<Array<{ eventType: string; disabled: boolean }>>>();
+      const byType = new Map(getBody.data.map((p) => [p.eventType, p.disabled]));
+      expect(byType.get('DELIVERY_DRIVER_ASSIGNED')).toBe(true);
+      expect(byType.get('ESCROW_RELEASED')).toBe(false);
+    });
+
+    it('PATCH updates an existing preference', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { preferences: [{ eventType: 'DISPUTE_RAISED', disabled: false }] },
+      });
+
+      const update = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: { preferences: [{ eventType: 'DISPUTE_RAISED', disabled: true }] },
+      });
+
+      expect(update.statusCode).toBe(200);
+      const body = update.json<SuccessBody<Array<{ eventType: string; disabled: boolean }>>>();
+      expect(body.data).toHaveLength(1);
+      expect(body.data[0]?.disabled).toBe(true);
+    });
+
+    it('rejects an unknown event type with a validation error', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {
+          preferences: [{ eventType: 'NONEXISTENT_EVENT', disabled: true }],
+        },
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it('rejects a malformed body (missing preferences array)', async () => {
+      const { accessToken } = await registerAndLogin();
+
+      const response = await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+        payload: {},
+      });
+
+      expect(response.statusCode).toBe(400);
+      expect(response.json<ErrorBody>().error.code).toBe('VALIDATION_ERROR');
+    });
+
+    it("does not expose another user's preferences", async () => {
+      const { accessToken } = await registerAndLogin();
+      const { accessToken: otherToken } = await registerAndLogin();
+
+      // Other user sets a preference
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${otherToken}` },
+        payload: { preferences: [{ eventType: 'FLEET_REGISTERED', disabled: true }] },
+      });
+
+      // First user's list is still empty
+      const response = await app.inject({
+        method: 'GET',
+        url: '/api/v1/notifications/preferences',
+        headers: { authorization: `Bearer ${accessToken}` },
+      });
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json<SuccessBody<unknown[]>>().data).toEqual([]);
+    });
+  });
 });

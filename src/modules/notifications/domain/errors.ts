@@ -1,4 +1,4 @@
-import { ForbiddenError, NotFoundError } from '../../../shared/errors/app-error.js';
+import { ForbiddenError, NotFoundError, ValidationError } from '../../../shared/errors/app-error.js';
 
 export class NotificationNotFoundError extends NotFoundError {
   constructor() {
@@ -9,6 +9,12 @@ export class NotificationNotFoundError extends NotFoundError {
 export class ForbiddenNotificationAccessError extends ForbiddenError {
   constructor() {
     super('This notification does not belong to the current user');
+  }
+}
+
+export class UnknownNotificationEventTypeError extends ValidationError {
+  constructor(type: string) {
+    super(`Unknown notification event type: ${type}`);
   }
 }
 

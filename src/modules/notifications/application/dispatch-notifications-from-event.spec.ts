@@ -5,6 +5,7 @@ import {
   buildBlockchainEvent,
   createFakeDeliveryPartyLookup,
   createFakeNotificationJobScheduler,
+  createFakeNotificationPreferenceRepository,
   createFakeUserContactLookup,
   createInMemoryNotificationRepository,
 } from './__fixtures__/fakes.js';
@@ -14,17 +15,20 @@ function setup() {
   const userContactLookup = createFakeUserContactLookup();
   const deliveryPartyLookup = createFakeDeliveryPartyLookup();
   const jobScheduler = createFakeNotificationJobScheduler();
+  const notificationPreferenceRepository = createFakeNotificationPreferenceRepository();
   const dispatchNotificationsFromEvent = createDispatchNotificationsFromEventUseCase({
     notificationRepository,
     userContactLookup,
     deliveryPartyLookup,
     jobScheduler,
+    notificationPreferenceRepository,
   });
   return {
     notificationRepository,
     userContactLookup,
     deliveryPartyLookup,
     jobScheduler,
+    notificationPreferenceRepository,
     dispatchNotificationsFromEvent,
   };
 }
@@ -276,5 +280,169 @@ describe('dispatchNotificationsFromEvent', () => {
     );
 
     expect(notificationRepository.all()).toHaveLength(0);
+  });
+
+  // #698 — per-user preference gate
+  describe('notification preference gate', () => {
+    it('creates a notification when the user has no stored preference (default-enabled)', async () => {
+      const { notificationRepository, userContactLookup, dispatchNotificationsFromEvent } = setup();
+      userContactLookup.seedAddress(testAddress('driver'), {
+        userId: 'user-1',
+        email: 'driver@example.com',
+      });
+
+      await dispatchNotificationsFromEvent(
+        buildBlockchainEvent({
+          contractName: 'delivery',
+          topic: ['driver_assigned'],
+          payload: ['1', testAddress('driver')],
+        }),
+      );
+
+      expect(notificationRepository.all()).toHaveLength(1);
+    });
+
+    it('creates a notification when the preference row exists but disabled is false', async () => {
+      const {
+        notificationRepository,
+        userContactLookup,
+        notificationPreferenceRepository,
+        dispatchNotificationsFromEvent,
+      } = setup();
+      userContactLookup.seedAddress(testAddress('driver'), {
+        userId: 'user-enabled',
+        email: 'driver@example.com',
+      });
+      await notificationPreferenceRepository.upsert({
+        userId: 'user-enabled',
+        eventType: 'DELIVERY_DRIVER_ASSIGNED',
+        disabled: false,
+      });
+
+      await dispatchNotificationsFromEvent(
+        buildBlockchainEvent({
+          contractName: 'delivery',
+          topic: ['driver_assigned'],
+          payload: ['1', testAddress('driver')],
+        }),
+      );
+
+      expect(notificationRepository.all()).toHaveLength(1);
+    });
+
+    it('suppresses notification creation when the user has disabled the event type', async () => {
+      const {
+        notificationRepository,
+        userContactLookup,
+        jobScheduler,
+        notificationPreferenceRepository,
+        dispatchNotificationsFromEvent,
+      } = setup();
+      userContactLookup.seedAddress(testAddress('driver'), {
+        userId: 'user-opt-out',
+        email: 'driver@example.com',
+      });
+      await notificationPreferenceRepository.upsert({
+        userId: 'user-opt-out',
+        eventType: 'DELIVERY_DRIVER_ASSIGNED',
+        disabled: true,
+      });
+
+      await dispatchNotificationsFromEvent(
+        buildBlockchainEvent({
+          contractName: 'delivery',
+          topic: ['driver_assigned'],
+          payload: ['1', testAddress('driver')],
+        }),
+      );
+
+      expect(notificationRepository.all()).toHaveLength(0);
+      expect(jobScheduler.enqueued).toHaveLength(0);
+    });
+
+    it("suppressing one user's preference does not affect other users for the same event", async () => {
+      const {
+        notificationRepository,
+        userContactLookup,
+        deliveryPartyLookup,
+        notificationPreferenceRepository,
+        dispatchNotificationsFromEvent,
+      } = setup();
+      deliveryPartyLookup.seedParties('10', {
+        sender: testAddress('sender'),
+        recipient: testAddress('recipient'),
+        driver: testAddress('driver'),
+      });
+      userContactLookup.seedAddress(testAddress('sender'), {
+        userId: 'user-sender',
+        email: 'sender@example.com',
+      });
+      userContactLookup.seedAddress(testAddress('driver'), {
+        userId: 'user-driver',
+        email: 'driver@example.com',
+      });
+      // Sender opts out of DELIVERY_CONFIRMED; driver keeps default (enabled)
+      await notificationPreferenceRepository.upsert({
+        userId: 'user-sender',
+        eventType: 'DELIVERY_CONFIRMED',
+        disabled: true,
+      });
+
+      await dispatchNotificationsFromEvent(
+        buildBlockchainEvent({
+          contractName: 'delivery',
+          topic: ['delivery_confirmed'],
+          payload: ['10'],
+        }),
+      );
+
+      const notifications = notificationRepository.all();
+      // Only the driver receives a notification; the sender is suppressed.
+      expect(notifications).toHaveLength(1);
+      expect(notifications[0]?.userId).toBe('user-driver');
+    });
+
+    it('suppresses all candidates for a multi-party event when all have opted out', async () => {
+      const {
+        notificationRepository,
+        userContactLookup,
+        deliveryPartyLookup,
+        notificationPreferenceRepository,
+        dispatchNotificationsFromEvent,
+      } = setup();
+      deliveryPartyLookup.seedParties('11', {
+        sender: testAddress('sender'),
+        recipient: testAddress('recipient'),
+        driver: testAddress('driver'),
+      });
+      userContactLookup.seedAddress(testAddress('sender'), {
+        userId: 'user-s',
+        email: 'sender@example.com',
+      });
+      userContactLookup.seedAddress(testAddress('driver'), {
+        userId: 'user-d',
+        email: 'driver@example.com',
+      });
+      await notificationPreferenceRepository.upsert({
+        userId: 'user-s',
+        eventType: 'DELIVERY_CONFIRMED',
+        disabled: true,
+      });
+      await notificationPreferenceRepository.upsert({
+        userId: 'user-d',
+        eventType: 'DELIVERY_CONFIRMED',
+        disabled: true,
+      });
+
+      await dispatchNotificationsFromEvent(
+        buildBlockchainEvent({
+          contractName: 'delivery',
+          topic: ['delivery_confirmed'],
+          payload: ['11'],
+        }),
+      );
+
+      expect(notificationRepository.all()).toHaveLength(0);
+    });
   });
 });

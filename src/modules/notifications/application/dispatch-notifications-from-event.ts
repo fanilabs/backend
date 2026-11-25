@@ -4,7 +4,9 @@ import { logger } from '../../../shared/logger/index.js';
 import type {
   DeliveryParties,
   DeliveryPartyLookup,
+  NotificationEventType,
   NotificationJobScheduler,
+  NotificationPreferenceRepository,
   NotificationRepository,
   UserContactLookup,
 } from '../domain/index.js';
@@ -16,13 +18,50 @@ export interface DispatchNotificationsFromEventDeps {
   userContactLookup: UserContactLookup;
   deliveryPartyLookup: DeliveryPartyLookup;
   jobScheduler: NotificationJobScheduler;
+  /** Optional — when omitted, all notifications are created (default-on
+   * behavior preserved for callers that don't wire up preferences). */
+  notificationPreferenceRepository?: NotificationPreferenceRepository;
 }
 
 interface NotificationCandidate {
   address: string;
   type: string;
+  /** The corresponding preference enum key — `null` for event types that
+   * have no preference gate (should not happen in practice, but handled
+   * defensively so a missing mapping never blocks a notification). */
+  eventType: NotificationEventType | null;
   payload: Record<string, unknown>;
 }
+
+/**
+ * Maps the `type` string a notification row carries (e.g.
+ * `"delivery.driver_assigned"`) to the `NotificationEventType` enum value
+ * stored in `notification_preferences` (#698). The mapping is intentionally
+ * exhaustive over all types `resolveCandidates` can produce — TypeScript
+ * will catch a missing branch if a new type is added to one place but not
+ * the other.
+ */
+const TYPE_TO_EVENT_TYPE: Record<string, NotificationEventType> = {
+  'delivery.driver_assigned': 'DELIVERY_DRIVER_ASSIGNED',
+  'delivery.DeliveryInTransit': 'DELIVERY_IN_TRANSIT',
+  'delivery.delivery_confirmed': 'DELIVERY_CONFIRMED',
+  'delivery.delivery_cancelled': 'DELIVERY_CANCELLED',
+  'escrow.delivery_disputed': 'ESCROW_DELIVERY_DISPUTED',
+  'escrow.escrow_released': 'ESCROW_RELEASED',
+  'escrow.escrow_refunded': 'ESCROW_REFUNDED',
+  'dispute.dispute_raised': 'DISPUTE_RAISED',
+  'dispute.dispute_resolved_refund': 'DISPUTE_RESOLVED_REFUND',
+  'dispute.dispute_resolved_split': 'DISPUTE_RESOLVED_SPLIT',
+  'dispute.dispute_resolved_payout': 'DISPUTE_RESOLVED_PAYOUT',
+  'reputation.driver_registered': 'REPUTATION_DRIVER_REGISTERED',
+  'reputation.kyc_status_updated': 'REPUTATION_KYC_STATUS_UPDATED',
+  'reputation.reputation_increased': 'REPUTATION_INCREASED',
+  'reputation.reputation_decreased': 'REPUTATION_DECREASED',
+  'fleet.fleet_registered': 'FLEET_REGISTERED',
+  'fleet.driver_invited': 'FLEET_DRIVER_INVITED',
+  'fleet.invite_accepted': 'FLEET_INVITE_ACCEPTED',
+  'fleet.driver_removed': 'FLEET_DRIVER_REMOVED',
+};
 
 /**
  * Reacts to the same in-process event bus every other module subscribes to
@@ -60,6 +99,14 @@ interface NotificationCandidate {
  *    documented anywhere this codebase can verify against, so it's treated
  *    the same as "no address" rather than guessed at.
  *
+ * **Preference gate (#698):**
+ *  When `notificationPreferenceRepository` is supplied, dispatch consults
+ *  the user's stored preference for each candidate's event type before
+ *  creating a row. A `disabled: true` preference silently skips both row
+ *  creation and job scheduling for that (user, eventType) pair. Missing
+ *  preferences default to enabled — only an explicit `disabled: true` row
+ *  suppresses the notification.
+ *
  * A candidate address with no linked+verified local account is silently
  * skipped, not an error — not every on-chain actor necessarily has an
  * account on this backend. Duplicate addresses within one event (e.g. a
@@ -83,6 +130,18 @@ export function createDispatchNotificationsFromEventUseCase(
 
       const contact = await deps.userContactLookup.findByWalletAddress(candidate.address);
       if (!contact) continue;
+
+      // Check per-user preference before creating a row (#698).
+      if (
+        deps.notificationPreferenceRepository &&
+        candidate.eventType !== null
+      ) {
+        const suppressed = await deps.notificationPreferenceRepository.isDisabled(
+          contact.userId,
+          candidate.eventType,
+        );
+        if (suppressed) continue;
+      }
 
       const notification = await deps.notificationRepository.create({
         userId: contact.userId,
@@ -116,7 +175,12 @@ function partyCandidates(
 ): NotificationCandidate[] {
   return [parties.sender, parties.driver]
     .filter((address): address is string => address !== null && address !== excludeAddress)
-    .map((address) => ({ address, type, payload }));
+    .map((address) => ({
+      address,
+      type,
+      eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+      payload,
+    }));
 }
 
 async function resolveCandidates(
@@ -133,8 +197,14 @@ async function resolveCandidates(
         const chainDeliveryId = parseId(payload[0]);
         const driverAddress = parseAddress(payload[1]);
         if (chainDeliveryId === null || driverAddress === null) return [];
+        const type = 'delivery.driver_assigned';
         return [
-          { address: driverAddress, type: 'delivery.driver_assigned', payload: { chainDeliveryId } },
+          {
+            address: driverAddress,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainDeliveryId },
+          },
         ];
       }
 
@@ -160,8 +230,14 @@ async function resolveCandidates(
       if (event.topic[0] === 'delivery_disputed') {
         const disputedBy = parseAddress(payload[0]);
         if (disputedBy === null) return [];
+        const type = 'escrow.delivery_disputed';
         return [
-          { address: disputedBy, type: 'escrow.delivery_disputed', payload: { chainDeliveryId } },
+          {
+            address: disputedBy,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainDeliveryId },
+          },
         ];
       }
 
@@ -171,8 +247,14 @@ async function resolveCandidates(
         // while building the `escrow` module.
         const driverAddress = parseAddress(payload[0]);
         if (driverAddress === null) return [];
+        const type = 'escrow.escrow_released';
         return [
-          { address: driverAddress, type: 'escrow.escrow_released', payload: { chainDeliveryId } },
+          {
+            address: driverAddress,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainDeliveryId },
+          },
         ];
       }
 
@@ -192,7 +274,15 @@ async function resolveCandidates(
         const chainDeliveryId = parseTupleWrappedId(event.topic[1]);
         const raisedBy = parseAddress(payload[0]);
         if (chainDeliveryId === null || raisedBy === null) return [];
-        return [{ address: raisedBy, type: 'dispute.dispute_raised', payload: { chainDeliveryId } }];
+        const type = 'dispute.dispute_raised';
+        return [
+          {
+            address: raisedBy,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainDeliveryId },
+          },
+        ];
       }
 
       if (
@@ -223,7 +313,15 @@ async function resolveCandidates(
       }
       const driverAddress = parseAddress(payload[0]);
       if (driverAddress === null) return [];
-      return [{ address: driverAddress, type: `reputation.${eventName}`, payload: {} }];
+      const type = `reputation.${eventName}`;
+      return [
+        {
+          address: driverAddress,
+          type,
+          eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+          payload: {},
+        },
+      ];
     }
 
     case 'fleet': {
@@ -234,8 +332,14 @@ async function resolveCandidates(
       if (eventName === 'fleet_registered') {
         const ownerAddress = parseAddress(payload[1]);
         if (ownerAddress === null) return [];
+        const type = 'fleet.fleet_registered';
         return [
-          { address: ownerAddress, type: 'fleet.fleet_registered', payload: { chainFleetId } },
+          {
+            address: ownerAddress,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainFleetId },
+          },
         ];
       }
 
@@ -246,7 +350,15 @@ async function resolveCandidates(
       ) {
         const driverAddress = parseAddress(payload[1]);
         if (driverAddress === null) return [];
-        return [{ address: driverAddress, type: `fleet.${eventName}`, payload: { chainFleetId } }];
+        const type = `fleet.${eventName}`;
+        return [
+          {
+            address: driverAddress,
+            type,
+            eventType: TYPE_TO_EVENT_TYPE[type] ?? null,
+            payload: { chainFleetId },
+          },
+        ];
       }
 
       return [];
