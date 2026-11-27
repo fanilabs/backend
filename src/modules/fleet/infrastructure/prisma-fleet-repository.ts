@@ -209,6 +209,21 @@ export function createPrismaFleetRepository(prisma: PrismaClient): FleetReposito
       const fleet = await prisma.fleet.findUnique({ where: { chainFleetId } });
       if (!fleet) {
         console.debug(
-          `[fleet] driver_removed skipped — no indexed fleet fo
+          `[fleet] driver_removed skipped — no indexed fleet for chainFleetId=${chainFleetId}.`,
+        );
+        return;
+      }
 
-/* … truncated 630 chars — edit only what you need near the top … */
+      // `upsert`, not `update` — same out-of-order rationale as
+      // `acceptInvite` above: `driver_removed` carries the full
+      // `(fleetId, driverAddress)` unique key, so a driver row that was
+      // never observed being invited/accepted can still be recorded as
+      // removed rather than throwing P2025.
+      await prisma.fleetDriver.upsert({
+        where: { fleetId_driverAddress: { fleetId: fleet.id, driverAddress } },
+        create: { fleetId: fleet.id, driverAddress, removedAt },
+        update: { removedAt },
+      });
+    },
+  };
+}
